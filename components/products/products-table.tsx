@@ -35,9 +35,9 @@ export function ProductsTable({ products, onEdit, onDelete, onToggleStatus }: Pr
   };
 
   const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('es-ES', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'ARS'
     }).format(price);
   };
 
