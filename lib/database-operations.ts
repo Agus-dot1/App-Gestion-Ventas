@@ -198,10 +198,30 @@ export const customerOperations = {
     stmt.run(...values);
   },
 
-  delete: (id: number): void => {
+  delete: (id: number): { deletedSales: Sale[] } => {
     const db = getDatabase();
+    
+    // Get all related sales for this customer before deleting them
+    const salesStmt = db.prepare(`
+      SELECT s.*, c.name as customer_name
+      FROM sales s
+      LEFT JOIN customers c ON s.customer_id = c.id
+      WHERE s.customer_id = ?
+      ORDER BY s.date DESC
+    `);
+    const deletedSales = salesStmt.all(id) as Sale[];
+    
+    // Delete all related sales for this customer
+    // This will automatically cascade to delete installments, sale_items, and payment_transactions
+    // due to the ON DELETE CASCADE constraints in the database schema
+    const deleteSalesStmt = db.prepare('DELETE FROM sales WHERE customer_id = ?');
+    deleteSalesStmt.run(id);
+    
+    // Now delete the customer
     const stmt = db.prepare('DELETE FROM customers WHERE id = ?');
-    stmt.run(id);
+    const result = stmt.run(id);
+    
+    return { deletedSales };
   }
 };
 

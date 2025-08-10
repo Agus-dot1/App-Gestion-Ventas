@@ -136,8 +136,10 @@ export default function CustomersPage() {
     try {
       window.electronAPI.database.customers.delete(customerId);
       await loadCustomers();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting customer:', error);
+      // Show error to user
+      alert(error.message || 'Failed to delete customer. Please try again.');
     }
   };
 

@@ -8,8 +8,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Search, MoreHorizontal, Edit, Trash2, Users, Phone, Calendar } from 'lucide-react';
-import type { Customer } from '@/lib/database-operations';
+import { Search, MoreHorizontal, Edit, Trash2, Users, Phone, Calendar, Loader2 } from 'lucide-react';
+import type { Customer, Sale } from '@/lib/database-operations';
+import { cn } from '@/lib/utils';
 
 interface CustomersTableProps {
   customers: Customer[];
@@ -21,16 +22,39 @@ interface CustomersTableProps {
 export function CustomersTable({ customers, highlightId, onEdit, onDelete }: CustomersTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteCustomer, setDeleteCustomer] = useState<Customer | null>(null);
+  const [relatedSales, setRelatedSales] = useState<Sale[]>([]);
+  const [isFetchingSales, setIsFetchingSales] = useState(false);
 
   const filteredCustomers = customers.filter(customer =>
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.contact_info?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const fetchRelatedSales = async (customerId: number) => {
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      try {
+        setIsFetchingSales(true);
+        const sales = await window.electronAPI.database.sales.getByCustomer(customerId);
+        setRelatedSales(sales);
+      } catch (error) {
+        console.error('Error fetching related sales:', error);
+        setRelatedSales([]);
+      } finally {
+        setIsFetchingSales(false);
+      }
+    }
+  };
+
+  const handleDeleteClick = async (customer: Customer) => {
+    setDeleteCustomer(customer);
+    await fetchRelatedSales(customer.id!);
+  };
+
   const handleDelete = async () => {
     if (deleteCustomer?.id) {
       await onDelete(deleteCustomer.id);
       setDeleteCustomer(null);
+      setRelatedSales([]);
     }
   };
 
@@ -40,6 +64,13 @@ export function CustomersTable({ customers, highlightId, onEdit, onDelete }: Cus
       month: 'short',
       day: 'numeric'
     });
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount);
   };
 
   return (
@@ -142,8 +173,8 @@ export function CustomersTable({ customers, highlightId, onEdit, onDelete }: Cus
                               Edit
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem 
-                              onClick={() => setDeleteCustomer(customer)}
+                            <DropdownMenuItem
+                              onClick={() => handleDeleteClick(customer)}
                               className="text-red-600"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
@@ -162,17 +193,58 @@ export function CustomersTable({ customers, highlightId, onEdit, onDelete }: Cus
       </Card>
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={!!deleteCustomer} onOpenChange={() => setDeleteCustomer(null)}>
+      <AlertDialog open={!!deleteCustomer} onOpenChange={(open) => {
+        if (!open) {
+          setDeleteCustomer(null);
+          setRelatedSales([]);
+        }
+      }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Customer</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{deleteCustomer?.name}"? This action cannot be undone and will also remove any associated sales records.
+              {isFetchingSales ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <span className="ml-2">Loading related sales...</span>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p>
+                    Are you sure you want to delete "{deleteCustomer?.name}"?
+                    This action cannot be undone.
+                  </p>
+                  {relatedSales.length > 0 ? (
+                    <div className="border rounded-md p-4 bg-muted/50">
+                      <h4 className="font-medium mb-2">The following movements will also be deleted:</h4>
+                      <div className="max-h-40 overflow-y-auto">
+                        <ul className="space-y-2">
+                          {relatedSales.map((sale) => (
+                            <li key={sale.id} className="flex justify-between text-sm">
+                              <span>Sale #{sale.sale_number}</span>
+                              <span className="font-medium">{formatCurrency(sale.total_amount)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Total: {relatedSales.length} sale{relatedSales.length !== 1 ? 's' : ''} ({formatCurrency(relatedSales.reduce((sum, sale) => sum + sale.total_amount, 0))})
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No related sales found for this customer.</p>
+                  )}
+                </div>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-red-600 hover:bg-red-700 text-slate-50"
+              disabled={isFetchingSales}
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

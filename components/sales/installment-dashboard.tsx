@@ -40,6 +40,7 @@ import {
   MessageSquare
 } from 'lucide-react';
 import type { Installment } from '@/lib/database-operations';
+import { cn } from '@/lib/utils';
 
 interface InstallmentDashboardProps {
   highlightId?: string | null;

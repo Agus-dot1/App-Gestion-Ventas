@@ -10,6 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Search, MoreHorizontal, Edit, Trash2, Eye, CreditCard, Calendar, DollarSign } from 'lucide-react';
 import type { Sale } from '@/lib/database-operations';
+import { cn } from '@/lib/utils';
 
 interface SalesTableProps {
   sales: Sale[];

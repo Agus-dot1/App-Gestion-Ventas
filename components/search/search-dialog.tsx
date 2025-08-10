@@ -68,6 +68,13 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
     }
   }, [open]);
 
+    const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount);
+  };
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -230,12 +237,6 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount);
-  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -328,7 +329,6 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
               }}
               onKeyDown={handleKeyDown}
               className="pl-10"
-              autoFocus
             />
           </div>
         </div>
@@ -561,7 +561,7 @@ function SearchResultItem({ result, isSelected, onClick }: SearchResultItemProps
     <Card
       className={cn(
         'cursor-pointer transition-all hover:shadow-sm border-l-4',
-        isSelected && 'ring-2 ring-primary bg-muted/50',
+        isSelected && 'bg-muted/50',
         result.type === 'customer' && 'border-l-blue-500',
         result.type === 'sale' && 'border-l-green-500',
         result.type === 'product' && 'border-l-purple-500',
