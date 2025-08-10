@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DashboardLayout } from '@/components/dashboard-layout';
@@ -12,11 +13,15 @@ import { Plus, CreditCard, TrendingUp, DollarSign, Calendar, Database, AlertTria
 import type { Sale } from '@/lib/database-operations';
 
 export default function SalesPage() {
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get('highlight');
+  const tabParam = searchParams.get('tab');
   const [sales, setSales] = useState<Sale[]>([]);
   const [overdueSales, setOverdueSales] = useState<Sale[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | undefined>();
   const [isElectron, setIsElectron] = useState(false);
+  const [activeTab, setActiveTab] = useState(tabParam || 'sales');
 
   useEffect(() => {
     setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
@@ -26,6 +31,33 @@ export default function SalesPage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (tabParam) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
+
+  // Highlight sale if specified in URL
+  const highlightedSale = useMemo(() => {
+    if (!highlightId) return null;
+    return sales.find(sale => sale.id?.toString() === highlightId);
+  }, [sales, highlightId]);
+
+  useEffect(() => {
+    if (highlightedSale) {
+      // Scroll to highlighted sale after a short delay
+      setTimeout(() => {
+        const element = document.getElementById(`sale-${highlightedSale.id}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('ring-2', 'ring-primary', 'ring-offset-2');
+          setTimeout(() => {
+            element.classList.remove('ring-2', 'ring-primary', 'ring-offset-2');
+          }, 3000);
+        }
+      }, 100);
+    }
+  }, [highlightedSale]);
   const loadSales = async () => {
     try {
       const allSales = await window.electronAPI.database.sales.getAll();
@@ -278,7 +310,7 @@ export default function SalesPage() {
         </div>
 
         {/* Main Content Tabs */}
-        <Tabs defaultValue="sales" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList>
             <TabsTrigger value="sales">All Sales</TabsTrigger>
             <TabsTrigger value="installments">Installments</TabsTrigger>
@@ -288,6 +320,7 @@ export default function SalesPage() {
             {isElectron ? (
               <SalesTable
                 sales={sales}
+                highlightId={highlightId}
                 onEdit={handleEditSale}
                 onDelete={handleDeleteSale}
               />
@@ -308,7 +341,10 @@ export default function SalesPage() {
 
           <TabsContent value="installments">
             {isElectron ? (
-              <InstallmentDashboard onRefresh={() => { loadSales(); loadOverdueSales(); }} />
+              <InstallmentDashboard 
+                highlightId={highlightId}
+                onRefresh={() => { loadSales(); loadOverdueSales(); }} 
+              />
             ) : (
               <Card>
                 <CardContent className="flex items-center justify-center py-12">
