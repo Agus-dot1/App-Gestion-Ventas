@@ -13,11 +13,12 @@ import type { Customer } from '@/lib/database-operations';
 
 interface CustomersTableProps {
   customers: Customer[];
+  highlightId?: string | null;
   onEdit: (customer: Customer) => void;
   onDelete: (customerId: number) => void;
 }
 
-export function CustomersTable({ customers, onEdit, onDelete }: CustomersTableProps) {
+export function CustomersTable({ customers, highlightId, onEdit, onDelete }: CustomersTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteCustomer, setDeleteCustomer] = useState<Customer | null>(null);
 
@@ -90,13 +91,24 @@ export function CustomersTable({ customers, onEdit, onDelete }: CustomersTablePr
                 </TableHeader>
                 <TableBody>
                   {filteredCustomers.map((customer) => (
-                    <TableRow key={customer.id}>
+                    <TableRow 
+                      key={customer.id} 
+                      id={`customer-${customer.id}`}
+                      className={cn(
+                        highlightId === customer.id?.toString() && 'bg-muted/50'
+                      )}
+                    >
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
                             <Users className="w-4 h-4 text-primary" />
                           </div>
                           {customer.name}
+                          {highlightId === customer.id?.toString() && (
+                            <Badge variant="outline" className="bg-primary/10 text-primary">
+                              Found
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="max-w-[300px]">

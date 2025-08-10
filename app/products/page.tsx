@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DashboardLayout } from '@/components/dashboard-layout';
@@ -11,6 +12,8 @@ import { Database } from 'lucide-react';
 import type { Product } from '@/lib/database-operations';
 
 export default function ProductsPage() {
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get('highlight');
   const [products, setProducts] = useState<Product[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>();
@@ -23,6 +26,27 @@ export default function ProductsPage() {
     }
   }, []);
 
+  // Highlight product if specified in URL
+  const highlightedProduct = useMemo(() => {
+    if (!highlightId) return null;
+    return products.find(product => product.id?.toString() === highlightId);
+  }, [products, highlightId]);
+
+  useEffect(() => {
+    if (highlightedProduct) {
+      // Scroll to highlighted product after a short delay
+      setTimeout(() => {
+        const element = document.getElementById(`product-${highlightedProduct.id}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('ring-2', 'ring-primary', 'ring-offset-2');
+          setTimeout(() => {
+            element.classList.remove('ring-2', 'ring-primary', 'ring-offset-2');
+          }, 3000);
+        }
+      }, 100);
+    }
+  }, [highlightedProduct]);
   const loadProducts = async () => {
     try {
       const allProducts = await window.electronAPI.database.products.getAll();
@@ -270,6 +294,7 @@ export default function ProductsPage() {
         {isElectron ? (
           <ProductsTable
             products={products}
+            highlightId={highlightId}
             onEdit={handleEditProduct}
             onDelete={handleDeleteProduct}
             onToggleStatus={handleToggleStatus}

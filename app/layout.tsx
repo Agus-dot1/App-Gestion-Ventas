@@ -1,5 +1,6 @@
 import './globals.css';
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 
 export const metadata: Metadata = {
   title: 'Sales Management System',
@@ -13,7 +14,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="antialiased dark">{children}</body>
+      <body className="antialiased dark">
+        <Suspense fallback={<div>Loading...</div>}>
+          {children}
+        </Suspense>
+      </body>
     </html>
   );
 }

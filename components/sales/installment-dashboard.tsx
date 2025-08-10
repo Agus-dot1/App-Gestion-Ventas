@@ -42,6 +42,7 @@ import {
 import type { Installment } from '@/lib/database-operations';
 
 interface InstallmentDashboardProps {
+  highlightId?: string | null;
   onRefresh: () => void;
 }
 
@@ -70,7 +71,7 @@ interface FilterOptions {
   amountRange: { min: number; max: number };
 }
 
-export function InstallmentDashboard({ onRefresh }: InstallmentDashboardProps) {
+export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDashboardProps) {
   const [installments, setInstallments] = useState<ExtendedInstallment[]>([]);
   const [overdueInstallments, setOverdueInstallments] = useState<ExtendedInstallment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -608,6 +609,7 @@ export function InstallmentDashboard({ onRefresh }: InstallmentDashboardProps) {
         <TabsContent value="all">
           <InstallmentTable 
             installments={filteredInstallments} 
+            highlightId={highlightId}
             onPayment={openPaymentDialog}
             onScheduleChange={(installment) => setScheduleDialog({ open: true, installment })}
             title="All Installments"
@@ -618,6 +620,7 @@ export function InstallmentDashboard({ onRefresh }: InstallmentDashboardProps) {
         <TabsContent value="overdue">
           <InstallmentTable 
             installments={overdueInstallments} 
+            highlightId={highlightId}
             onPayment={openPaymentDialog}
             onScheduleChange={(installment) => setScheduleDialog({ open: true, installment })}
             title="Overdue Installments"
@@ -635,6 +638,7 @@ export function InstallmentDashboard({ onRefresh }: InstallmentDashboardProps) {
               nextWeek.setDate(nextWeek.getDate() + 7);
               return dueDate <= nextWeek && i.status !== 'paid';
             })} 
+            highlightId={highlightId}
             onPayment={openPaymentDialog}
             onScheduleChange={(installment) => setScheduleDialog({ open: true, installment })}
             title="Due Soon"
@@ -882,6 +886,7 @@ export function InstallmentDashboard({ onRefresh }: InstallmentDashboardProps) {
 
 interface InstallmentTableProps {
   installments: ExtendedInstallment[];
+  highlightId?: string | null;
   onPayment: (installment: ExtendedInstallment) => void;
   onScheduleChange: (installment: ExtendedInstallment) => void;
   title: string;
@@ -893,6 +898,7 @@ interface InstallmentTableProps {
 
 function InstallmentTable({ 
   installments, 
+  highlightId,
   onPayment, 
   onScheduleChange,
   title, 
@@ -995,7 +1001,13 @@ function InstallmentTable({
               </TableHeader>
               <TableBody>
                 {installments.map((installment) => (
-                  <TableRow key={installment.id}>
+                  <TableRow 
+                    key={installment.id} 
+                    id={`installment-${installment.id}`}
+                    className={cn(
+                      highlightId === installment.sale_id?.toString() && 'bg-muted/50'
+                    )}
+                  >
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
@@ -1005,6 +1017,11 @@ function InstallmentTable({
                         </div>
                         <div>
                           <div className="font-medium">{installment.customer_name}</div>
+                          {highlightId === installment.sale_id?.toString() && (
+                            <Badge variant="outline" className="bg-primary/10 text-primary text-xs mt-1">
+                              Found
+                            </Badge>
+                          )}
                           {showContactActions && (
                             <div className="flex items-center gap-1 mt-1">
                               <Button size="sm" variant="ghost" className="h-6 px-2">

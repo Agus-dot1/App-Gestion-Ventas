@@ -13,12 +13,13 @@ import type { Product } from '@/lib/database-operations';
 
 interface ProductsTableProps {
   products: Product[];
+  highlightId?: string | null;
   onEdit: (product: Product) => void;
   onDelete: (productId: number) => void;
   onToggleStatus: (productId: number, isActive: boolean) => void;
 }
 
-export function ProductsTable({ products, onEdit, onDelete, onToggleStatus }: ProductsTableProps) {
+export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggleStatus }: ProductsTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
 
@@ -91,9 +92,22 @@ export function ProductsTable({ products, onEdit, onDelete, onToggleStatus }: Pr
                 </TableHeader>
                 <TableBody>
                   {filteredProducts.map((product) => (
-                    <TableRow key={product.id}>
+                    <TableRow 
+                      key={product.id} 
+                      id={`product-${product.id}`}
+                      className={cn(
+                        highlightId === product.id?.toString() && 'bg-muted/50'
+                      )}
+                    >
                       <TableCell className="font-medium">
-                        {product.name}
+                        <div className="flex items-center gap-2">
+                          {product.name}
+                          {highlightId === product.id?.toString() && (
+                            <Badge variant="outline" className="bg-primary/10 text-primary">
+                              Found
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         {formatPrice(product.price)}

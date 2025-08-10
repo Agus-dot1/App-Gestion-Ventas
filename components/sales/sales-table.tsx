@@ -13,11 +13,12 @@ import type { Sale } from '@/lib/database-operations';
 
 interface SalesTableProps {
   sales: Sale[];
+  highlightId?: string | null;
   onEdit: (sale: Sale) => void;
   onDelete: (saleId: number) => void;
 }
 
-export function SalesTable({ sales, onEdit, onDelete }: SalesTableProps) {
+export function SalesTable({ sales, highlightId, onEdit, onDelete }: SalesTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteSale, setDeleteSale] = useState<Sale | null>(null);
 
@@ -138,13 +139,24 @@ export function SalesTable({ sales, onEdit, onDelete }: SalesTableProps) {
                 </TableHeader>
                 <TableBody>
                   {filteredSales.map((sale) => (
-                    <TableRow key={sale.id}>
+                    <TableRow 
+                      key={sale.id} 
+                      id={`sale-${sale.id}`}
+                      className={cn(
+                        highlightId === sale.id?.toString() && 'bg-muted/50'
+                      )}
+                    >
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
                             <CreditCard className="w-4 h-4 text-primary" />
                           </div>
                           {sale.sale_number}
+                          {highlightId === sale.id?.toString() && (
+                            <Badge variant="outline" className="bg-primary/10 text-primary">
+                              Found
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>

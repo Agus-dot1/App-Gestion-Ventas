@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DashboardLayout } from '@/components/dashboard-layout';
@@ -10,6 +11,8 @@ import { Plus, Users, TrendingUp, Calendar, Database } from 'lucide-react';
 import type { Customer } from '@/lib/database-operations';
 
 export default function CustomersPage() {
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get('highlight');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | undefined>();
@@ -22,6 +25,27 @@ export default function CustomersPage() {
     }
   }, []);
 
+  // Highlight customer if specified in URL
+  const highlightedCustomer = useMemo(() => {
+    if (!highlightId) return null;
+    return customers.find(customer => customer.id?.toString() === highlightId);
+  }, [customers, highlightId]);
+
+  useEffect(() => {
+    if (highlightedCustomer) {
+      // Scroll to highlighted customer after a short delay
+      setTimeout(() => {
+        const element = document.getElementById(`customer-${highlightedCustomer.id}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('ring-2', 'ring-primary', 'ring-offset-2');
+          setTimeout(() => {
+            element.classList.remove('ring-2', 'ring-primary', 'ring-offset-2');
+          }, 3000);
+        }
+      }, 100);
+    }
+  }, [highlightedCustomer]);
   const loadCustomers = async () => {
     try {
       const allCustomers = await window.electronAPI.database.customers.getAll();
@@ -242,6 +266,7 @@ export default function CustomersPage() {
         {isElectron ? (
           <CustomersTable
             customers={customers}
+            highlightId={highlightId}
             onEdit={handleEditCustomer}
             onDelete={handleDeleteCustomer}
           />
