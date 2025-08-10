@@ -1,0 +1,338 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { DashboardLayout } from '@/components/dashboard-layout';
+import { SaleForm } from '@/components/sales/sale-form';
+import { SalesTable } from '@/components/sales/sales-table';
+import { InstallmentDashboard } from '@/components/sales/installment-dashboard';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Plus, CreditCard, TrendingUp, DollarSign, Calendar, Database, AlertTriangle } from 'lucide-react';
+import type { Sale } from '@/lib/database-operations';
+
+export default function SalesPage() {
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [overdueSales, setOverdueSales] = useState<Sale[]>([]);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingSale, setEditingSale] = useState<Sale | undefined>();
+  const [isElectron, setIsElectron] = useState(false);
+
+  useEffect(() => {
+    setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      loadSales();
+      loadOverdueSales();
+    }
+  }, []);
+
+  const loadSales = async () => {
+    try {
+      const allSales = await window.electronAPI.database.sales.getAll();
+      setSales(allSales);
+    } catch (error) {
+      console.error('Error loading sales:', error);
+    }
+  };
+
+  const loadOverdueSales = async () => {
+    try {
+      const overdue = await window.electronAPI.database.sales.getOverdueSales();
+      setOverdueSales(overdue);
+    } catch (error) {
+      console.error('Error loading overdue sales:', error);
+    }
+  };
+
+  const handleSaveSale = async (saleData: any) => {
+    try {
+      if (editingSale?.id) {
+        // Update existing sale
+        await window.electronAPI.database.sales.update(editingSale.id, saleData);
+      } else {
+        // Create new sale
+        await window.electronAPI.database.sales.create(saleData);
+      }
+      
+      await loadSales();
+      await loadOverdueSales();
+      setEditingSale(undefined);
+    } catch (error) {
+      console.error('Error saving sale:', error);
+    }
+  };
+
+  const addMockSales = async () => {
+    try {
+      // Get customers and products first
+      const customers = await window.electronAPI.database.customers.getAll();
+      const products = await window.electronAPI.database.products.getAll();
+      
+      if (customers.length === 0 || products.length === 0) {
+        console.log('Please add customers and products first');
+        return;
+      }
+
+      const mockSales = [
+        {
+          customer_id: customers[0].id!,
+          items: [
+            {
+              product_id: products[0].id!,
+              quantity: 2,
+              unit_price: products[0].price,
+              discount_per_item: 0
+            }
+          ],
+          payment_type: 'cash' as const,
+          tax_amount: 0,
+          discount_amount: 0,
+          notes: 'Cash sale - paid in full'
+        },
+        {
+          customer_id: customers[1]?.id || customers[0].id!,
+          items: [
+            {
+              product_id: products[1]?.id || products[0].id!,
+              quantity: 1,
+              unit_price: products[1]?.price || products[0].price,
+              discount_per_item: 5
+            }
+          ],
+          payment_type: 'installments' as const,
+          number_of_installments: 6,
+          down_payment: 100,
+          tax_amount: 15,
+          discount_amount: 0,
+          notes: '6-month installment plan'
+        },
+        {
+          customer_id: customers[2]?.id || customers[0].id!,
+          items: [
+            {
+              product_id: products[2]?.id || products[0].id!,
+              quantity: 3,
+              unit_price: products[2]?.price || products[0].price,
+              discount_per_item: 0
+            },
+            {
+              product_id: products[3]?.id || products[0].id!,
+              quantity: 1,
+              unit_price: products[3]?.price || products[0].price,
+              discount_per_item: 10
+            }
+          ],
+          payment_type: 'installments' as const,
+          number_of_installments: 12,
+          down_payment: 200,
+          tax_amount: 25,
+          discount_amount: 50,
+          notes: '12-month payment plan with discount'
+        }
+      ];
+
+      for (const sale of mockSales) {
+        await window.electronAPI.database.sales.create(sale);
+      }
+      
+      await loadSales();
+      await loadOverdueSales();
+      console.log('Mock sales added successfully');
+    } catch (error) {
+      console.error('Error adding mock sales:', error);
+    }
+  };
+
+  const handleEditSale = (sale: Sale) => {
+    setEditingSale(sale);
+    setIsFormOpen(true);
+  };
+
+  const handleDeleteSale = async (saleId: number) => {
+    try {
+      await window.electronAPI.database.sales.delete(saleId);
+      await loadSales();
+      await loadOverdueSales();
+    } catch (error) {
+      console.error('Error deleting sale:', error);
+    }
+  };
+
+  const handleAddSale = () => {
+    setEditingSale(undefined);
+    setIsFormOpen(true);
+  };
+
+  const handleFormClose = (open: boolean) => {
+    setIsFormOpen(open);
+    if (!open) {
+      setEditingSale(undefined);
+    }
+  };
+
+  // Calculate statistics
+  const stats = {
+    totalSales: sales.length,
+    totalRevenue: sales.reduce((sum, sale) => sum + sale.total_amount, 0),
+    installmentSales: sales.filter(sale => sale.payment_type === 'installments').length,
+    overdueSales: overdueSales.length,
+    paidSales: sales.filter(sale => sale.payment_status === 'paid').length,
+    pendingSales: sales.filter(sale => sale.payment_status === 'unpaid' || sale.payment_status === 'partial').length
+  };
+
+  return (
+    <DashboardLayout>
+      <div className="p-8">
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight">Sales Management</h1>
+              <p className="text-muted-foreground">
+                Track sales, manage installments, and monitor payments
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={addMockSales} 
+                disabled={!isElectron}
+              >
+                <Database className="mr-2 h-4 w-4" />
+                Add Mock Data
+              </Button>
+              <Button onClick={handleAddSale} disabled={!isElectron}>
+                <Plus className="mr-2 h-4 w-4" />
+                New Sale
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Statistics Cards */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium">Total Sales</CardTitle>
+                <CreditCard className="h-4 w-4 text-muted-foreground" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.totalSales}</div>
+              <div className="flex items-center text-xs text-muted-foreground">
+                <TrendingUp className="h-3 w-3 mr-1 text-blue-500" />
+                Total transactions
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                ${stats.totalRevenue.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+              </div>
+              <div className="flex items-center text-xs text-muted-foreground">
+                <DollarSign className="h-3 w-3 mr-1 text-green-500" />
+                All-time revenue
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium">Installment Sales</CardTitle>
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.installmentSales}</div>
+              <div className="flex items-center text-xs text-muted-foreground">
+                <Calendar className="h-3 w-3 mr-1 text-purple-500" />
+                Payment plans active
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium">Overdue Sales</CardTitle>
+                <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">{stats.overdueSales}</div>
+              <div className="flex items-center text-xs text-muted-foreground">
+                <AlertTriangle className="h-3 w-3 mr-1 text-red-500" />
+                Require attention
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Main Content Tabs */}
+        <Tabs defaultValue="sales" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="sales">All Sales</TabsTrigger>
+            <TabsTrigger value="installments">Installments</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="sales">
+            {isElectron ? (
+              <SalesTable
+                sales={sales}
+                onEdit={handleEditSale}
+                onDelete={handleDeleteSale}
+              />
+            ) : (
+              <Card>
+                <CardContent className="flex items-center justify-center py-12">
+                  <div className="text-center">
+                    <CreditCard className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">Electron Required</h3>
+                    <p className="text-muted-foreground">
+                      Sales management is only available in the Electron desktop app.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          <TabsContent value="installments">
+            {isElectron ? (
+              <InstallmentDashboard onRefresh={() => { loadSales(); loadOverdueSales(); }} />
+            ) : (
+              <Card>
+                <CardContent className="flex items-center justify-center py-12">
+                  <div className="text-center">
+                    <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">Electron Required</h3>
+                    <p className="text-muted-foreground">
+                      Installment management is only available in the Electron desktop app.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+        </Tabs>
+
+        {/* Sale Form Dialog */}
+        <SaleForm
+          sale={editingSale}
+          open={isFormOpen}
+          onOpenChange={handleFormClose}
+          onSave={handleSaveSale}
+        />
+      </div>
+    </DashboardLayout>
+  );
+}
