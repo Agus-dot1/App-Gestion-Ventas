@@ -85,7 +85,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
       const allCustomers = await window.electronAPI.database.customers.getAll();
       setCustomers(allCustomers);
     } catch (error) {
-      console.error('Error loading customers:', error);
+      console.error('Error cargando clientes:', error);
     }
   };
 
@@ -94,7 +94,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
       const activeProducts = await window.electronAPI.database.products.getActive();
       setProducts(activeProducts);
     } catch (error) {
-      console.error('Error loading products:', error);
+      console.error('Error cargando productos:', error);
     }
   };
 
@@ -147,28 +147,28 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
     const newErrors: Record<string, string> = {};
 
     if (!formData.customer_id) {
-      newErrors.customer_id = 'Please select a customer';
+      newErrors.customer_id = 'Selecciona un cliente';
     }
 
     if (items.length === 0) {
-      newErrors.items = 'Please add at least one item';
+      newErrors.items = 'Agrega al menos un producto a la venta';
     }
 
     items.forEach((item, index) => {
       if (item.quantity <= 0) {
-        newErrors[`item_${index}_quantity`] = 'Quantity must be greater than 0';
+        newErrors[`item_${index}_quantity`] = 'La cantidad debe ser mayor a 0';
       }
       if (item.unit_price < 0) {
-        newErrors[`item_${index}_price`] = 'Price cannot be negative';
+        newErrors[`item_${index}_price`] = 'El precio unitario no puede ser negativo';
       }
     });
 
     if (formData.payment_type === 'installments') {
       if (!formData.number_of_installments || formData.number_of_installments < 2) {
-        newErrors.number_of_installments = 'Number of installments must be at least 2';
+        newErrors.number_of_installments = 'El número de cuotas debe ser al menos 2';
       }
       if (formData.down_payment < 0) {
-        newErrors.down_payment = 'Down payment cannot be negative';
+        newErrors.down_payment = 'La seña no puede ser negativa';
       }
     }
 
@@ -215,7 +215,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
       setErrors({});
       onOpenChange(false);
     } catch (error) {
-      console.error('Error saving sale:', error);
+      console.error('Error al registrar venta:', error);
     } finally {
       setIsSubmitting(false);
     }
@@ -229,10 +229,10 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShoppingCart className="h-5 w-5" />
-            {sale ? 'Edit Sale' : 'Create New Sale'}
+            {sale ? 'Editar venta' : 'Crear venta'}
           </DialogTitle>
           <DialogDescription>
-            {sale ? 'Update sale information' : 'Create a new sale transaction'}
+            {sale ? 'Actualizar información de la venta.' : 'Crear una nueva venta.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -242,23 +242,26 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <User className="h-4 w-4" />
-                Customer Information
+                Información del Cliente
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                <Label htmlFor="customer">Customer *</Label>
+                <Label htmlFor="customer">Cliente *</Label>
                 <Select
                   value={formData.customer_id.toString()}
                   onValueChange={(value) => setFormData(prev => ({ ...prev, customer_id: parseInt(value) }))}
                 >
                   <SelectTrigger className={errors.customer_id ? 'border-red-500' : ''}>
-                    <SelectValue placeholder="Select a customer" />
+                    <SelectValue placeholder="Selecciona un cliente" />
                   </SelectTrigger>
                   <SelectContent>
                     {customers.map((customer) => (
                       <SelectItem key={customer.id} value={customer.id!.toString()}>
-                        {customer.name}
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4" />
+                          {customer.name}
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -279,11 +282,11 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <ShoppingCart className="h-4 w-4" />
-                  Sale Items
+                  Productos en la venta
                 </CardTitle>
                 <Button type="button" onClick={addItem} size="sm" disabled={products.length === 0}>
                   <Plus className="h-4 w-4 mr-1" />
-                  Add Item
+                  Añadir Producto
                 </Button>
               </div>
             </CardHeader>
@@ -291,14 +294,14 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
               {items.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <ShoppingCart className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No items added yet. Click "Add Item" to get started.</p>
+                  <p>No añadiste ningún producto.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {items.map((item, index) => (
                     <div key={index} className="flex items-end gap-4 p-4 border rounded-lg">
                       <div className="flex-1">
-                        <Label>Product</Label>
+                        <Label>Producto</Label>
                         <Select
                           value={item.product_id.toString()}
                           onValueChange={(value) => updateItem(index, 'product_id', parseInt(value))}
@@ -317,7 +320,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                       </div>
                       
                       <div className="w-24">
-                        <Label>Quantity</Label>
+                        <Label>Cantidad</Label>
                         <Input
                           type="number"
                           min="1"
@@ -328,10 +331,10 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                       </div>
                       
                       <div className="w-32">
-                        <Label>Unit Price</Label>
+                        <Label>Precio unitario</Label>
                         <Input
                           type="number"
-                          step="0.01"
+                          step="1"
                           min="0"
                           value={item.unit_price}
                           onChange={(e) => updateItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
@@ -340,10 +343,10 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                       </div>
                       
                       <div className="w-32">
-                        <Label>Discount</Label>
+                        <Label>Descuento</Label>
                         <Input
                           type="number"
-                          step="0.01"
+                          step="1"
                           min="0"
                           value={item.discount_per_item}
                           onChange={(e) => updateItem(index, 'discount_per_item', parseFloat(e.target.value) || 0)}
@@ -351,9 +354,9 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                       </div>
                       
                       <div className="w-32">
-                        <Label>Line Total</Label>
+                        <Label>Total</Label>
                         <div className="h-10 px-3 py-2 border rounded-md bg-muted flex items-center">
-                          ${item.line_total.toFixed(2)}
+                          ${item.line_total}
                         </div>
                       </div>
                       
@@ -384,13 +387,13 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <CreditCard className="h-4 w-4" />
-                Payment Information
+                Información de pago
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Payment Type</Label>
+                  <Label>Método de pago</Label>
                   <Select
                     value={formData.payment_type}
                     onValueChange={(value: any) => setFormData(prev => ({ ...prev, payment_type: value }))}
@@ -399,10 +402,8 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="cash">Cash</SelectItem>
-                      <SelectItem value="installments">Installments</SelectItem>
-                      <SelectItem value="credit">Credit</SelectItem>
-                      <SelectItem value="mixed">Mixed</SelectItem>
+                      <SelectItem value="cash">Efectivo</SelectItem>
+                      <SelectItem value="installments">Cuotas</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -410,7 +411,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                 {formData.payment_type === 'installments' && (
                   <>
                     <div>
-                      <Label>Number of Installments</Label>
+                      <Label>Cantidad de cuotas</Label>
                       <Input
                         type="number"
                         min="2"
@@ -428,10 +429,10 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                     </div>
                     
                     <div>
-                      <Label>Down Payment</Label>
+                      <Label>Seña</Label>
                       <Input
                         type="number"
-                        step="0.01"
+                        step="1"
                         min="0"
                         value={formData.down_payment}
                         onChange={(e) => setFormData(prev => ({ ...prev, down_payment: parseFloat(e.target.value) || 0 }))}
@@ -450,18 +451,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Tax Amount</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={formData.tax_amount}
-                    onChange={(e) => setFormData(prev => ({ ...prev, tax_amount: parseFloat(e.target.value) || 0 }))}
-                  />
-                </div>
-                
-                <div>
-                  <Label>Discount Amount</Label>
+                  <Label>Descuento</Label>
                   <Input
                     type="number"
                     step="0.01"
@@ -479,27 +469,23 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Calculator className="h-4 w-4" />
-                Sale Summary
+                Resumen de la venta
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span>Subtotal:</span>
-                  <span>${subtotal.toFixed(2)}</span>
+                  <span>${Math.round(subtotal)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Tax:</span>
-                  <span>${formData.tax_amount.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Discount:</span>
-                  <span>-${formData.discount_amount.toFixed(2)}</span>
+                  <span>Descuento:</span>
+                  <span>-${Math.round(formData.discount_amount)}</span>
                 </div>
                 <Separator />
                 <div className="flex justify-between font-bold text-lg">
                   <span>Total:</span>
-                  <span>${total.toFixed(2)}</span>
+                  <span>${Math.round(total)}</span>
                 </div>
                 
                 {formData.payment_type === 'installments' && formData.number_of_installments > 0 && (
@@ -507,16 +493,17 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                     <Separator />
                     <div className="space-y-1 text-sm text-muted-foreground">
                       <div className="flex justify-between">
-                        <span>Down Payment:</span>
-                        <span>${formData.down_payment.toFixed(2)}</span>
+                        <span>Seña:</span>
+                        <span>${Math.round(formData.down_payment)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Remaining Balance:</span>
-                        <span>${(total - formData.down_payment).toFixed(2)}</span>
+                        <span>Total restante:</span>
+                        <span>${Math.round((total - formData.down_payment))}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Monthly Payment:</span>
-                        <span>${((total - formData.down_payment) / formData.number_of_installments).toFixed(2)}</span>
+                        <span>Pago mensual:</span>
+                        <span>${Math.round((total - formData.down_payment) / formData.number_of_installments)}</span>
+
                       </div>
                     </div>
                   </>
@@ -527,12 +514,12 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
 
           {/* Notes */}
           <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
+            <Label htmlFor="notes">Notas</Label>
             <Textarea
               id="notes"
               value={formData.notes}
               onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-              placeholder="Additional notes about this sale..."
+              placeholder="Nota adicional para la venta..."
               rows={3}
             />
           </div>
@@ -544,10 +531,10 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
               onClick={() => onOpenChange(false)}
               disabled={isSubmitting}
             >
-              Cancel
+              Cancelar
             </Button>
             <Button type="submit" disabled={isSubmitting || items.length === 0}>
-              {isSubmitting ? 'Creating Sale...' : sale ? 'Update Sale' : 'Create Sale'}
+              {isSubmitting ? 'Creando venta...' : sale ? 'Actualizar venta' : 'Crear venta'}
             </Button>
           </DialogFooter>
         </form>

@@ -111,7 +111,7 @@ function createTables() {
     CREATE TABLE IF NOT EXISTS sale_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sale_id INTEGER NOT NULL,
-      product_id INTEGER NOT NULL,
+      product_id INTEGER,
       quantity INTEGER NOT NULL,
       unit_price DECIMAL(10,2) NOT NULL,
       discount_per_item DECIMAL(10,2) DEFAULT 0,
@@ -121,7 +121,7 @@ function createTables() {
       status TEXT CHECK(status IN ('active', 'returned', 'exchanged')) DEFAULT 'active',
       returned_quantity INTEGER DEFAULT 0,
       FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE,
-      FOREIGN KEY (product_id) REFERENCES products(id)
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
     )
   `);
 
@@ -207,8 +207,13 @@ function runMigrations() {
   const requiredColumns = ['sale_number', 'subtotal', 'tax_amount', 'discount_amount', 'payment_status', 'down_payment'];
   const missingColumns = requiredColumns.filter(col => !columnNames.includes(col));
   
-  if (missingColumns.length > 0) {
-    console.log('Missing columns detected, recreating sales table:', missingColumns);
+  // Check if sale_items table needs to be migrated to allow NULL product_id
+  const saleItemsTableInfo = db.prepare("PRAGMA table_info(sale_items)").all();
+  const product_id_column = saleItemsTableInfo.find((col: any) => col.name === 'product_id');
+  const needsProductIDMigration = product_id_column && (product_id_column as any).notnull === 1;
+  
+  if (missingColumns.length > 0 || needsProductIDMigration) {
+    console.log('Missing columns detected or sale_items table needs migration:', missingColumns);
     
     // Backup existing data if any
     let existingData = [];
@@ -291,7 +296,7 @@ function createSalesRelatedTables() {
     CREATE TABLE IF NOT EXISTS sale_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sale_id INTEGER NOT NULL,
-      product_id INTEGER NOT NULL,
+      product_id INTEGER,
       quantity INTEGER NOT NULL,
       unit_price DECIMAL(10,2) NOT NULL,
       discount_per_item DECIMAL(10,2) DEFAULT 0,
@@ -301,7 +306,7 @@ function createSalesRelatedTables() {
       status TEXT CHECK(status IN ('active', 'returned', 'exchanged')) DEFAULT 'active',
       returned_quantity INTEGER DEFAULT 0,
       FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE,
-      FOREIGN KEY (product_id) REFERENCES products(id)
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
     )
   `);
 

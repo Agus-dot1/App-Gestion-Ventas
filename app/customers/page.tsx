@@ -51,7 +51,7 @@ export default function CustomersPage() {
       const allCustomers = await window.electronAPI.database.customers.getAll();
       setCustomers(allCustomers);
     } catch (error) {
-      console.error('Error loading customers:', error);
+      console.error('Error cargando clientes:', error);
     }
   };
 
@@ -68,7 +68,7 @@ export default function CustomersPage() {
       await loadCustomers();
       setEditingCustomer(undefined);
     } catch (error) {
-      console.error('Error saving customer:', error);
+      console.error('Error guardando cliente:', error);
     }
   };
 
@@ -137,9 +137,9 @@ export default function CustomersPage() {
       window.electronAPI.database.customers.delete(customerId);
       await loadCustomers();
     } catch (error: any) {
-      console.error('Error deleting customer:', error);
+      console.error('Error eliminando cliente:', error);
       // Show error to user
-      alert(error.message || 'Failed to delete customer. Please try again.');
+      alert(error.message || 'Error al eliminar cliente. Porfavor intente de nuevo.');
     }
   };
 
@@ -175,9 +175,9 @@ export default function CustomersPage() {
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight">Customers</h1>
+              <h1 className="text-3xl font-bold tracking-tight">Clientes</h1>
               <p className="text-muted-foreground">
-                Manage your customer database and contact information
+                Acá podés ver y gestionar todos tus clientes. Podés añadir nuevos, editar o eliminar los existentes.
               </p>
             </div>
             <div className="flex gap-2">
@@ -191,77 +191,10 @@ export default function CustomersPage() {
               </Button>
               <Button onClick={handleAddCustomer} disabled={!isElectron}>
                 <Plus className="mr-2 h-4 w-4" />
-                Add Customer
+                Añadir Cliente
               </Button>
             </div>
           </div>
-        </div>
-
-        {/* Statistics Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Total Customers</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.total}</div>
-              <div className="flex items-center text-xs text-muted-foreground">
-                <Users className="h-3 w-3 mr-1 text-blue-500" />
-                Registered customers
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">With Contact Info</CardTitle>
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.withContact}</div>
-              <div className="flex items-center text-xs text-muted-foreground">
-                <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
-                Have contact details
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Missing Contact</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.withoutContact}</div>
-              <div className="flex items-center text-xs text-muted-foreground">
-                <Users className="h-3 w-3 mr-1 text-orange-500" />
-                Need contact info
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Recently Added</CardTitle>
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.recentlyAdded}</div>
-              <div className="flex items-center text-xs text-muted-foreground">
-                <Calendar className="h-3 w-3 mr-1 text-purple-500" />
-                Last 30 days
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Customers Table */}

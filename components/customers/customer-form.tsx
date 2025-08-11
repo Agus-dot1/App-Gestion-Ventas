@@ -40,11 +40,11 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
 
       contactLines.forEach(line => {
         const lowerLine = line.toLowerCase();
-        if (lowerLine.includes('phone:') || lowerLine.includes('tel:')) {
+        if (lowerLine.includes('teléfono:') || lowerLine.includes('tel:')) {
           parsed.phone = line.replace(/^(phone:|tel:)\s*/i, '').trim();
         } else if (lowerLine.includes('email:') || lowerLine.includes('@')) {
           parsed.email = line.replace(/^email:\s*/i, '').trim();
-        } else if (lowerLine.includes('address:')) {
+        } else if (lowerLine.includes('dirección:')) {
           parsed.address = line.replace(/^address:\s*/i, '').trim();
         } else if (line.trim()) {
           parsed.notes += (parsed.notes ? '\n' : '') + line.trim();
@@ -62,7 +62,7 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
     const newErrors: Record<string, string> = {};
 
     if (!formData.name.trim()) {
-      newErrors.name = 'Customer name is required';
+      newErrors.name = 'El nombre del cliente es obligatorio';
     }
 
     setErrors(newErrors);
@@ -73,13 +73,13 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
     const contactParts = [];
     
     if (formData.phone.trim()) {
-      contactParts.push(`Phone: ${formData.phone.trim()}`);
+      contactParts.push(`Teléfono: ${formData.phone.trim()}`);
     }
     if (formData.email.trim()) {
       contactParts.push(`Email: ${formData.email.trim()}`);
     }
     if (formData.address.trim()) {
-      contactParts.push(`Address: ${formData.address.trim()}`);
+      contactParts.push(`Dirección: ${formData.address.trim()}`);
     }
     if (formData.notes.trim()) {
       contactParts.push(formData.notes.trim());
@@ -111,7 +111,7 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
       setErrors({});
       onOpenChange(false);
     } catch (error) {
-      console.error('Error saving customer:', error);
+      console.error('Error guardando cambios:', error);
     } finally {
       setIsSubmitting(false);
     }
@@ -131,10 +131,10 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
-            {customer ? 'Edit Customer' : 'Add New Customer'}
+            {customer ? 'Editar cliente' : 'Añadir cliente'}
           </DialogTitle>
           <DialogDescription>
-            {customer ? 'Update customer information' : 'Create a new customer record'}
+            {customer ? 'Actualizar cliente' : 'Crear un nuevo cliente.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -142,14 +142,14 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
           <div className="grid gap-6">
             {/* Customer Name */}
             <div className="space-y-2">
-              <Label htmlFor="name">Customer Name *</Label>
+              <Label htmlFor="name">Nombre *</Label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="name"
                   value={formData.name}
                   onChange={(e) => handleInputChange('name', e.target.value)}
-                  placeholder="Enter customer name"
+                  placeholder="Nombre del cliente"
                   className={`pl-10 ${errors.name ? 'border-red-500' : ''}`}
                 />
               </div>
@@ -165,14 +165,14 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <Phone className="h-4 w-4 text-muted-foreground" />
-                <Label className="text-base font-medium">Contact Information</Label>
-                <span className="text-sm text-muted-foreground">(All optional)</span>
+                <Label className="text-base font-medium">Información de contacto</Label>
+                <span className="text-sm text-muted-foreground">(Todo opcional)</span>
               </div>
               
               <div className="grid gap-4 pl-6 border-l-2 border-muted">
                 {/* Phone */}
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number</Label>
+                  <Label htmlFor="phone">Numero de teléfono</Label>
                   <div className="relative">
                     <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -188,7 +188,7 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
 
                 {/* Email */}
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email Address</Label>
+                  <Label htmlFor="email">Email</Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -196,7 +196,7 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
                       type="email"
                       value={formData.email}
                       onChange={(e) => handleInputChange('email', e.target.value)}
-                      placeholder="customer@example.com"
+                      placeholder="cliente@ejemplo.com"
                       className="pl-10"
                     />
                   </div>
@@ -204,14 +204,14 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
 
                 {/* Address */}
                 <div className="space-y-2">
-                  <Label htmlFor="address">Address</Label>
+                  <Label htmlFor="address">Dirección</Label>
                   <div className="relative">
                     <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Textarea
                       id="address"
                       value={formData.address}
                       onChange={(e) => handleInputChange('address', e.target.value)}
-                      placeholder="123 Main St, City, State, ZIP"
+                      placeholder="Calle 123, Ciudad, CP"
                       rows={2}
                       className="pl-10"
                     />
@@ -220,12 +220,12 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
 
                 {/* Notes */}
                 <div className="space-y-2">
-                  <Label htmlFor="notes">Additional Notes</Label>
+                  <Label htmlFor="notes">Nota adicional</Label>
                   <Textarea
                     id="notes"
                     value={formData.notes}
                     onChange={(e) => handleInputChange('notes', e.target.value)}
-                    placeholder="Any additional information about the customer..."
+                    placeholder="Cualquier informacion adicional..."
                     rows={3}
                   />
                 </div>
@@ -240,10 +240,10 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
               onClick={() => onOpenChange(false)}
               disabled={isSubmitting}
             >
-              Cancel
+              Cancelar
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Saving...' : customer ? 'Update Customer' : 'Create Customer'}
+              {isSubmitting ? 'Guardando...' : customer ? 'Actualizar cliente' : 'Crear cliente'}
             </Button>
           </DialogFooter>
         </form>

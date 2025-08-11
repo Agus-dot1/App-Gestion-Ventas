@@ -3,8 +3,8 @@ import type { Metadata } from 'next';
 import { Suspense } from 'react';
 
 export const metadata: Metadata = {
-  title: 'Sales Management System',
-  description: 'A comprehensive sales management system built with Electron and Next.js',
+  title: 'Gestion de ventas',
+  description: 'Aplicación para la gestión de ventas y clientes',
 };
 
 export default function RootLayout({
@@ -13,7 +13,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="es">
       <body className="antialiased dark">
         <Suspense fallback={<div>Loading...</div>}>
           {children}

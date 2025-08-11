@@ -119,6 +119,8 @@ exports.productOperations = {
     },
     delete: (id) => {
         const db = (0, database_1.getDatabase)();
+        // Delete the product
+        // The foreign key constraint will automatically set product_id to NULL in sale_items
         const stmt = db.prepare('DELETE FROM products WHERE id = ?');
         stmt.run(id);
     }
@@ -323,6 +325,38 @@ exports.installmentOperations = {
       WHERE id = ?
     `);
         stmt.run(fee, fee, installmentId);
+    },
+    revertPayment: (installmentId, transactionId) => {
+        const db = (0, database_1.getDatabase)();
+        // Get the payment transaction to revert
+        const transactionStmt = db.prepare('SELECT * FROM payment_transactions WHERE id = ?');
+        const transaction = transactionStmt.get(transactionId);
+        if (!transaction) {
+            throw new Error(`Payment transaction with id ${transactionId} not found`);
+        }
+        // Get current installment
+        const installment = db.prepare('SELECT * FROM installments WHERE id = ?').get(installmentId);
+        if (!installment) {
+            throw new Error(`Installment with id ${installmentId} not found`);
+        }
+        // Calculate new values after reverting the payment
+        const newPaidAmount = installment.paid_amount - transaction.amount;
+        const newBalance = installment.amount - newPaidAmount;
+        const newStatus = newBalance <= 0 ? 'paid' : newBalance === installment.amount ? 'pending' : 'partial';
+        // Update installment
+        const updateStmt = db.prepare(`
+      UPDATE installments
+      SET paid_amount = ?, balance = ?, status = ?
+      WHERE id = ?
+    `);
+        updateStmt.run(newPaidAmount, newBalance, newStatus, installmentId);
+        // Mark the payment transaction as cancelled
+        const cancelTransactionStmt = db.prepare(`
+      UPDATE payment_transactions
+      SET status = 'cancelled'
+      WHERE id = ?
+    `);
+        cancelTransactionStmt.run(transactionId);
     },
     create: (installment) => {
         const db = (0, database_1.getDatabase)();

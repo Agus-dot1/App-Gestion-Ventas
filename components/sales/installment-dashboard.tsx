@@ -129,8 +129,8 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
         loadOverdueInstallments()
       ]);
     } catch (err) {
-      setError('Failed to load installment data. Please try again.');
-      console.error('Error loading installment data:', err);
+      setError('Falló la carga de datos de cuotas. Por favor, intente nuevamente.');
+      console.error('Error cargando cuotas:', err);
     } finally {
       setLoading(false);
     }
@@ -159,7 +159,7 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
       
       setInstallments(allInstallments);
     } catch (error) {
-      console.error('Error loading installments:', error);
+      console.error('Error cargando cuotas:', error);
       throw error;
     }
   };
@@ -169,7 +169,7 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
       const overdue = await window.electronAPI.database.installments.getOverdue();
       setOverdueInstallments(overdue);
     } catch (error) {
-      console.error('Error loading overdue installments:', error);
+      console.error('Error cargando cuotas vencidas:', error);
       throw error;
     }
   };
@@ -192,20 +192,39 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
         paymentForm.reference
       );
       
-      // Setup autopay if requested
-      if (paymentForm.setup_autopay) {
-        // This would integrate with a payment processor
-        console.log('Setting up autopay for customer:', paymentDialog.installment.customer_name);
-      }
-      
       setPaymentDialog({ open: false, installment: null });
       resetPaymentForm();
       
       await loadInstallmentData();
       onRefresh();
     } catch (error) {
-      console.error('Error recording payment:', error);
-      setError('Failed to record payment. Please try again.');
+      console.error('Error registrando pago:', error);
+      setError('Fallo al intentar registrar pago. Porfavor intentar de nuevo.');
+    }
+  };
+
+  const handleRevertPayment = async (installment: ExtendedInstallment) => {
+    try {
+      // Get the latest payment transaction for this installment
+      const transactions = await window.electronAPI.database.payments.getBySale(installment.sale_id!);
+      const installmentTransactions = transactions.filter(t => t.installment_id === installment.id);
+      const latestTransaction = installmentTransactions[installmentTransactions.length - 1];
+      
+      if (!latestTransaction) {
+        setError('No se encontró transacción de pago para revertir.');
+        return;
+      }
+      
+      await window.electronAPI.database.installments.revertPayment(
+        installment.id!,
+        latestTransaction.id!
+      );
+      
+      await loadInstallmentData();
+      onRefresh();
+    } catch (error) {
+      console.error('Error revirtiendo pago:', error);
+      setError('Fallo al intentar revertir pago. Por favor intentar de nuevo.');
     }
   };
 
@@ -224,32 +243,24 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
     setPaymentDialog({ open: true, installment });
     setPaymentForm(prev => ({
       ...prev,
-      amount: installment.balance,
-      apply_early_payment_discount: isEarlyPayment(installment)
+      amount: installment.balance
     }));
   };
 
-  const isEarlyPayment = (installment: ExtendedInstallment) => {
-    const dueDate = new Date(installment.due_date);
-    const today = new Date();
-    const daysUntilDue = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    return daysUntilDue > 7; // Early if more than 7 days before due
-  };
+  // const getEarlyPaymentDiscount = (installment: ExtendedInstallment) => {
+  //   if (!isEarlyPayment(installment)) return 0;
+  //   return installment.balance * 0.05; // 5% discount
+  // };
 
-  const getEarlyPaymentDiscount = (installment: ExtendedInstallment) => {
-    if (!isEarlyPayment(installment)) return 0;
-    return installment.balance * 0.05; // 5% discount
-  };
-
-  const sendPaymentReminder = async (installments: ExtendedInstallment[]) => {
-    try {
-      // This would integrate with email/SMS service
-      console.log('Sending reminders to:', installments.map(i => i.customer_name));
-      setReminderDialog({ open: false, installments: [] });
-    } catch (error) {
-      console.error('Error sending reminders:', error);
-    }
-  };
+  // const sendPaymentReminder = async (installments: ExtendedInstallment[]) => {
+  //   try {
+  //     // This would integrate with email/SMS service
+  //     console.log('Sending reminders to:', installments.map(i => i.customer_name));
+  //     setReminderDialog({ open: false, installments: [] });
+  //   } catch (error) {
+  //     console.error('Error sending reminders:', error);
+  //   }
+  // };
 
   const filteredInstallments = installments.filter(installment => {
     const matchesSearch = !searchTerm || 
@@ -265,7 +276,7 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
   });
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+    return new Date(dateString).toLocaleDateString('es-ES', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
@@ -273,9 +284,9 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('es-ES', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'ARS'
     }).format(amount);
   };
 
@@ -286,22 +297,22 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
     if (installment.status === 'paid') {
       return <Badge className="bg-green-100 text-green-800 hover:bg-green-200">
         <CheckCircle className="w-3 h-3 mr-1" />
-        Paid
+        Pagado
       </Badge>;
     } else if (installment.status === 'partial') {
       return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-200">
         <Clock className="w-3 h-3 mr-1" />
-        Partial
+        Parcial
       </Badge>;
     } else if (dueDate < today) {
       return <Badge className="bg-red-100 text-red-800 hover:bg-red-200">
         <AlertTriangle className="w-3 h-3 mr-1" />
-        Overdue
+        Vencida
       </Badge>;
     } else {
       return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200">
         <Calendar className="w-3 h-3 mr-1" />
-        Pending
+        Pendiente
       </Badge>;
     }
   };
@@ -342,7 +353,7 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
       <div className="flex items-center justify-center h-64">
         <div className="flex items-center gap-2">
           <RefreshCw className="h-6 w-6 animate-spin" />
-          <span>Loading installment data...</span>
+          <span>Cargando cuotas...</span>
         </div>
       </div>
     );
@@ -354,11 +365,11 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
         <CardContent className="flex items-center justify-center py-12">
           <div className="text-center">
             <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2 text-red-700">Error Loading Data</h3>
+            <h3 className="text-lg font-semibold mb-2 text-red-700">Error al cargar datos</h3>
             <p className="text-red-600 mb-4">{error}</p>
             <Button onClick={loadInstallmentData} variant="outline">
               <RefreshCw className="w-4 h-4 mr-2" />
-              Try Again
+              Intenta nuevamente
             </Button>
           </div>
         </CardContent>
@@ -371,21 +382,21 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
       {/* Enhanced Header with Actions */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Installment Management</h2>
+          <h2 className="text-2xl font-bold tracking-tight">Cuotas</h2>
           <p className="text-muted-foreground">
-            Track payments, manage schedules, and optimize collections
+            Aquí puedes gestionar todas las cuotas de tus ventas a plazos. Puedes registrar pagos y más.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={loadInstallmentData}>
             <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
+            Actualizar
           </Button>
           <Button variant="outline">
             <Download className="w-4 h-4 mr-2" />
-            Export
+            Exportar
           </Button>
-          <Button 
+          {/* <Button 
             onClick={() => setReminderDialog({ 
               open: true, 
               installments: overdueInstallments 
@@ -394,7 +405,7 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
           >
             <Bell className="w-4 h-4 mr-2" />
             Send Reminders ({overdueInstallments.length})
-          </Button>
+          </Button> */}
         </div>
       </div>
 
@@ -403,15 +414,15 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
         <Card>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium">Total Outstanding</CardTitle>
+              <CardTitle className="text-sm font-medium">Total pendiente</CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.totalOutstanding)}</div>
+            <div className="text-2xl font-bold">{formatCurrency(Math.round(stats.totalOutstanding))}</div>
             <div className="flex items-center text-xs text-muted-foreground">
               <TrendingUp className="h-3 w-3 mr-1 text-orange-500" />
-              {stats.totalInstallments} active installments
+              {stats.totalInstallments} cuotas activas
             </div>
           </CardContent>
         </Card>
@@ -419,16 +430,16 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
         <Card>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium">Collection Rate</CardTitle>
+              <CardTitle className="text-sm font-medium">Cuotas pagadas</CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.collectionRate.toFixed(1)}%</div>
+            <div className="text-2xl font-bold">{Math.round(stats.collectionRate)}%</div>
             <Progress value={stats.collectionRate} className="mt-2" />
             <div className="flex items-center text-xs text-muted-foreground mt-1">
               <CheckCircle className="h-3 w-3 mr-1 text-green-500" />
-              {stats.paidInstallments} of {stats.totalInstallments} paid
+              {stats.paidInstallments} de {stats.totalInstallments} pagadas
             </div>
           </CardContent>
         </Card>
@@ -436,15 +447,15 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
         <Card>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium">Overdue Amount</CardTitle>
+              <CardTitle className="text-sm font-medium">Cuotas vencidas</CardTitle>
               <AlertTriangle className="h-4 w-4 text-muted-foreground" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">{formatCurrency(stats.totalOverdue)}</div>
+            <div className="text-2xl font-bold text-red-600">{formatCurrency(Math.round(stats.totalOverdue))}</div>
             <div className="flex items-center text-xs text-muted-foreground">
               <AlertTriangle className="h-3 w-3 mr-1 text-red-500" />
-              {stats.overdueInstallments} overdue payments
+              {stats.overdueInstallments} pagos vencidos
             </div>
           </CardContent>
         </Card>
@@ -452,7 +463,7 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
         <Card>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium">Due This Week</CardTitle>
+              <CardTitle className="text-sm font-medium">Vencen esta semana</CardTitle>
               <Calendar className="h-4 w-4 text-muted-foreground" />
             </div>
           </CardHeader>
@@ -460,7 +471,7 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
             <div className="text-2xl font-bold text-blue-600">{stats.upcomingDue}</div>
             <div className="flex items-center text-xs text-muted-foreground">
               <Calendar className="h-3 w-3 mr-1 text-blue-500" />
-              Payments due within 7 days
+              Cuotas por vencer en los próximos 7 días
             </div>
           </CardContent>
         </Card>
@@ -471,7 +482,7 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Filter className="h-5 w-5" />
-            Search & Filters
+            Buscar y filtrar
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -479,7 +490,7 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
             <div className="relative">
               <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search customers or sales..."
+                placeholder="Busca clientes o ventas..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-8"
@@ -491,14 +502,14 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
               onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Filter by status" />
+                <SelectValue placeholder="Filtrar por estado" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="partial">Partial</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="overdue">Overdue</SelectItem>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="pending">Pendientes</SelectItem>
+                <SelectItem value="partial">Parcial</SelectItem>
+                <SelectItem value="paid">Pagado</SelectItem>
+                <SelectItem value="overdue">Vencidas</SelectItem>
               </SelectContent>
             </Select>
 
@@ -507,13 +518,13 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
               onValueChange={(value) => setFilters(prev => ({ ...prev, dateRange: value }))}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Date range" />
+                <SelectValue placeholder="Fecha" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Time</SelectItem>
-                <SelectItem value="week">This Week</SelectItem>
-                <SelectItem value="month">This Month</SelectItem>
-                <SelectItem value="quarter">This Quarter</SelectItem>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="week">Esta semana</SelectItem>
+                <SelectItem value="month">Este mes</SelectItem>
+                <SelectItem value="quarter">Este trimestre</SelectItem>
               </SelectContent>
             </Select>
 
@@ -526,7 +537,7 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
                 amountRange: { min: 0, max: 10000 }
               });
             }}>
-              Clear Filters
+              Limpiar filtros
             </Button>
           </div>
         </CardContent>
@@ -534,42 +545,41 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
 
       {/* Enhanced Installments Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="all">All ({stats.totalInstallments})</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="overview">Resumen</TabsTrigger>
+          <TabsTrigger value="all">Todos ({stats.totalInstallments})</TabsTrigger>
           <TabsTrigger value="overdue" className="text-red-600">
-            Overdue ({stats.overdueInstallments})
+            Vencidas ({stats.overdueInstallments})
           </TabsTrigger>
-          <TabsTrigger value="upcoming">Due Soon ({stats.upcomingDue})</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsTrigger value="upcoming">Por vencer ({stats.upcomingDue})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
           <div className="grid gap-6 md:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Payment Status Distribution</CardTitle>
+                <CardTitle>Estado de pagos</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-2">
                       <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                      Paid
+                      Pagado
                     </span>
                     <span>{stats.paidInstallments}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-2">
                       <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                      Partial
+                      Parcial
                     </span>
                     <span>{stats.partialInstallments}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-2">
                       <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                      Overdue
+                      Vencidas
                     </span>
                     <span>{stats.overdueInstallments}</span>
                   </div>
@@ -579,26 +589,20 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
 
             <Card>
               <CardHeader>
-                <CardTitle>Financial Summary</CardTitle>
+                <CardTitle>Resumen financiero</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <span>Total Collected</span>
+                    <span>Total cobrado</span>
                     <span className="font-medium text-green-600">
                       {formatCurrency(stats.totalCollected)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span>Outstanding Balance</span>
+                    <span>Balance pendiente</span>
                     <span className="font-medium text-orange-600">
                       {formatCurrency(stats.totalOutstanding)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Average Payment</span>
-                    <span className="font-medium">
-                      {formatCurrency(stats.averagePaymentAmount)}
                     </span>
                   </div>
                 </div>
@@ -613,8 +617,9 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
             highlightId={highlightId}
             onPayment={openPaymentDialog}
             onScheduleChange={(installment) => setScheduleDialog({ open: true, installment })}
-            title="All Installments"
-            description="Complete list of all installment payments"
+revertPayment={handleRevertPayment}
+            title="Todas las cuotas"
+            description="Lista completa de todas las cuotas generadas por ventas a plazos"
           />
         </TabsContent>
 
@@ -623,9 +628,10 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
             installments={overdueInstallments} 
             highlightId={highlightId}
             onPayment={openPaymentDialog}
+revertPayment={handleRevertPayment}
             onScheduleChange={(installment) => setScheduleDialog({ open: true, installment })}
-            title="Overdue Installments"
-            description="Payments that are past their due date and require immediate attention"
+            title="Cuotas vencidas"
+            description="Cuotas que están vencidas y requieren atención inmediata"
             showOverdueDays
             showContactActions
           />
@@ -641,31 +647,12 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
             })} 
             highlightId={highlightId}
             onPayment={openPaymentDialog}
+revertPayment={handleRevertPayment}
             onScheduleChange={(installment) => setScheduleDialog({ open: true, installment })}
-            title="Due Soon"
-            description="Payments due within the next 7 days"
+            title="Cuotas por vencer"
+            description="Cuotas que vencerán en los próximos 7 días"
             showEarlyPaymentIncentive
           />
-        </TabsContent>
-
-        <TabsContent value="analytics">
-          <div className="grid gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Collection Performance</CardTitle>
-                <CardDescription>
-                  Track payment collection trends and performance metrics
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8 text-muted-foreground">
-                  <TrendingUp className="h-12 w-12 mx-auto mb-4" />
-                  <p>Advanced analytics coming soon...</p>
-                  <p className="text-sm">Charts and trends will be displayed here</p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
         </TabsContent>
       </Tabs>
 
@@ -675,11 +662,10 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CreditCard className="h-5 w-5" />
-              Record Payment
+              Registrar pago
             </DialogTitle>
             <DialogDescription>
-              Process payment for installment #{paymentDialog.installment?.installment_number} 
-              from {paymentDialog.installment?.customer_name}
+              Registra un pago para la cuota de {paymentDialog.installment?.customer_name} - Venta #{paymentDialog.installment?.sale_number}
             </DialogDescription>
           </DialogHeader>
 
@@ -687,50 +673,50 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
             {/* Payment Summary */}
             <div className="grid grid-cols-3 gap-4 p-4 bg-muted rounded-lg">
               <div>
-                <Label className="text-sm text-muted-foreground">Due Amount</Label>
-                <div className="font-medium">{formatCurrency(paymentDialog.installment?.amount || 0)}</div>
+                <Label className="text-sm text-muted-foreground">Cuota total</Label>
+                <div className="font-medium">{formatCurrency(Math.round(paymentDialog.installment?.amount || 0))}</div>
               </div>
               <div>
-                <Label className="text-sm text-muted-foreground">Outstanding Balance</Label>
-                <div className="font-medium text-red-600">{formatCurrency(paymentDialog.installment?.balance || 0)}</div>
+                <Label className="text-sm text-muted-foreground">Balance pendiente</Label>
+                <div className="font-medium text-red-600">{formatCurrency(Math.round(paymentDialog.installment?.balance || 0))}</div>
               </div>
               <div>
-                <Label className="text-sm text-muted-foreground">Progress</Label>
+                <Label className="text-sm text-muted-foreground">Progreso</Label>
                 <div className="font-medium">{paymentDialog.installment?.progress_percentage || 0}%</div>
               </div>
             </div>
 
             {/* Early Payment Incentive */}
-            {paymentDialog.installment && isEarlyPayment(paymentDialog.installment) && (
-              <Card className="border-green-200 bg-green-50">
+            {/* {paymentDialog.installment && isEarlyPayment(paymentDialog.installment) && (
+              <Card className="border-green-800 bg-green-900">
                 <CardContent className="pt-4">
-                  <div className="flex items-center gap-2 text-green-700">
+                  <div className="flex items-center gap-2 text-green-50">
                     <Gift className="h-4 w-4" />
                     <span className="font-medium">Early Payment Discount Available!</span>
                   </div>
-                  <p className="text-sm text-green-600 mt-1">
+                  <p className="text-sm text-green-100 mt-1">
                     Pay now and save {formatCurrency(getEarlyPaymentDiscount(paymentDialog.installment))} (5% discount)
                   </p>
                 </CardContent>
               </Card>
-            )}
+            )} */}
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="amount">Payment Amount *</Label>
+                <Label htmlFor="amount">Pago total *</Label>
                 <Input
                   id="amount"
                   type="number"
-                  step="0.01"
+                  step="1"
                   min="0"
                   max={paymentDialog.installment?.balance || 0}
-                  value={paymentForm.amount}
+                  value={Math.round(paymentForm.amount)}
                   onChange={(e) => setPaymentForm(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="payment_method">Payment Method *</Label>
+                <Label htmlFor="payment_method">Método de pago *</Label>
                 <Select
                   value={paymentForm.payment_method}
                   onValueChange={(value: any) => setPaymentForm(prev => ({ ...prev, payment_method: value }))}
@@ -739,46 +725,45 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cash">Cash</SelectItem>
-                    <SelectItem value="credit_card">Credit Card</SelectItem>
-                    <SelectItem value="debit_card">Debit Card</SelectItem>
-                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                    <SelectItem value="check">Check</SelectItem>
+                    <SelectItem value="cash">Efectivo</SelectItem>
+                    <SelectItem value="credit_card">Tarjeta de Crédito</SelectItem>
+                    <SelectItem value="debit_card">Tarjeta de Débito</SelectItem>
+                    <SelectItem value="bank_transfer">Transferencia bancaria</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="reference">Payment Reference</Label>
+              <Label htmlFor="reference">Referencia de pago</Label>
               <Input
                 id="reference"
                 value={paymentForm.reference}
                 onChange={(e) => setPaymentForm(prev => ({ ...prev, reference: e.target.value }))}
-                placeholder="Check number, transaction ID, etc."
+                placeholder="Número de comprobante, id de la transacción, etc."
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
+              <Label htmlFor="notes">Notas</Label>
               <Textarea
                 id="notes"
                 value={paymentForm.notes}
                 onChange={(e) => setPaymentForm(prev => ({ ...prev, notes: e.target.value }))}
-                placeholder="Additional notes about this payment..."
+                placeholder="Notas adicionales..."
                 rows={3}
               />
             </div>
 
             {/* Payment Options */}
-            <div className="space-y-4 p-4 border rounded-lg">
-              <h4 className="font-medium">Payment Options</h4>
+            {/* <div className="space-y-4 p-4 border rounded-lg">
+              <h4 className="font-medium">Opciones de pago</h4>
               
               {paymentDialog.installment && isEarlyPayment(paymentDialog.installment) && (
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Gift className="h-4 w-4 text-green-600" />
-                    <Label htmlFor="early_discount">Apply early payment discount (5%)</Label>
+                    <Label htmlFor="early_discount">Aplicar descuento de pago anticipado (5%)</Label>
                   </div>
                   <Switch
                     id="early_discount"
@@ -787,49 +772,37 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
                   />
                 </div>
               )}
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-blue-600" />
-                  <Label htmlFor="autopay">Setup automatic payments</Label>
-                </div>
-                <Switch
-                  id="autopay"
-                  checked={paymentForm.setup_autopay}
-                  onCheckedChange={(checked) => setPaymentForm(prev => ({ ...prev, setup_autopay: checked }))}
-                />
-              </div>
-            </div>
+            </div> */}
 
             {/* Final Amount Display */}
-            {paymentForm.apply_early_payment_discount && paymentDialog.installment && isEarlyPayment(paymentDialog.installment) && (
-              <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+            {/* {paymentForm.apply_early_payment_discount && paymentDialog.installment && isEarlyPayment(paymentDialog.installment) && (
+              <div className="p-4 bg-green-900 rounded-lg border border-green-800">
                 <div className="flex justify-between items-center">
-                  <span>Original Amount:</span>
+                  <span>Cantidad original:</span>
                   <span className="line-through text-muted-foreground">{formatCurrency(paymentForm.amount)}</span>
                 </div>
-                <div className="flex justify-between items-center font-medium text-green-700">
-                  <span>Final Amount (with discount):</span>
+                <div className="flex justify-between items-center font-medium text-green-50">
+                  <span>Monto final (con descuento):</span>
                   <span>{formatCurrency(paymentForm.amount * 0.95)}</span>
                 </div>
               </div>
-            )}
+            )} */}
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setPaymentDialog({ open: false, installment: null })}>
-              Cancel
+              Cancelar
             </Button>
             <Button onClick={handlePayment} disabled={paymentForm.amount <= 0}>
               <CreditCard className="w-4 h-4 mr-2" />
-              Record Payment
+              Registrar pago
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Payment Reminder Dialog */}
-      <Dialog open={reminderDialog.open} onOpenChange={(open) => setReminderDialog({ open, installments: [] })}>
+      {/* <Dialog open={reminderDialog.open} onOpenChange={(open) => setReminderDialog({ open, installments: [] })}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -880,7 +853,7 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog> */}
     </div>
   );
 }
@@ -889,6 +862,7 @@ interface InstallmentTableProps {
   installments: ExtendedInstallment[];
   highlightId?: string | null;
   onPayment: (installment: ExtendedInstallment) => void;
+  revertPayment?: (installment: ExtendedInstallment) => void;
   onScheduleChange: (installment: ExtendedInstallment) => void;
   title: string;
   description: string;
@@ -901,6 +875,7 @@ function InstallmentTable({
   installments, 
   highlightId,
   onPayment, 
+  revertPayment,
   onScheduleChange,
   title, 
   description, 
@@ -909,17 +884,18 @@ function InstallmentTable({
   showEarlyPaymentIncentive
 }: InstallmentTableProps) {
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+    return new Date(dateString).toLocaleDateString('es-ES', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
     });
   };
 
+
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('es-ES', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'ARS'
     }).format(amount);
   };
 
@@ -930,22 +906,22 @@ function InstallmentTable({
     if (installment.status === 'paid') {
       return <Badge className="bg-green-100 text-green-800 hover:bg-green-200">
         <CheckCircle className="w-3 h-3 mr-1" />
-        Paid
+        Pagado
       </Badge>;
     } else if (installment.status === 'partial') {
       return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-200">
         <Clock className="w-3 h-3 mr-1" />
-        Partial
+        Parcial
       </Badge>;
     } else if (dueDate < today) {
       return <Badge className="bg-red-100 text-red-800 hover:bg-red-200">
         <AlertTriangle className="w-3 h-3 mr-1" />
-        Overdue
+        Vencido
       </Badge>;
     } else {
       return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200">
         <Calendar className="w-3 h-3 mr-1" />
-        Pending
+        Pendiente
       </Badge>;
     }
   };
@@ -978,9 +954,9 @@ function InstallmentTable({
         {installments.length === 0 ? (
           <div className="text-center py-12">
             <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No installments found</h3>
+            <h3 className="text-lg font-semibold mb-2">No se encontraron cuotas</h3>
             <p className="text-muted-foreground">
-              No installments match the current filter criteria.
+              No hay pagos con cuotas registrados.
             </p>
           </div>
         ) : (
@@ -988,23 +964,23 @@ function InstallmentTable({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Sale #</TableHead>
-                  <TableHead>Installment</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Progress</TableHead>
-                  <TableHead>Status</TableHead>
-                  {showOverdueDays && <TableHead>Days Overdue</TableHead>}
-                  {showEarlyPaymentIncentive && <TableHead>Incentive</TableHead>}
-                  <TableHead>Actions</TableHead>
+                  <TableHead>Clientes</TableHead>
+                  <TableHead>Ventas #</TableHead>
+                  <TableHead>Cuotas</TableHead>
+                  <TableHead>Dia de pago</TableHead>
+                  <TableHead>Cantidad</TableHead>
+                  <TableHead>Progreso</TableHead>
+                  <TableHead>Estado</TableHead>
+                  {showOverdueDays && <TableHead>Dias atrasados</TableHead>}
+                  {showEarlyPaymentIncentive && <TableHead>Incentivo</TableHead>}
+                  <TableHead>Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {installments.map((installment) => (
                   <TableRow 
                     key={installment.id} 
-                    id={`installment-${installment.id}`}
+                    id={`cuota-${installment.id}`}
                     className={cn(
                       highlightId === installment.sale_id?.toString() && 'bg-muted/50'
                     )}
@@ -1020,7 +996,7 @@ function InstallmentTable({
                           <div className="font-medium">{installment.customer_name}</div>
                           {highlightId === installment.sale_id?.toString() && (
                             <Badge variant="outline" className="bg-primary/10 text-primary text-xs mt-1">
-                              Found
+                              Encontrado
                             </Badge>
                           )}
                           {showContactActions && (
@@ -1050,9 +1026,9 @@ function InstallmentTable({
                     </TableCell>
                     <TableCell>
                       <div>
-                        <div className="font-medium">{formatCurrency(installment.amount)}</div>
+                        <div className="font-medium">{formatCurrency(Math.round(installment.amount))}</div>
                         <div className="text-sm text-muted-foreground">
-                          Balance: {formatCurrency(installment.balance)}
+                          Balance: {formatCurrency(Math.round(installment.balance))}
                         </div>
                       </div>
                     </TableCell>
@@ -1060,7 +1036,7 @@ function InstallmentTable({
                       <div className="space-y-1">
                         <Progress value={installment.progress_percentage || 0} className="h-2" />
                         <div className="text-xs text-muted-foreground">
-                          {installment.progress_percentage || 0}% paid
+                          {installment.progress_percentage || 0}% pagado
                         </div>
                       </div>
                     </TableCell>
@@ -1068,7 +1044,7 @@ function InstallmentTable({
                     {showOverdueDays && (
                       <TableCell>
                         <Badge variant="destructive">
-                          {getDaysOverdue(installment.due_date)} days
+                          {getDaysOverdue(installment.due_date)} dias
                         </Badge>
                       </TableCell>
                     )}
@@ -1083,25 +1059,28 @@ function InstallmentTable({
                       </TableCell>
                     )}
                     <TableCell>
-                      <div className="flex items-center gap-1">
-                        {installment.status !== 'paid' && (
-                          <Button
-                            size="sm"
-                            onClick={() => onPayment(installment)}
-                          >
-                            <CreditCard className="w-4 h-4 mr-1" />
-                            Pay
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => onScheduleChange(installment)}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
+                        <div className="flex items-center gap-1">
+                          {installment.status !== 'paid' ? (
+                            <Button
+                              size="sm"
+                              onClick={() => onPayment(installment)}
+                            >
+                              <CreditCard className="w-4 h-4 mr-1" />
+                              Pagar
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              onClick={() => revertPayment && revertPayment(installment)}
+                            >
+                              <RefreshCw className="w-4 h-4 mr-1" />
+                              Revertir
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+
+                    
                   </TableRow>
                 ))}
               </TableBody>

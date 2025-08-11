@@ -47,7 +47,7 @@ export default function SalesPage() {
     if (highlightedSale) {
       // Scroll to highlighted sale after a short delay
       setTimeout(() => {
-        const element = document.getElementById(`sale-${highlightedSale.id}`);
+        const element = document.getElementById(`venta-${highlightedSale.id}`);
         if (element) {
           element.scrollIntoView({ behavior: 'smooth', block: 'center' });
           element.classList.add('ring-2', 'ring-primary', 'ring-offset-2');
@@ -63,7 +63,7 @@ export default function SalesPage() {
       const allSales = await window.electronAPI.database.sales.getAll();
       setSales(allSales);
     } catch (error) {
-      console.error('Error loading sales:', error);
+      console.error('Error cargando ventas:', error);
     }
   };
 
@@ -72,7 +72,7 @@ export default function SalesPage() {
       const overdue = await window.electronAPI.database.sales.getOverdueSales();
       setOverdueSales(overdue);
     } catch (error) {
-      console.error('Error loading overdue sales:', error);
+      console.error('Error cargando pagos atrasados:', error);
     }
   };
 
@@ -90,88 +90,7 @@ export default function SalesPage() {
       await loadOverdueSales();
       setEditingSale(undefined);
     } catch (error) {
-      console.error('Error saving sale:', error);
-    }
-  };
-
-  const addMockSales = async () => {
-    try {
-      // Get customers and products first
-      const customers = await window.electronAPI.database.customers.getAll();
-      const products = await window.electronAPI.database.products.getAll();
-      
-      if (customers.length === 0 || products.length === 0) {
-        console.log('Please add customers and products first');
-        return;
-      }
-
-      const mockSales = [
-        {
-          customer_id: customers[0].id!,
-          items: [
-            {
-              product_id: products[0].id!,
-              quantity: 2,
-              unit_price: products[0].price,
-              discount_per_item: 0
-            }
-          ],
-          payment_type: 'cash' as const,
-          tax_amount: 0,
-          discount_amount: 0,
-          notes: 'Cash sale - paid in full'
-        },
-        {
-          customer_id: customers[1]?.id || customers[0].id!,
-          items: [
-            {
-              product_id: products[1]?.id || products[0].id!,
-              quantity: 1,
-              unit_price: products[1]?.price || products[0].price,
-              discount_per_item: 5
-            }
-          ],
-          payment_type: 'installments' as const,
-          number_of_installments: 6,
-          down_payment: 100,
-          tax_amount: 15,
-          discount_amount: 0,
-          notes: '6-month installment plan'
-        },
-        {
-          customer_id: customers[2]?.id || customers[0].id!,
-          items: [
-            {
-              product_id: products[2]?.id || products[0].id!,
-              quantity: 3,
-              unit_price: products[2]?.price || products[0].price,
-              discount_per_item: 0
-            },
-            {
-              product_id: products[3]?.id || products[0].id!,
-              quantity: 1,
-              unit_price: products[3]?.price || products[0].price,
-              discount_per_item: 10
-            }
-          ],
-          payment_type: 'installments' as const,
-          number_of_installments: 12,
-          down_payment: 200,
-          tax_amount: 25,
-          discount_amount: 50,
-          notes: '12-month payment plan with discount'
-        }
-      ];
-
-      for (const sale of mockSales) {
-        await window.electronAPI.database.sales.create(sale);
-      }
-      
-      await loadSales();
-      await loadOverdueSales();
-      console.log('Mock sales added successfully');
-    } catch (error) {
-      console.error('Error adding mock sales:', error);
+      console.error('Error guardando venta:', error);
     }
   };
 
@@ -186,7 +105,7 @@ export default function SalesPage() {
       await loadSales();
       await loadOverdueSales();
     } catch (error) {
-      console.error('Error deleting sale:', error);
+      console.error('Error eliminando venta:', error);
     }
   };
 
@@ -218,23 +137,15 @@ export default function SalesPage() {
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight">Sales Management</h1>
+              <h1 className="text-3xl font-bold tracking-tight">Ventas</h1>
               <p className="text-muted-foreground">
-                Track sales, manage installments, and monitor payments
+                Acá podes gestionar todas tus ventas, crear nuevas, editar o eliminar las existentes. Ademas de seguir el estado de los pagos y planes de cuotas.
               </p>
             </div>
             <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                onClick={addMockSales} 
-                disabled={!isElectron}
-              >
-                <Database className="mr-2 h-4 w-4" />
-                Add Mock Data
-              </Button>
               <Button onClick={handleAddSale} disabled={!isElectron}>
                 <Plus className="mr-2 h-4 w-4" />
-                New Sale
+                Nueva venta
               </Button>
             </div>
           </div>
@@ -245,7 +156,7 @@ export default function SalesPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Total Sales</CardTitle>
+                <CardTitle className="text-sm font-medium">Ventas</CardTitle>
                 <CreditCard className="h-4 w-4 text-muted-foreground" />
               </div>
             </CardHeader>
@@ -253,7 +164,7 @@ export default function SalesPage() {
               <div className="text-2xl font-bold">{stats.totalSales}</div>
               <div className="flex items-center text-xs text-muted-foreground">
                 <TrendingUp className="h-3 w-3 mr-1 text-blue-500" />
-                Total transactions
+                Total de ventas registradas
               </div>
             </CardContent>
           </Card>
@@ -261,7 +172,7 @@ export default function SalesPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                <CardTitle className="text-sm font-medium">Ganancias totales</CardTitle>
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
               </div>
             </CardHeader>
@@ -271,7 +182,7 @@ export default function SalesPage() {
               </div>
               <div className="flex items-center text-xs text-muted-foreground">
                 <DollarSign className="h-3 w-3 mr-1 text-green-500" />
-                All-time revenue
+                Ganancias totales de todas las ventas
               </div>
             </CardContent>
           </Card>
@@ -279,7 +190,7 @@ export default function SalesPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Installment Sales</CardTitle>
+                <CardTitle className="text-sm font-medium">Ventas en cuotas</CardTitle>
                 <Calendar className="h-4 w-4 text-muted-foreground" />
               </div>
             </CardHeader>
@@ -287,7 +198,7 @@ export default function SalesPage() {
               <div className="text-2xl font-bold">{stats.installmentSales}</div>
               <div className="flex items-center text-xs text-muted-foreground">
                 <Calendar className="h-3 w-3 mr-1 text-purple-500" />
-                Payment plans active
+                Ventas con planes de cuotas activas
               </div>
             </CardContent>
           </Card>
@@ -295,7 +206,7 @@ export default function SalesPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Overdue Sales</CardTitle>
+                <CardTitle className="text-sm font-medium">Cuotas atrasadas</CardTitle>
                 <AlertTriangle className="h-4 w-4 text-muted-foreground" />
               </div>
             </CardHeader>
@@ -303,7 +214,7 @@ export default function SalesPage() {
               <div className="text-2xl font-bold text-red-600">{stats.overdueSales}</div>
               <div className="flex items-center text-xs text-muted-foreground">
                 <AlertTriangle className="h-3 w-3 mr-1 text-red-500" />
-                Require attention
+                Cuotas con pagos atrasados, revisar planes de cuotas
               </div>
             </CardContent>
           </Card>
@@ -312,8 +223,8 @@ export default function SalesPage() {
         {/* Main Content Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList>
-            <TabsTrigger value="sales">All Sales</TabsTrigger>
-            <TabsTrigger value="installments">Installments</TabsTrigger>
+            <TabsTrigger value="sales">Todas las ventas</TabsTrigger>
+            <TabsTrigger value="installments">Cuotas</TabsTrigger>
           </TabsList>
 
           <TabsContent value="sales">

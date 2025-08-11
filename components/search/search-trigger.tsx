@@ -28,10 +28,10 @@ export function SearchTrigger({ onOpenSearch, collapsed }: SearchTriggerProps) {
       )}
       onClick={onOpenSearch}
     >
-      <Search className="h-4 w-4 flex-shrink-0" />
+      <Search className="h-4 w-4" />
       {!collapsed && (
         <>
-          <span className="flex-1 text-left">Search everything...</span>
+          <span className="flex-1 text-left">Buscar</span>
           <div className="flex items-center gap-1 text-xs bg-muted px-2 py-1 rounded">
             {isMac ? <Command className="w-3 h-3" /> : <span>{shortcutKey}</span>}
             <span>K</span>

@@ -36,7 +36,7 @@ export default function ProductsPage() {
     if (highlightedProduct) {
       // Scroll to highlighted product after a short delay
       setTimeout(() => {
-        const element = document.getElementById(`product-${highlightedProduct.id}`);
+        const element = document.getElementById(`producto-${highlightedProduct.id}`);
         if (element) {
           element.scrollIntoView({ behavior: 'smooth', block: 'center' });
           element.classList.add('ring-2', 'ring-primary', 'ring-offset-2');
@@ -52,7 +52,7 @@ export default function ProductsPage() {
       const allProducts = await window.electronAPI.database.products.getAll();
       setProducts(allProducts);
     } catch (error) {
-      console.error('Error loading products:', error);
+      console.error('Error cargando productos:', error);
     }
   };
 
@@ -69,72 +69,72 @@ export default function ProductsPage() {
       await loadProducts();
       setEditingProduct(undefined);
     } catch (error) {
-      console.error('Error saving product:', error);
+      console.error('Error añadiendo producto:', error);
     }
   };
 
   const addMockProducts = async () => {
     const mockProducts = [
       {
-        name: 'Wireless Bluetooth Headphones',
-        price: 79.99,
-        description: 'High-quality wireless headphones with noise cancellation and 20-hour battery life',
-        is_active: true
-      },
-      {
-        name: 'Smartphone Case',
-        price: 24.99,
-        description: 'Durable protective case compatible with most smartphone models',
-        is_active: true
-      },
-      {
-        name: 'USB-C Charging Cable',
-        price: 12.99,
-        description: '6ft fast-charging USB-C cable with braided design',
-        is_active: true
-      },
-      {
-        name: 'Portable Power Bank',
-        price: 45.99,
-        description: '10,000mAh portable charger with dual USB ports and LED display',
-        is_active: true
-      },
-      {
-        name: 'Wireless Mouse',
-        price: 29.99,
-        description: 'Ergonomic wireless mouse with precision tracking and long battery life',
-        is_active: true
-      },
-      {
-        name: 'Bluetooth Speaker',
-        price: 89.99,
-        description: 'Waterproof portable speaker with 360-degree sound and 12-hour playtime',
-        is_active: true
-      },
-      {
-        name: 'Screen Protector',
-        price: 9.99,
-        description: 'Tempered glass screen protector with anti-fingerprint coating',
-        is_active: true
-      },
-      {
-        name: 'Car Phone Mount',
-        price: 19.99,
-        description: 'Adjustable car mount with secure grip and 360-degree rotation',
-        is_active: true
-      },
-      {
-        name: 'Gaming Keyboard',
-        price: 129.99,
-        description: 'Mechanical gaming keyboard with RGB backlighting and programmable keys',
-        is_active: false
-      },
-      {
-        name: 'Webcam HD',
-        price: 59.99,
-        description: '1080p HD webcam with auto-focus and built-in microphone',
-        is_active: true
-      }
+      name: 'Auriculares Inalámbricos Bluetooth',
+      price: 159990,
+      description: 'Auriculares inalámbricos de alta calidad con cancelación de ruido y batería de 20 horas',
+      is_active: true
+    },
+    {
+      name: 'Funda para Smartphone',
+      price: 49990,
+      description: 'Funda protectora resistente compatible con la mayoría de modelos de smartphones',
+      is_active: true
+    },
+    {
+      name: 'Cable de Carga USB-C',
+      price: 25990,
+      description: 'Cable USB-C de carga rápida de 1.8m con diseño trenzado',
+      is_active: true
+    },
+    {
+      name: 'Batería Portátil Power Bank',
+      price: 91990,
+      description: 'Cargador portátil de 10,000mAh con puertos USB duales y pantalla LED',
+      is_active: true
+    },
+    {
+      name: 'Mouse Inalámbrico',
+      price: 59990,
+      description: 'Mouse inalámbrico ergonómico con seguimiento de precisión y larga duración de batería',
+      is_active: true
+    },
+    {
+      name: 'Parlante Bluetooth',
+      price: 179990,
+      description: 'Parlante portátil resistente al agua con sonido 360 grados y 12 horas de reproducción',
+      is_active: true
+    },
+    {
+      name: 'Protector de Pantalla',
+      price: 19990,
+      description: 'Protector de pantalla de vidrio templado con revestimiento anti-huellas',
+      is_active: true
+    },
+    {
+      name: 'Soporte de Auto para Celular',
+      price: 39990,
+      description: 'Soporte de auto ajustable con agarre seguro y rotación de 360 grados',
+      is_active: true
+    },
+    {
+      name: 'Teclado Gamer',
+      price: 259990,
+      description: 'Teclado mecánico gaming con retroiluminación RGB y teclas programables',
+      is_active: false
+    },
+    {
+      name: 'Cámara Web HD',
+      price: 119990,
+      description: 'Cámara web HD 1080p con enfoque automático y micrófono integrado',
+      is_active: true
+    }
     ];
 
     try {
@@ -142,9 +142,9 @@ export default function ProductsPage() {
         window.electronAPI.database.products.create(product);
       }
       await loadProducts();
-      console.log('Mock products added successfully');
+      console.log('Productos de prueba añadidos correctamente');
     } catch (error) {
-      console.error('Error adding mock products:', error);
+      console.error('Error añadiendo productos:', error);
     }
   };
 
@@ -155,10 +155,12 @@ export default function ProductsPage() {
 
   const handleDeleteProduct = async (productId: number) => {
     try {
-      window.electronAPI.database.products.delete(productId);
+      await window.electronAPI.database.products.delete(productId);
       await loadProducts();
-    } catch (error) {
-      console.error('Error deleting product:', error);
+    } catch (error: any) {
+      console.error('Error eliminando product:', error);
+      // Display error message to user
+      alert(error.message || 'Error deleting product. Please try again.');
     }
   };
 
@@ -167,7 +169,7 @@ export default function ProductsPage() {
       window.electronAPI.database.products.update(productId, { is_active: isActive });
       await loadProducts();
     } catch (error) {
-      console.error('Error updating product status:', error);
+      console.error('Error actualizando producto:', error);
     }
   };
 
@@ -199,9 +201,9 @@ export default function ProductsPage() {
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight">Products</h1>
+              <h1 className="text-3xl font-bold tracking-tight">Productos</h1>
               <p className="text-muted-foreground">
-                Manage your product inventory and pricing
+                Gestioná tu inventario de productos, añadir nuevos, editar o eliminar existentes.
               </p>
             </div>
             <div className="flex gap-2">
@@ -215,7 +217,7 @@ export default function ProductsPage() {
               </Button>
               <Button onClick={handleAddProduct} disabled={!isElectron}>
                 <Plus className="mr-2 h-4 w-4" />
-                Add Product
+                Añadir Producto
               </Button>
             </div>
           </div>
@@ -226,7 +228,7 @@ export default function ProductsPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Total Products</CardTitle>
+                <CardTitle className="text-sm font-medium">Productos totales</CardTitle>
                 <Package className="h-4 w-4 text-muted-foreground" />
               </div>
             </CardHeader>
@@ -234,7 +236,7 @@ export default function ProductsPage() {
               <div className="text-2xl font-bold">{stats.total}</div>
               <div className="flex items-center text-xs text-muted-foreground">
                 <Package className="h-3 w-3 mr-1 text-blue-500" />
-                Products in inventory
+                Total de productos en inventario
               </div>
             </CardContent>
           </Card>
@@ -242,7 +244,7 @@ export default function ProductsPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Active Products</CardTitle>
+                <CardTitle className="text-sm font-medium">Productos activos</CardTitle>
                 <Eye className="h-4 w-4 text-muted-foreground" />
               </div>
             </CardHeader>
@@ -250,7 +252,7 @@ export default function ProductsPage() {
               <div className="text-2xl font-bold">{stats.active}</div>
               <div className="flex items-center text-xs text-muted-foreground">
                 <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
-                Available for sale
+                Productos disponibles para la venta
               </div>
             </CardContent>
           </Card>
@@ -258,7 +260,7 @@ export default function ProductsPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Inactive Products</CardTitle>
+                <CardTitle className="text-sm font-medium">Productos inactivos</CardTitle>
                 <Package className="h-4 w-4 text-muted-foreground" />
               </div>
             </CardHeader>
@@ -266,7 +268,7 @@ export default function ProductsPage() {
               <div className="text-2xl font-bold">{stats.inactive}</div>
               <div className="flex items-center text-xs text-muted-foreground">
                 <Package className="h-3 w-3 mr-1 text-gray-500" />
-                Not available for sale
+                Productos no disponibles
               </div>
             </CardContent>
           </Card>
@@ -274,17 +276,17 @@ export default function ProductsPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Average Price</CardTitle>
+                <CardTitle className="text-sm font-medium">Valor de inventario</CardTitle>
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
               </div>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                ${stats.averagePrice.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                ${(products.reduce((sum, p) => sum + p.price, 0)).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
               <div className="flex items-center text-xs text-muted-foreground">
-                <DollarSign className="h-3 w-3 mr-1 text-green-500" />
-                Average product price
+                <Package className="h-3 w-3 mr-1 text-blue-500" />
+                Valor total de todos los productos
               </div>
             </CardContent>
           </Card>

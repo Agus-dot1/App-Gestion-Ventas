@@ -37,7 +37,7 @@ export function CustomersTable({ customers, highlightId, onEdit, onDelete }: Cus
         const sales = await window.electronAPI.database.sales.getByCustomer(customerId);
         setRelatedSales(sales);
       } catch (error) {
-        console.error('Error fetching related sales:', error);
+        console.error('Error al requerir ventas:', error);
         setRelatedSales([]);
       } finally {
         setIsFetchingSales(false);
@@ -59,7 +59,7 @@ export function CustomersTable({ customers, highlightId, onEdit, onDelete }: Cus
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+    return new Date(dateString).toLocaleDateString('es-ES', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
@@ -67,9 +67,9 @@ export function CustomersTable({ customers, highlightId, onEdit, onDelete }: Cus
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('es-ES', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'ARS'
     }).format(amount);
   };
 
@@ -81,17 +81,17 @@ export function CustomersTable({ customers, highlightId, onEdit, onDelete }: Cus
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Users className="h-5 w-5" />
-                Customers
+                Clientes
               </CardTitle>
               <CardDescription>
-                Manage your customer database and contact information
+                Acá podés ver y gestionar todos tus clientes.
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search customers..."
+                  placeholder="Buscar cliente..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-8 w-64"
@@ -104,9 +104,9 @@ export function CustomersTable({ customers, highlightId, onEdit, onDelete }: Cus
           {filteredCustomers.length === 0 ? (
             <div className="text-center py-12">
               <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No customers found</h3>
+              <h3 className="text-lg font-semibold mb-2">No se encontraron clientes</h3>
               <p className="text-muted-foreground mb-4">
-                {searchTerm ? 'No customers match your search criteria.' : 'Get started by adding your first customer.'}
+                {searchTerm ? 'No hay clientes con ese nombre.' : 'Empezá añadiendo tu primer cliente.'}
               </p>
             </div>
           ) : (
@@ -114,10 +114,10 @@ export function CustomersTable({ customers, highlightId, onEdit, onDelete }: Cus
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Contact Information</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead className="w-[70px]">Actions</TableHead>
+                    <TableHead>Nombre</TableHead>
+                    <TableHead>Contacto</TableHead>
+                    <TableHead>Creado</TableHead>
+                    <TableHead className="w-[70px]">Accciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -137,7 +137,7 @@ export function CustomersTable({ customers, highlightId, onEdit, onDelete }: Cus
                           {customer.name}
                           {highlightId === customer.id?.toString() && (
                             <Badge variant="outline" className="bg-primary/10 text-primary">
-                              Found
+                              Encontrado
                             </Badge>
                           )}
                         </div>
@@ -151,7 +151,7 @@ export function CustomersTable({ customers, highlightId, onEdit, onDelete }: Cus
                             </div>
                           </div>
                         ) : (
-                          <span className="text-muted-foreground italic text-sm">No contact info</span>
+                          <span className="text-muted-foreground italic text-sm">Sin información de contacto</span>
                         )}
                       </TableCell>
                       <TableCell>
@@ -170,7 +170,7 @@ export function CustomersTable({ customers, highlightId, onEdit, onDelete }: Cus
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => onEdit(customer)}>
                               <Edit className="mr-2 h-4 w-4" />
-                              Edit
+                              Editar
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
@@ -178,7 +178,7 @@ export function CustomersTable({ customers, highlightId, onEdit, onDelete }: Cus
                               className="text-red-600"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
+                              Eliminar
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -201,51 +201,50 @@ export function CustomersTable({ customers, highlightId, onEdit, onDelete }: Cus
       }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Customer</AlertDialogTitle>
+            <AlertDialogTitle>Eliminar cliente</AlertDialogTitle>
             <AlertDialogDescription>
               {isFetchingSales ? (
                 <div className="flex items-center justify-center py-4">
                   <Loader2 className="h-6 w-6 animate-spin" />
-                  <span className="ml-2">Loading related sales...</span>
+                  <span className="ml-2">Cargando ventas relacionadas...</span>
                 </div>
               ) : (
                 <div className="space-y-4">
                   <p>
-                    Are you sure you want to delete "{deleteCustomer?.name}"?
-                    This action cannot be undone.
+                    ¿Estás seguro de que querés eliminar al cliente <strong>{deleteCustomer?.name}</strong>? Esta acción no se puede deshacer.
                   </p>
                   {relatedSales.length > 0 ? (
                     <div className="border rounded-md p-4 bg-muted/50">
-                      <h4 className="font-medium mb-2">The following movements will also be deleted:</h4>
+                      <h4 className="font-medium mb-2">Los siguientes movimientos serán eliminados:</h4>
                       <div className="max-h-40 overflow-y-auto">
                         <ul className="space-y-2">
                           {relatedSales.map((sale) => (
                             <li key={sale.id} className="flex justify-between text-sm">
-                              <span>Sale #{sale.sale_number}</span>
+                              <span>Venta #{sale.sale_number}</span>
                               <span className="font-medium">{formatCurrency(sale.total_amount)}</span>
                             </li>
                           ))}
                         </ul>
                       </div>
                       <p className="mt-2 text-sm text-muted-foreground">
-                        Total: {relatedSales.length} sale{relatedSales.length !== 1 ? 's' : ''} ({formatCurrency(relatedSales.reduce((sum, sale) => sum + sale.total_amount, 0))})
+                        Total: {relatedSales.length} venta{relatedSales.length !== 1 ? 's' : ''} ({formatCurrency(relatedSales.reduce((sum, sale) => sum + sale.total_amount, 0))})
                       </p>
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">No related sales found for this customer.</p>
+                    <p className="text-sm text-muted-foreground">No se encontraron ventas asociadas.</p>
                   )}
                 </div>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-red-600 hover:bg-red-700 text-slate-50"
               disabled={isFetchingSales}
             >
-              Delete
+              Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

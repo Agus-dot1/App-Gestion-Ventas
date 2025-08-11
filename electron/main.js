@@ -494,7 +494,9 @@ ipcMain.handle('db:products:getById', (event, id) => databaseOperations.products
 ipcMain.handle('db:products:getActive', () => databaseOperations.products.getActive());
 ipcMain.handle('db:products:create', (event, product) => databaseOperations.products.create(product));
 ipcMain.handle('db:products:update', (event, id, product) => databaseOperations.products.update(id, product));
-ipcMain.handle('db:products:delete', (event, id) => databaseOperations.products.delete(id));
+ipcMain.handle('db:products:delete', (event, id) => {
+  return databaseOperations.products.delete(id);
+});
 });
 // Sales operations
 ipcMain.handle('db:sales:getAll', () => databaseOperations.sales.getAll());

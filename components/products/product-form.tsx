@@ -32,15 +32,15 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
     const newErrors: Record<string, string> = {};
 
     if (!formData.name.trim()) {
-      newErrors.name = 'Product name is required';
+      newErrors.name = 'El nombre del producto es obligatorio';
     }
 
     if (!formData.price.trim()) {
-      newErrors.price = 'Price is required';
+      newErrors.price = 'El precio del producto es obligatorio';
     } else {
       const price = parseFloat(formData.price);
       if (isNaN(price) || price < 0) {
-        newErrors.price = 'Price must be a valid positive number';
+        newErrors.price = 'El precio debe ser un número positivo';
       }
     }
 
@@ -72,7 +72,7 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
       setErrors({});
       onOpenChange(false);
     } catch (error) {
-      console.error('Error saving product:', error);
+      console.error('Error añadiendo producto:', error);
     } finally {
       setIsSubmitting(false);
     }
@@ -101,10 +101,10 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
-            {product ? 'Edit Product' : 'Add New Product'}
+            {product ? 'Editar Producto' : 'Añadir nuevo producto'}
           </DialogTitle>
           <DialogDescription>
-            {product ? 'Update product information' : 'Create a new product for your inventory'}
+            {product ? 'Actualizar informacion' : 'Crear un nuevo producto para tu inventario.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -112,12 +112,12 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
           <div className="grid gap-4">
             {/* Product Name */}
             <div className="space-y-2">
-              <Label htmlFor="name">Product Name *</Label>
+              <Label htmlFor="name">Nombre *</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => handleInputChange('name', e.target.value)}
-                placeholder="Enter product name"
+                placeholder="Nombre del producto"
                 className={errors.name ? 'border-red-500' : ''}
               />
               {errors.name && (
@@ -130,7 +130,7 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
 
             {/* Price */}
             <div className="space-y-2">
-              <Label htmlFor="price">Price *</Label>
+              <Label htmlFor="price">Precio *</Label>
               <div className="relative">
                 <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -154,12 +154,12 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
 
             {/* Description */}
             <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">Descripción</Label>
               <Textarea
                 id="description"
                 value={formData.description}
                 onChange={(e) => handleInputChange('description', e.target.value)}
-                placeholder="Enter product description (optional)"
+                placeholder="Detalla informacion de importancia (opcional)"
                 rows={3}
               />
             </div>
@@ -167,9 +167,9 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
             {/* Active Status */}
             <div className="flex items-center justify-between p-4 border rounded-lg">
               <div className="space-y-0.5">
-                <Label htmlFor="is_active">Active Product</Label>
+                <Label htmlFor="is_active">Producto activo</Label>
                 <p className="text-sm text-muted-foreground">
-                  Active products are available for sales
+                  {formData.is_active ? 'El producto está disponible para la venta.' : 'El producto no está disponible para la venta.'}
                 </p>
               </div>
               <Switch
@@ -187,10 +187,10 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
               onClick={() => onOpenChange(false)}
               disabled={isSubmitting}
             >
-              Cancel
+              Cancelar
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Saving...' : product ? 'Update Product' : 'Create Product'}
+              {isSubmitting ? 'Añadiendo...' : product ? 'Actualizar producto' : 'Crear producto'}
             </Button>
           </DialogFooter>
         </form>

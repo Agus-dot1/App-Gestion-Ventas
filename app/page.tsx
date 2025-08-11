@@ -56,12 +56,12 @@ export default function Home() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-muted-foreground">
-            Welcome back! Heres whats happening with your business today.
+            Bienvenido a tu panel de control. Acá podes ver un resumen de tus ventas, clientes y productos.
           </p>
           {isElectron && (
             <div className="flex items-center gap-2 mt-2 text-sm text-green-600">
               <Database className="h-4 w-4" />
-              <span>SQLite database connected</span>
+              <span>Base de datos conectada!</span>
             </div>
           )}
         </div>
@@ -71,7 +71,7 @@ export default function Home() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                <CardTitle className="text-sm font-medium">Ganancia total</CardTitle>
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
               </div>
             </CardHeader>
@@ -80,8 +80,8 @@ export default function Home() {
                 ${stats.totalRevenue.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
               </div>
               <div className="flex items-center text-xs text-muted-foreground">
-                <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
-                Total revenue from all sales
+                <TrendingUp className="h-3 w-3 mr-2 text-green-500" />
+                Ganancias totales de todas las ventas
               </div>
             </CardContent>
           </Card>
@@ -89,7 +89,7 @@ export default function Home() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Customers</CardTitle>
+                <CardTitle className="text-sm font-medium">Clientes</CardTitle>
                 <Users className="h-4 w-4 text-muted-foreground" />
               </div>
             </CardHeader>
@@ -97,7 +97,7 @@ export default function Home() {
               <div className="text-2xl font-bold">{stats.totalCustomers}</div>
               <div className="flex items-center text-xs text-muted-foreground">
                 <Users className="h-3 w-3 mr-1 text-blue-500" />
-                Total registered customers
+                Total de clientes registrados
               </div>
             </CardContent>
           </Card>
@@ -105,7 +105,7 @@ export default function Home() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Sales</CardTitle>
+                <CardTitle className="text-sm font-medium">Ventas</CardTitle>
                 <CreditCard className="h-4 w-4 text-muted-foreground" />
               </div>
             </CardHeader>
@@ -113,7 +113,7 @@ export default function Home() {
               <div className="text-2xl font-bold">{stats.totalSales}</div>
               <div className="flex items-center text-xs text-muted-foreground">
                 <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
-                Total completed sales
+                Total de ventas realizadas
               </div>
             </CardContent>
           </Card>
@@ -121,7 +121,7 @@ export default function Home() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Products</CardTitle>
+                <CardTitle className="text-sm font-medium">Productos</CardTitle>
                 <Activity className="h-4 w-4 text-muted-foreground" />
               </div>
             </CardHeader>
@@ -129,7 +129,7 @@ export default function Home() {
               <div className="text-2xl font-bold">{stats.totalProducts}</div>
               <div className="flex items-center text-xs text-muted-foreground">
                 <Activity className="h-3 w-3 mr-1 text-purple-500" />
-                Products in inventory
+                Total de productos en inventario
               </div>
             </CardContent>
           </Card>
@@ -139,9 +139,9 @@ export default function Home() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
           <Card className="col-span-4">
             <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
+              <CardTitle>Actividad reciente</CardTitle>
               <CardDescription>
-                Your recent business activities and updates.
+                Últimas acciones realizadas en el sistema.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -149,22 +149,22 @@ export default function Home() {
                 <div className="flex items-center gap-4">
                   <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                   <div className="flex-1">
-                    <p className="text-sm font-medium">Database initialized</p>
-                    <p className="text-xs text-muted-foreground">SQLite ready for operations</p>
+                    <p className="text-sm font-medium">Base de datos inicializada</p>
+                    <p className="text-xs text-muted-foreground">Lista para operar</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                   <div className="flex-1">
-                    <p className="text-sm font-medium">Sales tracking active</p>
-                    <p className="text-xs text-muted-foreground">Ready to record transactions</p>
+                    <p className="text-sm font-medium">Seguimiento de ventas</p>
+                    <p className="text-xs text-muted-foreground">Listo para registrar pagos</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
                   <div className="flex-1">
-                    <p className="text-sm font-medium">Installment tracking ready</p>
-                    <p className="text-xs text-muted-foreground">Payment schedules available</p>
+                    <p className="text-sm font-medium">Seguimiento de cuotas listo</p>
+                    <p className="text-xs text-muted-foreground">Calendario de cuotas disponible</p>
                   </div>
                 </div>
               </div>
@@ -173,24 +173,24 @@ export default function Home() {
 
           <Card className="col-span-3">
             <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
+              <CardTitle>Acciones rapidas</CardTitle>
               <CardDescription>
-                Common tasks and shortcuts.
+                Acciones rápidas para gestionar ventas y clientes.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
                 <div className="p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors">
-                  <p className="text-sm font-medium">Add New Customer</p>
-                  <p className="text-xs text-muted-foreground">Register a new customer</p>
+                  <p className="text-sm font-medium">Añadir cliente</p>
+                  <p className="text-xs text-muted-foreground">Registrar un nuevo cliente</p>
                 </div>
                 <div className="p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors">
-                  <p className="text-sm font-medium">Create New Sale</p>
-                  <p className="text-xs text-muted-foreground">Record a new transaction</p>
+                  <p className="text-sm font-medium">Crear una venta</p>
+                  <p className="text-xs text-muted-foreground">Registra una nueva venta</p>
                 </div>
                 <div className="p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors">
-                  <p className="text-sm font-medium">Manage Products</p>
-                  <p className="text-xs text-muted-foreground">Update inventory</p>
+                  <p className="text-sm font-medium">Añadir producto</p>
+                  <p className="text-xs text-muted-foreground">Actualiza tu inventario</p>
                 </div>
               </div>
             </CardContent>

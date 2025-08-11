@@ -51,17 +51,17 @@ export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggl
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Package className="h-5 w-5" />
-                Products
+                Productos
               </CardTitle>
               <CardDescription>
-                Manage your product inventory and pricing
+                Acá podés ver y gestionar todos tus productos.
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search products..."
+                  placeholder="Buscar..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-8 w-64"
@@ -74,9 +74,9 @@ export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggl
           {filteredProducts.length === 0 ? (
             <div className="text-center py-12">
               <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No products found</h3>
+              <h3 className="text-lg font-semibold mb-2">No se han encontrado productos</h3>
               <p className="text-muted-foreground mb-4">
-                {searchTerm ? 'No products match your search criteria.' : 'Get started by adding your first product.'}
+                {searchTerm ? 'No se encontraron productos con ese nombre.' : 'No hay productos registrados, empezá añadiendo algunos.'}
               </p>
             </div>
           ) : (
@@ -84,11 +84,11 @@ export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggl
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Price</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="w-[70px]">Actions</TableHead>
+                    <TableHead>Nombre</TableHead>
+                    <TableHead>Precio</TableHead>
+                    <TableHead>Descripción</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead className="w-[70px]">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -116,7 +116,7 @@ export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggl
                       <TableCell className="max-w-[300px]">
                         <div className="truncate">
                           {product.description || (
-                            <span className="text-muted-foreground italic">No description</span>
+                            <span className="text-muted-foreground italic">Sin descripción</span>
                           )}
                         </div>
                       </TableCell>
@@ -125,13 +125,10 @@ export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggl
                           variant={product.is_active ? 'default' : 'secondary'}
                           className={product.is_active ? 'bg-green-100 text-green-800 hover:bg-green-200' : ''}
                         >
-                          {product.is_active ? 'Active' : 'Inactive'}
+                          {product.is_active ? 'Activo' : 'Inactivo'}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <button>
-                           
-                          View</button>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" className="h-8 w-8 p-0">
@@ -149,12 +146,12 @@ export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggl
                               {product.is_active ? (
                                 <>
                                   <EyeOff className="mr-2 h-4 w-4" />
-                                  Deactivate
+                                  Desactivar
                                 </>
                               ) : (
                                 <>
                                   <Eye className="mr-2 h-4 w-4" />
-                                  Activate
+                                  Activar
                                 </>
                               )}
                             </DropdownMenuItem>
@@ -164,7 +161,7 @@ export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggl
                               className="text-red-600"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
+                              Eliminar
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -182,15 +179,15 @@ export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggl
       <AlertDialog open={!!deleteProduct} onOpenChange={() => setDeleteProduct(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Product</AlertDialogTitle>
+            <AlertDialogTitle>Eliminar producto</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{deleteProduct?.name}"? This action cannot be undone.
+              ¿Estas seguro de eliminar &quot;{deleteProduct?.name}&quot;? Esta accion no se puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
-              Delete
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700 text-slate-50">
+              Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -45,22 +45,22 @@ export function Sidebar({ className }: SidebarProps) {
       href: '/'
     },
     {
-      title: 'Products',
+      title: 'Productos',
       icon: Package,
       href: '/products'
     },
     {
-      title: 'Customers',
+      title: 'Clientes',
       icon: Users,
       href: '/customers'
     },
     {
-      title: 'Sales',
+      title: 'Ventas',
       icon: CreditCard,
       href: '/sales'
     },
     {
-      title: 'Calendar',
+      title: 'Calendario',
       icon: Calendar,
       href: '/calendar'
     },
@@ -165,31 +165,11 @@ export function Sidebar({ className }: SidebarProps) {
                 )}
               >
                 <Settings className="h-4 w-4 flex-shrink-0" />
-                {!collapsed && <span className="truncate">Settings</span>}
+                {!collapsed && <span className="truncate">Ajustes</span>}
               </Button>
             </Link>
           </div>
         </ScrollArea>
-
-        {/* User Profile */}
-        <div className="border-t p-4">
-          <div className={cn(
-            'flex items-center gap-3',
-            collapsed && 'justify-center'
-          )}>
-            <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center">
-              <Users className="w-4 h-4" />
-            </div>
-            {!collapsed && (
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">John Doe</p>
-                <p className="text-xs text-muted-foreground truncate">
-                  john@example.com
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
       </div>
 
       {/* Search Dialog */}

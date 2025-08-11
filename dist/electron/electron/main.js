@@ -93,6 +93,7 @@ function setupIpcHandlers() {
     electron_1.ipcMain.handle('db:installments:markAsPaid', (_, id) => database_operations_1.installmentOperations.markAsPaid(id));
     electron_1.ipcMain.handle('db:installments:recordPayment', (_, installmentId, amount, paymentMethod, reference) => database_operations_1.installmentOperations.recordPayment(installmentId, amount, paymentMethod, reference));
     electron_1.ipcMain.handle('db:installments:applyLateFee', (_, installmentId, fee) => database_operations_1.installmentOperations.applyLateFee(installmentId, fee));
+    electron_1.ipcMain.handle('db:installments:revertPayment', (_, installmentId, transactionId) => database_operations_1.installmentOperations.revertPayment(installmentId, transactionId));
     // Sale item operations
     electron_1.ipcMain.handle('db:saleItems:getBySale', (_, saleId) => database_operations_1.saleItemOperations.getBySale(saleId));
     electron_1.ipcMain.handle('db:saleItems:create', (_, saleItem) => database_operations_1.saleItemOperations.create(saleItem));

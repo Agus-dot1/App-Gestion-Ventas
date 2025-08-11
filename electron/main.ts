@@ -85,6 +85,8 @@ function setupIpcHandlers() {
     installmentOperations.recordPayment(installmentId, amount, paymentMethod, reference));
   ipcMain.handle('db:installments:applyLateFee', (_, installmentId, fee) =>
     installmentOperations.applyLateFee(installmentId, fee));
+ipcMain.handle('db:installments:revertPayment', (_, installmentId, transactionId) =>
+    installmentOperations.revertPayment(installmentId, transactionId));
 
   // Sale item operations
   ipcMain.handle('db:saleItems:getBySale', (_, saleId) => saleItemOperations.getBySale(saleId));

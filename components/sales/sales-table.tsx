@@ -96,17 +96,17 @@ export function SalesTable({ sales, highlightId, onEdit, onDelete }: SalesTableP
             <div>
               <CardTitle className="flex items-center gap-2">
                 <CreditCard className="h-5 w-5" />
-                Sales Transactions
+                Ventas
               </CardTitle>
               <CardDescription>
-                View and manage all sales transactions
+                Lista de todas las ventas registradas. Puedes buscar por número de venta, cliente o notas.
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search sales..."
+                  placeholder="Buscar venta..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-8 w-64"
@@ -119,9 +119,9 @@ export function SalesTable({ sales, highlightId, onEdit, onDelete }: SalesTableP
           {filteredSales.length === 0 ? (
             <div className="text-center py-12">
               <CreditCard className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No sales found</h3>
+              <h3 className="text-lg font-semibold mb-2">No se encontraron ventas</h3>
               <p className="text-muted-foreground mb-4">
-                {searchTerm ? 'No sales match your search criteria.' : 'Get started by creating your first sale.'}
+                {searchTerm ? 'No se encontraron ventas con esos criterios.' : '¡Crea tu primera venta!'}
               </p>
             </div>
           ) : (
@@ -129,20 +129,20 @@ export function SalesTable({ sales, highlightId, onEdit, onDelete }: SalesTableP
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Sale #</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Payment Type</TableHead>
-                    <TableHead>Total Amount</TableHead>
-                    <TableHead>Payment Status</TableHead>
-                    <TableHead className="w-[70px]">Actions</TableHead>
+                    <TableHead>Venta #</TableHead>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Método de pago</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead>Estado del pago</TableHead>
+                    <TableHead className="w-[70px]">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredSales.map((sale) => (
                     <TableRow 
                       key={sale.id} 
-                      id={`sale-${sale.id}`}
+                      id={`venta-${sale.id}`}
                       className={cn(
                         highlightId === sale.id?.toString() && 'bg-muted/50'
                       )}
@@ -155,7 +155,7 @@ export function SalesTable({ sales, highlightId, onEdit, onDelete }: SalesTableP
                           {sale.sale_number}
                           {highlightId === sale.id?.toString() && (
                             <Badge variant="outline" className="bg-primary/10 text-primary">
-                              Found
+                              Econtrado
                             </Badge>
                           )}
                         </div>
@@ -180,7 +180,7 @@ export function SalesTable({ sales, highlightId, onEdit, onDelete }: SalesTableP
                         {getPaymentTypeBadge(sale.payment_type)}
                         {sale.payment_type === 'installments' && (
                           <div className="text-xs text-muted-foreground mt-1">
-                            {sale.number_of_installments} payments
+                            {sale.number_of_installments} pagos
                           </div>
                         )}
                       </TableCell>
@@ -191,7 +191,7 @@ export function SalesTable({ sales, highlightId, onEdit, onDelete }: SalesTableP
                         </div>
                         {sale.payment_type === 'installments' && sale.down_payment > 0 && (
                           <div className="text-xs text-muted-foreground">
-                            Down: {formatCurrency(sale.down_payment)}
+                            Seña: {formatCurrency(sale.down_payment)}
                           </div>
                         )}
                       </TableCell>
@@ -208,11 +208,11 @@ export function SalesTable({ sales, highlightId, onEdit, onDelete }: SalesTableP
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => console.log('View sale details', sale.id)}>
                               <Eye className="mr-2 h-4 w-4" />
-                              View Details
+                              Ver detalles
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => onEdit(sale)}>
                               <Edit className="mr-2 h-4 w-4" />
-                              Edit
+                              Editar
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
@@ -220,7 +220,7 @@ export function SalesTable({ sales, highlightId, onEdit, onDelete }: SalesTableP
                               className="text-red-600"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
+                              Eliminar
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -238,15 +238,15 @@ export function SalesTable({ sales, highlightId, onEdit, onDelete }: SalesTableP
       <AlertDialog open={!!deleteSale} onOpenChange={() => setDeleteSale(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Sale</AlertDialogTitle>
+            <AlertDialogTitle>Eliminar venta</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete sale "{deleteSale?.sale_number}"? This action cannot be undone and will remove all associated installments and payment records.
+              ¿Estás seguro de que deseas eliminar la venta <strong>{deleteSale?.sale_number}</strong>? Esta acción no se puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
-              Delete
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700 text-slate-50">
+              Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
