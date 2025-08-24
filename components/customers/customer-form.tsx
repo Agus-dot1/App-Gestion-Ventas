@@ -1,62 +1,55 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { AlertCircle, Users, Phone, Mail, MapPin, User } from 'lucide-react';
+import { AlertCircle, Users, Phone, Mail, MapPin, User, Building, Tag } from 'lucide-react';
 import type { Customer } from '@/lib/database-operations';
 
 interface CustomerFormProps {
   customer?: Customer;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (customer: Omit<Customer, 'id' | 'created_at'>) => void;
+  onSave: (customer: Omit<Customer, 'id' | 'created_at' | 'updated_at'>) => void;
 }
 
 export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerFormProps) {
   const [formData, setFormData] = useState({
     name: customer?.name || '',
-    phone: '',
-    email: '',
-    address: '',
-    notes: ''
+    phone: customer?.phone || '',
+    email: customer?.email || '',
+    address: customer?.address || '',
+    notes: customer?.notes || '',
+    tags: customer?.tags || ''
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Parse existing contact_info when editing
-  useState(() => {
-    if (customer?.contact_info) {
-      const contactLines = customer.contact_info.split('\n');
-      const parsed = {
+  // Update form data when customer prop changes
+  useEffect(() => {
+    if (customer) {
+      setFormData({
+        name: customer.name || '',
+        phone: customer.phone || '',
+        email: customer.email || '',
+        address: customer.address || '',
+        notes: customer.notes || '',
+        tags: customer.tags || ''
+      });
+    } else {
+      setFormData({
+        name: '',
         phone: '',
         email: '',
-        address: '',
-        notes: ''
-      };
-
-      contactLines.forEach(line => {
-        const lowerLine = line.toLowerCase();
-        if (lowerLine.includes('teléfono:') || lowerLine.includes('tel:')) {
-          parsed.phone = line.replace(/^(phone:|tel:)\s*/i, '').trim();
-        } else if (lowerLine.includes('email:') || lowerLine.includes('@')) {
-          parsed.email = line.replace(/^email:\s*/i, '').trim();
-        } else if (lowerLine.includes('dirección:')) {
-          parsed.address = line.replace(/^address:\s*/i, '').trim();
-        } else if (line.trim()) {
-          parsed.notes += (parsed.notes ? '\n' : '') + line.trim();
-        }
+        address: '',  
+        notes: '',
+        tags: ''
       });
-
-      setFormData(prev => ({
-        ...prev,
-        ...parsed
-      }));
     }
-  });
+  }, [customer]);
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -69,6 +62,7 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
     return Object.keys(newErrors).length === 0;
   };
 
+  // Build backward-compatible contact_info for legacy support
   const buildContactInfo = () => {
     const contactParts = [];
     
@@ -97,7 +91,12 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
     try {
       await onSave({
         name: formData.name.trim(),
-        contact_info: buildContactInfo()
+        email: formData.email.trim() || undefined,
+        phone: formData.phone.trim() || undefined,
+        address: formData.address.trim() || undefined,
+        notes: formData.notes.trim() || undefined,
+        tags: formData.tags.trim() || undefined,
+        contact_info: buildContactInfo() // Keep for backward compatibility
       });
       
       // Reset form
@@ -106,7 +105,8 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
         phone: '',
         email: '',
         address: '',
-        notes: ''
+        notes: '',
+        tags: ''
       });
       setErrors({});
       onOpenChange(false);
@@ -213,6 +213,22 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
                       onChange={(e) => handleInputChange('address', e.target.value)}
                       placeholder="Calle 123, Ciudad, CP"
                       rows={2}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+
+
+                {/* Tags */}
+                <div className="space-y-2">
+                  <Label htmlFor="tags">Etiquetas</Label>
+                  <div className="relative">
+                    <Tag className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="tags"
+                      value={formData.tags}
+                      onChange={(e) => handleInputChange('tags', e.target.value)}
+                      placeholder="VIP, Mayorista, Frecuente (separadas por comas)"
                       className="pl-10"
                     />
                   </div>

@@ -39,10 +39,55 @@ function createTables() {
     CREATE TABLE IF NOT EXISTS customers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
-      contact_info TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      email TEXT,
+      phone TEXT,
+      address TEXT,
+      company TEXT,
+      notes TEXT,
+      tags TEXT,
+      contact_info TEXT, -- Keep for backward compatibility
+      created_at DATETIME DEFAULT (datetime('now')),
+      updated_at DATETIME DEFAULT (datetime('now'))
     )
   `);
+
+  // Add new columns if they don't exist (for existing databases)
+  try {
+    db.exec('ALTER TABLE customers ADD COLUMN email TEXT');
+  } catch (e) { /* Column already exists */ }
+  try {
+    db.exec('ALTER TABLE customers ADD COLUMN phone TEXT');
+  } catch (e) { /* Column already exists */ }
+  try {
+    db.exec('ALTER TABLE customers ADD COLUMN address TEXT');
+  } catch (e) { /* Column already exists */ }
+  try {
+    db.exec('ALTER TABLE customers ADD COLUMN company TEXT');
+  } catch (e) { /* Column already exists */ }
+  try {
+    db.exec('ALTER TABLE customers ADD COLUMN notes TEXT');
+  } catch (e) { /* Column already exists */ }
+  try {
+    db.exec('ALTER TABLE customers ADD COLUMN tags TEXT');
+  } catch (e) { /* Column already exists */ }
+  // Check if updated_at column exists before adding it
+  const tableInfo = db.prepare("PRAGMA table_info(customers)").all();
+  const hasUpdatedAt = tableInfo.some((col: any) => col.name === 'updated_at');
+  
+  if (!hasUpdatedAt) {
+    try {
+      // Add column without default value first
+      db.exec('ALTER TABLE customers ADD COLUMN updated_at DATETIME');
+      // Then update existing rows to have current timestamp
+      db.exec("UPDATE customers SET updated_at = datetime('now') WHERE updated_at IS NULL");
+      console.log('Successfully added updated_at column to customers table');
+    } catch (e) {
+      console.error('Critical error: Failed to add updated_at column to customers table:', e);
+      throw new Error(`Database migration failed: ${e}`);
+    }
+  } else {
+    console.log('updated_at column already exists in customers table');
+  }
 
   // Products table
   db.exec(`
@@ -51,9 +96,34 @@ function createTables() {
       name TEXT NOT NULL,
       price DECIMAL(10,2) NOT NULL,
       description TEXT,
+      category TEXT,
+      stock INTEGER,
       is_active BOOLEAN DEFAULT 1
     )
   `);
+
+  // Add category and stock columns if they don't exist (for existing databases)
+  const productsTableInfo = db.prepare("PRAGMA table_info(products)").all();
+  const hasCategory = productsTableInfo.some((col: any) => col.name === 'category');
+  const hasStock = productsTableInfo.some((col: any) => col.name === 'stock');
+  
+  if (!hasCategory) {
+    try {
+      db.exec('ALTER TABLE products ADD COLUMN category TEXT');
+      console.log('Successfully added category column to products table');
+    } catch (e) {
+      console.error('Error adding category column to products table:', e);
+    }
+  }
+  
+  if (!hasStock) {
+    try {
+      db.exec('ALTER TABLE products ADD COLUMN stock INTEGER');
+      console.log('Successfully added stock column to products table');
+    } catch (e) {
+      console.error('Error adding stock column to products table:', e);
+    }
+  }
 
   // Sales table
   db.exec(`
@@ -176,20 +246,30 @@ function createTables() {
       related_payment_id INTEGER,
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (related_payment_id) REFERENCES payments(id)
+      FOREIGN KEY (related_payment_id) REFERENCES payment_transactions(id)
     )
   `);
 
   // Create indexes for better performance
   db.exec(`
+    -- Customer table indexes for optimized search and queries
+    CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name);
+    CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email);
+    CREATE INDEX IF NOT EXISTS idx_customers_company ON customers(company);
+    CREATE INDEX IF NOT EXISTS idx_customers_created_at ON customers(created_at);
+    CREATE INDEX IF NOT EXISTS idx_customers_updated_at ON customers(updated_at);
+    CREATE INDEX IF NOT EXISTS idx_customers_name_email ON customers(name, email);
+    CREATE INDEX IF NOT EXISTS idx_customers_search ON customers(name, email, company, tags);
+    
+    -- Sales and related table indexes
     CREATE INDEX IF NOT EXISTS idx_sales_customer_id ON sales(customer_id);
     CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(date);
     CREATE INDEX IF NOT EXISTS idx_installments_sale_id ON installments(sale_id);
     CREATE INDEX IF NOT EXISTS idx_installments_due_date ON installments(due_date);
     CREATE INDEX IF NOT EXISTS idx_sale_items_sale_id ON sale_items(sale_id);
     CREATE INDEX IF NOT EXISTS idx_sale_items_product_id ON sale_items(product_id);
-    CREATE INDEX IF NOT EXISTS idx_payments_sale_id ON payments(sale_id);
-    CREATE INDEX IF NOT EXISTS idx_payments_due_date ON payments(due_date);
+    CREATE INDEX IF NOT EXISTS idx_payment_transactions_sale_id ON payment_transactions(sale_id);
+    CREATE INDEX IF NOT EXISTS idx_payment_transactions_transaction_date ON payment_transactions(transaction_date);
     CREATE INDEX IF NOT EXISTS idx_calendar_events_date ON calendar_events(date);
   `);
 }

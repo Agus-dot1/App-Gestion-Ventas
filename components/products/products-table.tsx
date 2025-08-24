@@ -4,13 +4,18 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Search, MoreHorizontal, Edit, Trash2, Eye, EyeOff, Package } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Search, MoreHorizontal, Edit, Trash2, Eye, EyeOff, Package, Download, FileText, Filter, X } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import type { Product } from '@/lib/database-operations';
 import { cn } from '@/lib/utils';
+import { DropdownMenuSeparator } from '@radix-ui/react-dropdown-menu';
 
 interface ProductsTableProps {
   products: Product[];
@@ -23,11 +28,41 @@ interface ProductsTableProps {
 export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggleStatus }: ProductsTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
+  const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
+  const [selectAll, setSelectAll] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [priceFilter, setPriceFilter] = useState<string>('all');
+  const [showFilters, setShowFilters] = useState(false);
 
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.description?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredProducts = products.filter(product => {
+    // Text search filter
+    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.description?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    // Status filter
+    const matchesStatus = statusFilter === 'all' || 
+      (statusFilter === 'active' && product.is_active) ||
+      (statusFilter === 'inactive' && !product.is_active);
+    
+    // Price filter
+    let matchesPrice = true;
+    if (priceFilter !== 'all') {
+      const price = product.price;
+      switch (priceFilter) {
+        case 'low':
+          matchesPrice = price < 50000;
+          break;
+        case 'medium':
+          matchesPrice = price >= 50000 && price < 150000;
+          break;
+        case 'high':
+          matchesPrice = price >= 150000;
+          break;
+      }
+    }
+    
+    return matchesSearch && matchesStatus && matchesPrice;
+  });
 
   const handleDelete = async () => {
     if (deleteProduct?.id) {
@@ -43,9 +78,132 @@ export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggl
     }).format(price);
   };
 
+  const handleSelectAll = (checked: boolean) => {
+    setSelectAll(checked);
+    if (checked) {
+      const allProductIds = new Set(filteredProducts.map(p => p.id!));
+      setSelectedProducts(allProductIds);
+    } else {
+      setSelectedProducts(new Set());
+    }
+  };
+
+  const handleSelectProduct = (productId: number, checked: boolean) => {
+    const newSelected = new Set(selectedProducts);
+    if (checked) {
+      newSelected.add(productId);
+    } else {
+      newSelected.delete(productId);
+      setSelectAll(false);
+    }
+    setSelectedProducts(newSelected);
+    
+    // Update select all state
+    if (newSelected.size === filteredProducts.length) {
+      setSelectAll(true);
+    }
+  };
+
+  const exportSelectedProducts = () => {
+    const selectedProductsData = products.filter(p => selectedProducts.has(p.id!));
+    
+    const doc = new jsPDF();
+    
+    // Add title
+    doc.setFontSize(20);
+    doc.text('Productos Seleccionados', 14, 22);
+    
+    // Add date
+    doc.setFontSize(12);
+    doc.text(`Fecha: ${new Date().toLocaleDateString()}`, 14, 32);
+    doc.text(`Total de productos: ${selectedProductsData.length}`, 14, 40);
+    
+    // Prepare data for table
+    const tableData = selectedProductsData.map(product => [
+      product.name,
+      product.category,
+      `$${product.price.toFixed(2)}`,
+      product.stock?.toString() ?? '0',
+      product.description || '-'
+    ]);
+    
+    // Add table
+    autoTable(doc, {
+      head: [['Nombre', 'Categoría', 'Precio', 'Stock', 'Descripción']],
+      body: tableData,
+      startY: 60,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [41, 128, 185] }
+    });
+    
+    doc.save(`productos_seleccionados_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  const exportAllProducts = () => {
+    const doc = new jsPDF();
+    
+    // Add title
+    doc.setFontSize(20);
+    const title = hasActiveFilters ? 'Productos Filtrados' : 'Todos los Productos';
+    doc.text(title, 14, 22);
+    
+    // Add date and summary
+    doc.setFontSize(12);
+    doc.text(`Fecha: ${new Date().toLocaleDateString()}`, 14, 32);
+    doc.text(`Total de productos: ${filteredProducts.length}`, 14, 40);
+    
+    if (hasActiveFilters) {
+      let filterText = 'Filtros aplicados: ';
+      if (statusFilter !== 'all') {
+        filterText += `Estado: ${statusFilter === 'active' ? 'Activos' : 'Inactivos'} `;
+      }
+      if (priceFilter !== 'all') {
+        const priceLabels = {
+          low: 'Menos de $50,000',
+          medium: '$50,000 - $150,000',
+          high: 'Más de $150,000'
+        };
+        filterText += `Precio: ${priceLabels[priceFilter as keyof typeof priceLabels]} `;
+      }
+      if (searchTerm) {
+        filterText += `Búsqueda: "${searchTerm}"`;
+      }
+      doc.text(filterText, 14, 48);
+    }
+    
+    // Prepare data for table
+    const tableData = filteredProducts.map(product => [
+      product.name,
+      product.category,
+      `$${product.price.toFixed(2)}`,
+      product.stock?.toString() ?? '0',
+      product.description || '-'
+    ]);
+    
+    // Add table
+    autoTable(doc, {
+      head: [['Nombre', 'Categoría', 'Precio', 'Stock', 'Descripción']],
+      body: tableData,
+      startY: 60,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [41, 128, 185] }
+    });
+    
+    doc.save(`productos_${hasActiveFilters ? 'filtrados_' : ''}${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    setPriceFilter('all');
+    setShowFilters(false);
+  };
+
+  const hasActiveFilters = searchTerm || statusFilter !== 'all' || priceFilter !== 'all';
+
   return (
     <>
-      <Card>
+      <Card className="animate-in fade-in-0 duration-500">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -58,19 +216,105 @@ export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggl
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8 w-64"
-                />
+                {selectedProducts.size > 0 && (
+                  <div className="flex items-center gap-2 mr-4">
+                    <Badge variant="secondary" className="bg-primary/10 text-primary">
+                      {selectedProducts.size} seleccionado{selectedProducts.size !== 1 ? 's' : ''}
+                    </Badge>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={exportSelectedProducts}
+                      className="h-8"
+                    >
+                      <Download className="h-4 w-4 mr-1" />
+                      Exportar
+                    </Button>
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar productos..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-8 w-64 transition-all duration-200 focus:w-72"
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowFilters(!showFilters)}
+                    className={cn(
+                      "h-10 transition-all duration-200",
+                      showFilters && "bg-primary/10 text-primary"
+                    )}
+                  >
+                    <Filter className="h-4 w-4 mr-1" />
+                    Filtros
+                  </Button>
+                  {hasActiveFilters && (
+                     <Button
+                       variant="ghost"
+                       size="sm"
+                       onClick={clearFilters}
+                       className="h-10 text-muted-foreground hover:text-foreground"
+                     >
+                       <X className="h-4 w-4 mr-1" />
+                       Limpiar
+                     </Button>
+                   )}
+                   <Button
+                     variant="outline"
+                     size="sm"
+                     onClick={exportAllProducts}
+                     className="h-10 transition-all duration-200 hover:bg-primary/10"
+                   >
+                     <FileText className="h-4 w-4 mr-1" />
+                     Exportar {hasActiveFilters ? 'Filtrados' : 'Todos'}
+                   </Button>
+                 </div>
               </div>
-            </div>
           </div>
         </CardHeader>
-        <CardContent>
+          {showFilters && (
+            <div className="px-6 pb-4 border-b animate-in slide-in-from-top-2 duration-300">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium text-muted-foreground">Estado:</label>
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="active">Activos</SelectItem>
+                      <SelectItem value="inactive">Inactivos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium text-muted-foreground">Precio:</label>
+                  <Select value={priceFilter} onValueChange={setPriceFilter}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los precios</SelectItem>
+                      <SelectItem value="low">Menos de $50,000</SelectItem>
+                      <SelectItem value="medium">$50,000 - $150,000</SelectItem>
+                      <SelectItem value="high">Más de $150,000</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {filteredProducts.length} producto{filteredProducts.length !== 1 ? 's' : ''} encontrado{filteredProducts.length !== 1 ? 's' : ''}
+                </div>
+              </div>
+            </div>
+          )}
+          <CardContent>
           {filteredProducts.length === 0 ? (
             <div className="text-center py-12">
               <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -84,37 +328,78 @@ export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggl
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-[50px]">
+                      <Checkbox
+                        checked={selectAll}
+                        onCheckedChange={handleSelectAll}
+                        aria-label="Seleccionar todos los productos"
+                      />
+                    </TableHead>
                     <TableHead>Nombre</TableHead>
+                    <TableHead>Categoría</TableHead>
                     <TableHead>Precio</TableHead>
+                    <TableHead>Stock</TableHead>
                     <TableHead>Descripción</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead className="w-[70px]">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredProducts.map((product) => (
+                  {filteredProducts.map((product, index) => (
                     <TableRow 
                       key={product.id} 
                       id={`product-${product.id}`}
                       className={cn(
-                        highlightId === product.id?.toString() && 'bg-muted/50'
+                        "transition-all duration-200 hover:bg-muted/50 animate-in slide-in-from-bottom-2",
+                        highlightId === product.id?.toString() && 'bg-muted/50 ring-2 ring-primary/20',
+                        `animation-delay-${Math.min(index * 100, 500)}ms`
                       )}
                     >
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedProducts.has(product.id!)}
+                          onCheckedChange={(checked) => handleSelectProduct(product.id!, checked as boolean)}
+                          aria-label={`Seleccionar ${product.name}`}
+                        />
+                      </TableCell>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
-                          {product.name}
-                          {highlightId === product.id?.toString() && (
-                            <Badge variant="outline" className="bg-primary/10 text-primary">
-                              Found
-                            </Badge>
-                          )}
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-foreground">{product.name}</span>
+                            {highlightId === product.id?.toString() && (
+                              <Badge variant="outline" className="bg-primary/10 text-primary w-fit mt-1">
+                                Found
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>
-                        {formatPrice(product.price)}
+                        {product.category && product.category !== 'sin-categoria' ? (
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                            {product.category}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground italic text-sm">Sin categoría</span>
+                        )}
                       </TableCell>
+                      <TableCell>
+                        <span className="font-semibold text-lg text-white">
+                          {formatPrice(product.price)}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                         {typeof product.stock === 'number' ? (
+                           <div className="flex items-center gap-1">
+                             <span className="font-medium">{product.stock}</span>
+                             <span className="text-muted-foreground text-sm">unidades</span>
+                           </div>
+                         ) : (
+                           <span className="text-muted-foreground italic text-sm">No especificado</span>
+                         )}
+                       </TableCell>
                       <TableCell className="max-w-[300px]">
-                        <div className="truncate">
+                        <div className="truncate text-sm">
                           {product.description || (
                             <span className="text-muted-foreground italic">Sin descripción</span>
                           )}
@@ -123,7 +408,12 @@ export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggl
                       <TableCell>
                         <Badge 
                           variant={product.is_active ? 'default' : 'secondary'}
-                          className={product.is_active ? 'bg-green-100 text-green-800 hover:bg-green-200' : ''}
+                          className={cn(
+                            "transition-all duration-200",
+                            product.is_active 
+                              ? 'bg-green-200 text-green-900 hover:bg-green-200 border-green-300' 
+                              : 'bg-gray-100 text-gray-800 hover:bg-gray-200 border-gray-300'
+                          )}
                         >
                           {product.is_active ? 'Activo' : 'Inactivo'}
                         </Badge>
@@ -131,17 +421,29 @@ export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggl
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="h-8 w-8 p-0">
+                            <Button 
+                              variant="ghost" 
+                              className="h-8 w-8 p-0 transition-all duration-200 hover:bg-muted hover:scale-105"
+                            >
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => onEdit(product)}>
+                          <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuItem 
+                              onClick={() => onEdit(product)}
+                              className="transition-colors duration-200 hover:bg-blue-50 hover:text-blue-700"
+                            >
                               <Edit className="mr-2 h-4 w-4" />
-                              Edit
+                              Editar
                             </DropdownMenuItem>
                             <DropdownMenuItem 
                               onClick={() => onToggleStatus(product.id!, !product.is_active)}
+                              className={cn(
+                                "transition-colors duration-200",
+                                product.is_active 
+                                  ? "hover:bg-orange-50 hover:text-orange-700" 
+                                  : "hover:bg-green-50 hover:text-green-700"
+                              )}
                             >
                               {product.is_active ? (
                                 <>
@@ -158,7 +460,7 @@ export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggl
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
                               onClick={() => setDeleteProduct(product)}
-                              className="text-red-600"
+                              className="text-red-600 transition-colors duration-200 hover:bg-red-50 hover:text-red-700"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
                               Eliminar

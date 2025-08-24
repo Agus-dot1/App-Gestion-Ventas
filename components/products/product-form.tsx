@@ -6,9 +6,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { AlertCircle, Package, DollarSign } from 'lucide-react';
+import { AlertCircle, Package, DollarSign, Tag, Hash } from 'lucide-react';
 import type { Product } from '@/lib/database-operations';
 
 interface ProductFormProps {
@@ -23,6 +24,8 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
     name: product?.name || '',
     price: product?.price?.toString() || '',
     description: product?.description || '',
+    category: product?.category || '',
+    stock: product?.stock?.toString() || '',
     is_active: product?.is_active ?? true
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -59,6 +62,8 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
         name: formData.name.trim(),
         price: parseFloat(formData.price),
         description: formData.description.trim() || undefined,
+        category: formData.category.trim() || undefined,
+        stock: formData.stock ? parseInt(formData.stock) : undefined,
         is_active: formData.is_active
       });
       
@@ -67,6 +72,8 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
         name: '',
         price: '',
         description: '',
+        category: '',
+        stock: '',
         is_active: true
       });
       setErrors({});
@@ -83,6 +90,8 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
       name: product?.name || '',
       price: product?.price?.toString() || '',
       description: product?.description || '',
+      category: product?.category || '',
+      stock: product?.stock?.toString() || '',
       is_active: product?.is_active ?? true
     });
   }, [product]);
@@ -150,6 +159,49 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
                   {errors.price}
                 </div>
               )}
+            </div>
+
+            {/* Category */}
+            <div className="space-y-2">
+              <Label htmlFor="category">Categoría</Label>
+              <Select value={formData.category} onValueChange={(value) => handleInputChange('category', value)}>
+                <SelectTrigger className="w-full">
+                  <div className="flex items-center gap-2">
+                    <Tag className="h-4 w-4 text-muted-foreground" />
+                    <SelectValue placeholder="Seleccionar categoría (opcional)" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                   <SelectItem value="sin-categoria">Sin categoría</SelectItem>
+                   <SelectItem value="Electrónicos">Electrónicos</SelectItem>
+                   <SelectItem value="Ropa">Ropa</SelectItem>
+                   <SelectItem value="Hogar">Hogar</SelectItem>
+                   <SelectItem value="Deportes">Deportes</SelectItem>
+                   <SelectItem value="Libros">Libros</SelectItem>
+                   <SelectItem value="Juguetes">Juguetes</SelectItem>
+                   <SelectItem value="Salud">Salud</SelectItem>
+                   <SelectItem value="Automóvil">Automóvil</SelectItem>
+                   <SelectItem value="Herramientas">Herramientas</SelectItem>
+                   <SelectItem value="Otros">Otros</SelectItem>
+                 </SelectContent>
+              </Select>
+            </div>
+
+            {/* Stock */}
+            <div className="space-y-2">
+              <Label htmlFor="stock">Stock</Label>
+              <div className="relative">
+                <Hash className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="stock"
+                  type="number"
+                  min="0"
+                  value={formData.stock}
+                  onChange={(e) => handleInputChange('stock', e.target.value)}
+                  placeholder="Cantidad disponible (opcional)"
+                  className="pl-10"
+                />
+              </div>
             </div>
 
             {/* Description */}

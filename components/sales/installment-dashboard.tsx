@@ -73,6 +73,14 @@ interface FilterOptions {
 }
 
 export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDashboardProps) {
+  // Helper function to check if payment is early
+  const isEarlyPayment = (installment: ExtendedInstallment) => {
+    const dueDate = new Date(installment.due_date);
+    const today = new Date();
+    const daysUntilDue = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    return daysUntilDue > 7;
+  };
+
   const [installments, setInstallments] = useState<ExtendedInstallment[]>([]);
   const [overdueInstallments, setOverdueInstallments] = useState<ExtendedInstallment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -620,6 +628,7 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
 revertPayment={handleRevertPayment}
             title="Todas las cuotas"
             description="Lista completa de todas las cuotas generadas por ventas a plazos"
+            isEarlyPayment={isEarlyPayment}
           />
         </TabsContent>
 
@@ -634,6 +643,7 @@ revertPayment={handleRevertPayment}
             description="Cuotas que están vencidas y requieren atención inmediata"
             showOverdueDays
             showContactActions
+            isEarlyPayment={isEarlyPayment}
           />
         </TabsContent>
 
@@ -652,6 +662,7 @@ revertPayment={handleRevertPayment}
             title="Cuotas por vencer"
             description="Cuotas que vencerán en los próximos 7 días"
             showEarlyPaymentIncentive
+            isEarlyPayment={isEarlyPayment}
           />
         </TabsContent>
       </Tabs>
@@ -869,6 +880,7 @@ interface InstallmentTableProps {
   showOverdueDays?: boolean;
   showContactActions?: boolean;
   showEarlyPaymentIncentive?: boolean;
+  isEarlyPayment?: (installment: ExtendedInstallment) => boolean;
 }
 
 function InstallmentTable({ 
@@ -881,7 +893,8 @@ function InstallmentTable({
   description, 
   showOverdueDays,
   showContactActions,
-  showEarlyPaymentIncentive
+  showEarlyPaymentIncentive,
+  isEarlyPayment
 }: InstallmentTableProps) {
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('es-ES', {
@@ -932,13 +945,6 @@ function InstallmentTable({
     const diffTime = today.getTime() - due.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays > 0 ? diffDays : 0;
-  };
-
-  const isEarlyPayment = (installment: ExtendedInstallment) => {
-    const dueDate = new Date(installment.due_date);
-    const today = new Date();
-    const daysUntilDue = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    return daysUntilDue > 7;
   };
 
   return (
@@ -1050,7 +1056,7 @@ function InstallmentTable({
                     )}
                     {showEarlyPaymentIncentive && (
                       <TableCell>
-                        {isEarlyPayment(installment) && (
+                        {isEarlyPayment && isEarlyPayment(installment) && (
                           <Badge className="bg-green-100 text-green-800">
                             <Gift className="w-3 h-3 mr-1" />
                             5% off

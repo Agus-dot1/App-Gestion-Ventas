@@ -1,0 +1,468 @@
+'use client';
+
+import { useState, useMemo } from 'react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Search, MoreHorizontal, Edit, Trash2, Users, Phone, Calendar, Loader2, Mail, Building, Tag, Eye, Download, X, ChevronUp, ChevronDown, FileText } from 'lucide-react';
+import { CustomerProfile } from './customer-profile';
+import type { Customer, Sale } from '@/lib/database-operations';
+import { cn } from '@/lib/utils';
+
+interface EnhancedCustomersTableProps {
+  customers: Customer[];
+  highlightId?: string | null;
+  onEdit: (customer: Customer) => void;
+  onDelete: (customerId: number) => void;
+  onView: (customer: Customer) => void;
+  isLoading?: boolean;
+}
+
+function formatDate(dateString: string): string {
+  return new Date(dateString).toLocaleDateString('es-ES', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+}
+
+export function EnhancedCustomersTable({ customers, highlightId, onEdit, onDelete, onView, isLoading = false }: EnhancedCustomersTableProps) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ key: keyof Customer; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [selectedCustomers, setSelectedCustomers] = useState<Set<number>>(new Set());
+  const [deleteCustomer, setDeleteCustomer] = useState<Customer | null>(null);
+  const itemsPerPage = 10;
+
+  // Sort function
+  const handleSort = (key: keyof Customer) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  // Filter customers based on search term
+  const filteredCustomers = customers.filter(customer =>
+    customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    customer.company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    customer.tags?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Sort customers
+  const sortedCustomers = useMemo(() => {
+    const sorted = [...filteredCustomers];
+    sorted.sort((a, b) => {
+      const aValue = a[sortConfig.key] || '';
+      const bValue = b[sortConfig.key] || '';
+      
+      if (sortConfig.direction === 'asc') {
+        return aValue.toString().localeCompare(bValue.toString());
+      } else {
+        return bValue.toString().localeCompare(aValue.toString());
+      }
+    });
+    return sorted;
+  }, [filteredCustomers, sortConfig]);
+
+  // Use sorted customers for pagination
+  const totalPages = Math.ceil(sortedCustomers.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedCustomers = sortedCustomers.slice(startIndex, endIndex);
+
+  // Reset to first page when search changes
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    setSelectedCustomers(new Set()); // Clear selections when changing pages
+  };
+
+  const handleSelectCustomer = (customerId: number | undefined, checked: boolean) => {
+    if (customerId === undefined) return;
+    
+    const newSelected = new Set(selectedCustomers);
+    if (checked) {
+      newSelected.add(customerId);
+    } else {
+      newSelected.delete(customerId);
+    }
+    setSelectedCustomers(newSelected);
+  };
+
+  const handleDelete = async () => {
+    if (deleteCustomer?.id) {
+      await onDelete(deleteCustomer.id);
+      setDeleteCustomer(null);
+    }
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      // Select all customers in the entire dataset, not just current page
+      setSelectedCustomers(new Set(sortedCustomers.map(c => c.id).filter(id => id !== undefined) as number[]));
+    } else {
+      setSelectedCustomers(new Set());
+    }
+  };
+
+  // Check if all customers are selected (across all pages)
+  const allCustomerIds = new Set(sortedCustomers.map(c => c.id).filter(id => id !== undefined));
+  const isAllSelected = sortedCustomers.length > 0 && selectedCustomers.size === allCustomerIds.size;
+  const isIndeterminate = selectedCustomers.size > 0 && selectedCustomers.size < allCustomerIds.size;
+
+  // Export functions
+  const exportToPDF = () => {
+    const selectedData = customers.filter(c => c.id && selectedCustomers.has(c.id));
+    const doc = new jsPDF();
+    
+    // Add title
+    doc.setFontSize(16);
+    doc.text('Lista de Clientes', 14, 22);
+    
+    // Prepare data for table
+    const tableData = selectedData.map(customer => [
+      customer.name,
+      customer.email || '-',
+      customer.phone || '-',
+      customer.address || '-'
+    ]);
+    
+    // Add table
+    autoTable(doc, {
+      head: [['Nombre', 'Email', 'Teléfono', 'Dirección']],
+      body: tableData,
+      startY: 30,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [41, 128, 185] }
+    });
+    
+    doc.save('clientes_seleccionados.pdf');
+  };
+
+  const exportToExcel = () => {
+    const selectedData = customers.filter(c => c.id && selectedCustomers.has(c.id));
+    const worksheetData = selectedData.map(customer => ({
+      'Nombre': customer.name,
+      'Email': customer.email || '',
+      'Teléfono': customer.phone || '',
+      'Dirección': customer.address || '',
+      'Notas': customer.notes || '',
+      'Etiquetas': customer.tags || ''
+    }));
+    
+    const worksheet = XLSX.utils.json_to_sheet(worksheetData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Clientes');
+    
+    XLSX.writeFile(workbook, 'clientes_seleccionados.xlsx');
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Clientes
+              </CardTitle>
+              <CardDescription>
+                Aquí puedes ver y gestionar todos tus clientes.
+              </CardDescription>
+            </div>
+            <div className="relative w-64">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar..."
+                value={searchTerm}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="pl-8"
+                disabled={isLoading}
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+              {/* Bulk Actions Bar */}
+              {selectedCustomers.size > 0 && !isLoading && (
+                <div className="flex items-center justify-between p-4 bg-muted/50 border border-border rounded-lg mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-foreground">
+                      {selectedCustomers.size} cliente{selectedCustomers.size !== 1 ? 's' : ''} seleccionado{selectedCustomers.size !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isLoading}
+                      onClick={exportToPDF}
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      Exportar PDF
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isLoading}
+                      onClick={exportToExcel}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Exportar Excel
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isLoading}
+                      onClick={() => {
+                        const selectedData = paginatedCustomers.filter(c => c.id && selectedCustomers.has(c.id));
+                        selectedData.forEach(customer => {
+                          if (customer.id) {
+                            onDelete(customer.id);
+                          }
+                        });
+                        setSelectedCustomers(new Set());
+                      }}
+                      className="text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Eliminar Seleccionados
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={isLoading}
+                      onClick={() => setSelectedCustomers(new Set())}
+                    >
+                      <X className="h-4 w-4 mr-2" />
+                      Cancelar
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12">
+                      <Checkbox
+                        checked={isAllSelected}
+                        onCheckedChange={handleSelectAll}
+                        aria-label="Seleccionar todos"
+                      />
+                    </TableHead>
+                    <TableHead>
+                      <Button variant="ghost" onClick={() => handleSort('name')} className="h-auto p-0 font-semibold">
+                        Nombre
+                        {sortConfig.key === 'name' && (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="ml-1 h-4 w-4" /> : <ChevronDown className="ml-1 h-4 w-4" />
+                        )}
+                      </Button>
+                    </TableHead>
+                    <TableHead>
+                      <Button variant="ghost" onClick={() => handleSort('email')} className="h-auto p-0 font-semibold">
+                        Contacto
+                        {sortConfig.key === 'email' && (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="ml-1 h-4 w-4" /> : <ChevronDown className="ml-1 h-4 w-4" />
+                        )}
+                      </Button>
+                    </TableHead>
+                    <TableHead>
+                      <Button variant="ghost" onClick={() => handleSort('address')} className="h-auto p-0 font-semibold">
+                        Dirección
+                        {sortConfig.key === 'address' && (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="ml-1 h-4 w-4" /> : <ChevronDown className="ml-1 h-4 w-4" />
+                        )}
+                      </Button>
+                    </TableHead>
+                    <TableHead className="w-[70px]">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+              <TableBody>
+                  {isLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8">
+                        <div className="flex items-center justify-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span className="text-muted-foreground">Cargando clientes...</span>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : paginatedCustomers.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                        {sortedCustomers.length === 0 ? 'No se encontraron clientes' : 'No hay clientes en esta página'}
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    paginatedCustomers.map((customer) => (
+                      <TableRow 
+                        key={customer.id}
+                        className={cn(
+                          highlightId === customer.id?.toString() && "bg-muted/50"
+                        )}
+                      >
+                        <TableCell>
+                          <Checkbox
+                            checked={customer.id ? selectedCustomers.has(customer.id) : false}
+                            onCheckedChange={(checked) => {
+                              if (customer.id) {
+                                handleSelectCustomer(customer.id, checked as boolean);
+                              }
+                            }}
+                            aria-label={`Seleccionar ${customer.name}`}
+                          />
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            {customer.name}
+                            {highlightId === customer.id?.toString() && (
+                              <Badge variant="outline" className="bg-primary/10 text-primary">
+                                Found
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1">
+                              <Mail className="h-3 w-3 text-muted-foreground" />
+                              <span className="text-sm">{customer.email || '-'}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Phone className="h-3 w-3 text-muted-foreground" />
+                              <span className="text-sm">{customer.phone || '-'}</span>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>{customer.address || '-'}</TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" className="h-8 w-8 p-0">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => onView(customer)}>
+                                <Eye className="mr-2 h-4 w-4" />
+                                Ver detalles
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => onEdit(customer)}>
+                                <Edit className="mr-2 h-4 w-4" />
+                                Editar
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem 
+                                onClick={() => setDeleteCustomer(customer)}
+                                className="text-red-600"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Eliminar
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+              </div>
+            </div>
+          
+          
+          {/* Pagination Controls */}
+          {!isLoading && sortedCustomers.length > itemsPerPage && (
+            <div className="flex items-center justify-between px-2 py-4">
+              <div className="text-sm text-muted-foreground">
+                Mostrando {startIndex + 1} a {Math.min(endIndex, sortedCustomers.length)} de {sortedCustomers.length} clientes
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                >
+                  Anterior
+                </Button>
+                <div className="flex items-center space-x-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                    // Show first page, last page, current page, and pages around current
+                    const showPage = page === 1 || page === totalPages || 
+                                   (page >= currentPage - 1 && page <= currentPage + 1);
+                    
+                    if (!showPage) {
+                      // Show ellipsis for gaps
+                      if (page === currentPage - 2 || page === currentPage + 2) {
+                        return <span key={page} className="px-2 text-muted-foreground">...</span>;
+                      }
+                      return null;
+                    }
+                    
+                    return (
+                      <Button
+                        key={page}
+                        variant={currentPage === page ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => handlePageChange(page)}
+                        className="w-8 h-8 p-0"
+                      >
+                        {page}
+                      </Button>
+                    );
+                  })}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                >
+                  Siguiente
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteCustomer} onOpenChange={() => setDeleteCustomer(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar cliente</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de eliminar a "{deleteCustomer?.name}"? Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700 text-slate-50">
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+    </div>
+  );
+}

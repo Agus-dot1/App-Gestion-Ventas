@@ -225,7 +225,7 @@ export default function ProductsPage() {
 
         {/* Statistics Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          <Card>
+          <Card className="animate-in slide-in-from-left-5 duration-300">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium">Productos totales</CardTitle>
@@ -241,7 +241,7 @@ export default function ProductsPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="animate-in slide-in-from-left-5 duration-500">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium">Productos activos</CardTitle>
@@ -257,7 +257,7 @@ export default function ProductsPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="animate-in slide-in-from-left-5 duration-700">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium">Productos inactivos</CardTitle>
@@ -273,7 +273,7 @@ export default function ProductsPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="animate-in slide-in-from-left-5 duration-1000">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium">Valor de inventario</CardTitle>

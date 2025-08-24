@@ -10,6 +10,67 @@ exports.customerOperations = {
         const stmt = db.prepare('SELECT * FROM customers ORDER BY name');
         return stmt.all();
     },
+    // Optimized pagination function
+    getPaginated: (page = 1, pageSize = 10, searchTerm = '') => {
+        const db = (0, database_1.getDatabase)();
+        const offset = (page - 1) * pageSize;
+        let whereClause = '';
+        let params = [];
+        if (searchTerm.trim()) {
+            whereClause = `WHERE 
+        name LIKE ? OR 
+        email LIKE ? OR 
+        company LIKE ? OR 
+        tags LIKE ? OR
+        phone LIKE ?`;
+            const searchPattern = `%${searchTerm.trim()}%`;
+            params = [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern];
+        }
+        // Get total count for pagination
+        const countStmt = db.prepare(`SELECT COUNT(*) as total FROM customers ${whereClause}`);
+        const { total } = countStmt.get(...params);
+        // Get paginated results with optimized query
+        const stmt = db.prepare(`
+      SELECT * FROM customers 
+      ${whereClause}
+      ORDER BY name 
+      LIMIT ? OFFSET ?
+    `);
+        const customers = stmt.all(...params, pageSize, offset);
+        return {
+            customers,
+            total,
+            totalPages: Math.ceil(total / pageSize),
+            currentPage: page
+        };
+    },
+    // Optimized search function
+    search: (searchTerm, limit = 50) => {
+        const db = (0, database_1.getDatabase)();
+        if (!searchTerm.trim())
+            return [];
+        const stmt = db.prepare(`
+      SELECT * FROM customers 
+      WHERE 
+        name LIKE ? OR 
+        email LIKE ? OR 
+        company LIKE ? OR 
+        tags LIKE ? OR
+        phone LIKE ?
+      ORDER BY 
+        CASE 
+          WHEN name LIKE ? THEN 1
+          WHEN email LIKE ? THEN 2
+          WHEN company LIKE ? THEN 3
+          ELSE 4
+        END,
+        name
+      LIMIT ?
+    `);
+        const searchPattern = `%${searchTerm.trim()}%`;
+        const exactPattern = `${searchTerm.trim()}%`;
+        return stmt.all(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, exactPattern, exactPattern, exactPattern, limit);
+    },
     getById: (id) => {
         const db = (0, database_1.getDatabase)();
         const stmt = db.prepare('SELECT * FROM customers WHERE id = ?');
@@ -21,8 +82,11 @@ exports.customerOperations = {
     },
     create: (customer) => {
         const db = (0, database_1.getDatabase)();
-        const stmt = db.prepare('INSERT INTO customers (name, contact_info) VALUES (?, ?)');
-        const result = stmt.run(customer.name, customer.contact_info || null);
+        const stmt = db.prepare(`
+      INSERT INTO customers (name, email, phone, address, company, notes, tags, contact_info) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+        const result = stmt.run(customer.name, customer.email || null, customer.phone || null, customer.address || null, customer.company || null, customer.notes || null, customer.tags || null, customer.contact_info || null);
         return result.lastInsertRowid;
     },
     update: (id, customer) => {
@@ -33,12 +97,38 @@ exports.customerOperations = {
             fields.push('name = ?');
             values.push(customer.name);
         }
+        if (customer.email !== undefined) {
+            fields.push('email = ?');
+            values.push(customer.email);
+        }
+        if (customer.phone !== undefined) {
+            fields.push('phone = ?');
+            values.push(customer.phone);
+        }
+        if (customer.address !== undefined) {
+            fields.push('address = ?');
+            values.push(customer.address);
+        }
+        if (customer.company !== undefined) {
+            fields.push('company = ?');
+            values.push(customer.company);
+        }
+        if (customer.notes !== undefined) {
+            fields.push('notes = ?');
+            values.push(customer.notes);
+        }
+        if (customer.tags !== undefined) {
+            fields.push('tags = ?');
+            values.push(customer.tags);
+        }
         if (customer.contact_info !== undefined) {
             fields.push('contact_info = ?');
             values.push(customer.contact_info);
         }
         if (fields.length === 0)
             return;
+        // Always update the updated_at timestamp
+        fields.push('updated_at = CURRENT_TIMESTAMP');
         values.push(id);
         const stmt = db.prepare(`UPDATE customers SET ${fields.join(', ')} WHERE id = ?`);
         stmt.run(...values);
@@ -87,8 +177,8 @@ exports.productOperations = {
     },
     create: (product) => {
         const db = (0, database_1.getDatabase)();
-        const stmt = db.prepare('INSERT INTO products (name, price, description, is_active) VALUES (?, ?, ?, ?)');
-        const result = stmt.run(product.name, product.price, product.description || null, product.is_active ? 1 : 0);
+        const stmt = db.prepare('INSERT INTO products (name, price, description, category, stock, is_active) VALUES (?, ?, ?, ?, ?, ?)');
+        const result = stmt.run(product.name, product.price, product.description || null, product.category || null, product.stock || null, product.is_active ? 1 : 0);
         return result.lastInsertRowid;
     },
     update: (id, product) => {
@@ -106,6 +196,14 @@ exports.productOperations = {
         if (product.description !== undefined) {
             fields.push('description = ?');
             values.push(product.description);
+        }
+        if (product.category !== undefined) {
+            fields.push('category = ?');
+            values.push(product.category);
+        }
+        if (product.stock !== undefined) {
+            fields.push('stock = ?');
+            values.push(product.stock);
         }
         if (product.is_active !== undefined) {
             fields.push('is_active = ?');

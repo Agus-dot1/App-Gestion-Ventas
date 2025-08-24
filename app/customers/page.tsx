@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DashboardLayout } from '@/components/dashboard-layout';
 import { CustomerForm } from '@/components/customers/customer-form';
-import { CustomersTable } from '@/components/customers/customers-table';
+import { CustomerProfile } from '@/components/customers/customer-profile';
+import { EnhancedCustomersTable } from '@/components/customers/enhanced-customers-table';
 import { Plus, Users, TrendingUp, Calendar, Database } from 'lucide-react';
 import type { Customer } from '@/lib/database-operations';
 
@@ -16,7 +17,14 @@ export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | undefined>();
+  const [viewingCustomer, setViewingCustomer] = useState<Customer | undefined>();
   const [isElectron, setIsElectron] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [paginationInfo, setPaginationInfo] = useState({
+    total: 0,
+    totalPages: 0,
+    currentPage: 1
+  });
 
   useEffect(() => {
     setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
@@ -48,10 +56,13 @@ export default function CustomersPage() {
   }, [highlightedCustomer]);
   const loadCustomers = async () => {
     try {
+      setIsLoading(true);
       const allCustomers = await window.electronAPI.database.customers.getAll();
       setCustomers(allCustomers);
     } catch (error) {
       console.error('Error cargando clientes:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -111,7 +122,63 @@ export default function CustomersPage() {
         contact_info: 'Phone: (555) 890-1234\nEmail: chris.lee@email.com\nAddress: 369 Spruce Avenue, Riverside, ST 57913\nBusiness owner'
       },
       {
-        name: 'Amanda White',
+        name: 'Amanda Garcia',
+        email: 'amanda.garcia@email.com',
+        phone: '(555) 901-2345',
+        company: 'Garcia Solutions',
+        address: '741 Aspen Court, Mountain View, ST 68024'
+      },
+      {
+        name: 'Kevin Rodriguez',
+        email: 'kevin.r@email.com',
+        phone: '(555) 012-3456',
+        company: 'Rodriguez Tech',
+        address: '852 Redwood Drive, Valley City, ST 79135'
+      },
+      {
+        name: 'Michelle Thompson',
+        email: 'michelle.thompson@email.com',
+        phone: '(555) 123-4567',
+        company: 'Thompson Consulting',
+        address: '963 Sequoia Lane, Forest Hills, ST 80246'
+      },
+      {
+        name: 'Daniel White',
+        email: 'daniel.white@email.com',
+        phone: '(555) 234-5678',
+        company: 'White Industries',
+        address: '159 Cypress Street, Oceanview, ST 91357'
+      },
+      {
+        name: 'Jessica Harris',
+        email: 'jessica.harris@email.com',
+        phone: '(555) 345-6789',
+        company: 'Harris Marketing',
+        address: '357 Magnolia Avenue, Sunset City, ST 02468'
+      },
+      {
+        name: 'Ryan Clark',
+        email: 'ryan.clark@email.com',
+        phone: '(555) 456-7890',
+        company: 'Clark Enterprises',
+        address: '468 Dogwood Road, Riverside Park, ST 13579'
+      },
+      {
+        name: 'Nicole Lewis',
+        email: 'nicole.lewis@email.com',
+        phone: '(555) 567-8901',
+        company: 'Lewis Design Studio',
+        address: '579 Hickory Drive, Garden City, ST 24680'
+      },
+      {
+         name: 'Brandon Walker',
+         email: 'brandon.walker@email.com',
+         phone: '(555) 678-9012',
+         company: 'Walker Construction',
+         address: '680 Walnut Street, Hillside, ST 35791'
+       },
+       {
+         name: 'Amanda White',
         contact_info: 'Phone: (555) 901-2345\nEmail: amanda.white@email.com\nAddress: 741 Poplar Court, Westfield, ST 68024\nFrequent customer since 2020'
       }
     ];
@@ -130,6 +197,10 @@ export default function CustomersPage() {
   const handleEditCustomer = (customer: Customer) => {
     setEditingCustomer(customer);
     setIsFormOpen(true);
+  };
+
+  const handleViewCustomer = (customer: Customer) => {
+    setViewingCustomer(customer);
   };
 
   const handleDeleteCustomer = async (customerId: number) => {
@@ -199,11 +270,13 @@ export default function CustomersPage() {
 
         {/* Customers Table */}
         {isElectron ? (
-          <CustomersTable
+          <EnhancedCustomersTable
             customers={customers}
             highlightId={highlightId}
             onEdit={handleEditCustomer}
+            onView={handleViewCustomer}
             onDelete={handleDeleteCustomer}
+            isLoading={isLoading}
           />
         ) : (
           <Card>
@@ -226,6 +299,19 @@ export default function CustomersPage() {
           onOpenChange={handleFormClose}
           onSave={handleSaveCustomer}
         />
+
+        {/* Customer Profile Modal */}
+        {viewingCustomer && (
+          <CustomerProfile
+            customer={viewingCustomer}
+            onEdit={(customer) => {
+              setViewingCustomer(undefined);
+              setEditingCustomer(customer);
+              setIsFormOpen(true);
+            }}
+            onClose={() => setViewingCustomer(undefined)}
+          />
+        )}
       </div>
     </DashboardLayout>
   );
