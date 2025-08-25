@@ -20,11 +20,15 @@ export default function CustomersPage() {
   const [viewingCustomer, setViewingCustomer] = useState<Customer | undefined>();
   const [isElectron, setIsElectron] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
   const [paginationInfo, setPaginationInfo] = useState({
     total: 0,
     totalPages: 0,
-    currentPage: 1
+    currentPage: 1,
+    pageSize: 25
   });
+  const pageSize = 25; // Load 25 customers per page for better performance
 
   useEffect(() => {
     setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
@@ -32,6 +36,13 @@ export default function CustomersPage() {
       loadCustomers();
     }
   }, []);
+
+  // Reload customers when search term or page changes
+  useEffect(() => {
+    if (isElectron) {
+      loadCustomers();
+    }
+  }, [searchTerm, currentPage, isElectron]);
 
   // Highlight customer if specified in URL
   const highlightedCustomer = useMemo(() => {
@@ -57,8 +68,18 @@ export default function CustomersPage() {
   const loadCustomers = async () => {
     try {
       setIsLoading(true);
-      const allCustomers = await window.electronAPI.database.customers.getAll();
-      setCustomers(allCustomers);
+      const result = await window.electronAPI.database.customers.getPaginated(
+        currentPage,
+        pageSize,
+        searchTerm
+      );
+      setCustomers(result.customers);
+      setPaginationInfo({
+        total: result.total,
+        totalPages: result.totalPages,
+        currentPage: result.currentPage,
+        pageSize: result.pageSize || pageSize
+      });
     } catch (error) {
       console.error('Error cargando clientes:', error);
     } finally {
@@ -277,6 +298,12 @@ export default function CustomersPage() {
             onView={handleViewCustomer}
             onDelete={handleDeleteCustomer}
             isLoading={isLoading}
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+            currentPage={currentPage}
+            onPageChange={setCurrentPage}
+            paginationInfo={paginationInfo}
+            serverSidePagination={true}
           />
         ) : (
           <Card>

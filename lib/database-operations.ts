@@ -128,6 +128,7 @@ declare global {
             total: number;
             totalPages: number;
             currentPage: number;
+            pageSize: number;
           }>;
           search: (searchTerm: string, limit?: number) => Promise<Customer[]>;
           getById: (id: number) => Promise<Customer>;
@@ -137,6 +138,14 @@ declare global {
         };
         products: {
           getAll: () => Promise<Product[]>;
+          getPaginated: (page?: number, pageSize?: number, searchTerm?: string) => Promise<{
+            products: Product[];
+            total: number;
+            totalPages: number;
+            currentPage: number;
+            pageSize: number;
+          }>;
+          search: (searchTerm: string, limit?: number) => Promise<Product[]>;
           getById: (id: number) => Promise<Product>;
           getActive: () => Promise<Product[]>;
           create: (product: Omit<Product, 'id'>) => Promise<number>;
@@ -145,6 +154,14 @@ declare global {
         };
         sales: {
           getAll: () => Promise<Sale[]>;
+          getPaginated: (page?: number, pageSize?: number, searchTerm?: string) => Promise<{
+            sales: Sale[];
+            total: number;
+            totalPages: number;
+            currentPage: number;
+            pageSize: number;
+          }>;
+          search: (searchTerm: string, limit?: number) => Promise<Sale[]>;
           getById: (id: number) => Promise<Sale>;
           getByCustomer: (customerId: number) => Promise<Sale[]>;
           create: (sale: SaleFormData) => Promise<number>;
@@ -183,6 +200,7 @@ export const customerOperations = {
     total: number;
     totalPages: number;
     currentPage: number;
+    pageSize: number;
   } => {
     const db = getDatabase();
     const offset = (page - 1) * pageSize;
@@ -219,7 +237,8 @@ export const customerOperations = {
       customers,
       total,
       totalPages: Math.ceil(total / pageSize),
-      currentPage: page
+      currentPage: page,
+      pageSize
     };
   },
 
@@ -368,6 +387,79 @@ export const productOperations = {
     return stmt.all() as Product[];
   },
 
+  getPaginated: (page: number = 1, pageSize: number = 10, searchTerm: string = ''): {
+    products: Product[];
+    total: number;
+    totalPages: number;
+    currentPage: number;
+    pageSize: number;
+  } => {
+    const db = getDatabase();
+    const offset = (page - 1) * pageSize;
+    
+    let whereClause = '';
+    let params: any[] = [];
+    
+    if (searchTerm.trim()) {
+      whereClause = 'WHERE name LIKE ? OR description LIKE ? OR category LIKE ?';
+      const searchPattern = `%${searchTerm.trim()}%`;
+      params = [searchPattern, searchPattern, searchPattern];
+    }
+    
+    // Get total count for pagination
+    const countStmt = db.prepare(`SELECT COUNT(*) as total FROM products ${whereClause}`);
+    const { total } = countStmt.get(...params) as { total: number };
+    
+    // Get paginated results
+    const stmt = db.prepare(`
+      SELECT * FROM products 
+      ${whereClause}
+      ORDER BY name 
+      LIMIT ? OFFSET ?
+    `);
+    
+    const products = stmt.all(...params, pageSize, offset) as Product[];
+    
+    return {
+      products,
+      total,
+      totalPages: Math.ceil(total / pageSize),
+      currentPage: page,
+      pageSize
+    };
+  },
+
+  search: (searchTerm: string, limit: number = 50): Product[] => {
+    const db = getDatabase();
+    if (!searchTerm.trim()) return [];
+    
+    const stmt = db.prepare(`
+      SELECT * FROM products 
+      WHERE 
+        name LIKE ? OR 
+        description LIKE ? OR 
+        category LIKE ?
+      ORDER BY 
+        CASE 
+          WHEN name LIKE ? THEN 1
+          WHEN description LIKE ? THEN 2
+          WHEN category LIKE ? THEN 3
+          ELSE 4
+        END,
+        name
+      LIMIT ?
+    `);
+    
+    const searchPattern = `%${searchTerm.trim()}%`;
+    const exactPattern = `${searchTerm.trim()}%`;
+    
+    return stmt.all(
+      searchPattern, searchPattern, searchPattern,
+      exactPattern, exactPattern, exactPattern,
+      limit
+    ) as Product[];
+  },
+
   getActive: (): Product[] => {
     const db = getDatabase();
     const stmt = db.prepare('SELECT * FROM products WHERE is_active = 1 ORDER BY name');
@@ -455,6 +547,88 @@ export const saleOperations = {
       ORDER BY s.date DESC
     `);
     return stmt.all() as Sale[];
+  },
+
+  getPaginated: (page: number = 1, pageSize: number = 10, searchTerm: string = ''): {
+    sales: Sale[];
+    total: number;
+    totalPages: number;
+    currentPage: number;
+    pageSize: number;
+  } => {
+    const db = getDatabase();
+    const offset = (page - 1) * pageSize;
+    
+    let whereClause = '';
+    let params: any[] = [];
+    
+    if (searchTerm.trim()) {
+      whereClause = 'WHERE s.sale_number LIKE ? OR c.name LIKE ? OR s.notes LIKE ?';
+      const searchPattern = `%${searchTerm.trim()}%`;
+      params = [searchPattern, searchPattern, searchPattern];
+    }
+    
+    // Get total count for pagination
+    const countStmt = db.prepare(`
+      SELECT COUNT(*) as total 
+      FROM sales s
+      LEFT JOIN customers c ON s.customer_id = c.id
+      ${whereClause}
+    `);
+    const { total } = countStmt.get(...params) as { total: number };
+    
+    // Get paginated results
+    const stmt = db.prepare(`
+      SELECT s.*, c.name as customer_name
+      FROM sales s
+      LEFT JOIN customers c ON s.customer_id = c.id
+      ${whereClause}
+      ORDER BY s.date DESC 
+      LIMIT ? OFFSET ?
+    `);
+    
+    const sales = stmt.all(...params, pageSize, offset) as Sale[];
+    
+    return {
+      sales,
+      total,
+      totalPages: Math.ceil(total / pageSize),
+      currentPage: page,
+      pageSize
+    };
+  },
+
+  search: (searchTerm: string, limit: number = 50): Sale[] => {
+    const db = getDatabase();
+    if (!searchTerm.trim()) return [];
+    
+    const stmt = db.prepare(`
+      SELECT s.*, c.name as customer_name
+      FROM sales s
+      LEFT JOIN customers c ON s.customer_id = c.id
+      WHERE 
+        s.sale_number LIKE ? OR 
+        c.name LIKE ? OR 
+        s.notes LIKE ?
+      ORDER BY 
+        CASE 
+          WHEN s.sale_number LIKE ? THEN 1
+          WHEN c.name LIKE ? THEN 2
+          WHEN s.notes LIKE ? THEN 3
+          ELSE 4
+        END,
+        s.date DESC
+      LIMIT ?
+    `);
+    
+    const searchPattern = `%${searchTerm.trim()}%`;
+    const exactPattern = `${searchTerm.trim()}%`;
+    
+    return stmt.all(
+      searchPattern, searchPattern, searchPattern,
+      exactPattern, exactPattern, exactPattern,
+      limit
+    ) as Sale[];
   },
 
   getById: (id: number): Sale => {

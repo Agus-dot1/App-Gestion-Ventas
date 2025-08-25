@@ -16,6 +16,7 @@ import autoTable from 'jspdf-autotable';
 import type { Product } from '@/lib/database-operations';
 import { cn } from '@/lib/utils';
 import { DropdownMenuSeparator } from '@radix-ui/react-dropdown-menu';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface ProductsTableProps {
   products: Product[];
@@ -23,10 +24,30 @@ interface ProductsTableProps {
   onEdit: (product: Product) => void;
   onDelete: (productId: number) => void;
   onToggleStatus: (productId: number, isActive: boolean) => void;
+  isLoading?: boolean;
+  searchTerm?: string;
+  onSearchChange?: (value: string) => void;
+  currentPage?: number;
+  onPageChange?: (page: number) => void;
+  paginationInfo?: { total: number; totalPages: number; currentPage: number; pageSize: number };
+  serverSidePagination?: boolean;
 }
 
-export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggleStatus }: ProductsTableProps) {
-  const [searchTerm, setSearchTerm] = useState('');
+export function ProductsTable({ 
+  products, 
+  highlightId, 
+  onEdit, 
+  onDelete, 
+  onToggleStatus, 
+  isLoading = false,
+  searchTerm: externalSearchTerm,
+  onSearchChange,
+  currentPage: externalCurrentPage,
+  onPageChange,
+  paginationInfo,
+  serverSidePagination = false
+}: ProductsTableProps) {
+  const [internalSearchTerm, setInternalSearchTerm] = useState('');
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
   const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
@@ -34,7 +55,11 @@ export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggl
   const [priceFilter, setPriceFilter] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
 
-  const filteredProducts = products.filter(product => {
+  // Use external state for server-side pagination, internal state for client-side
+  const searchTerm = serverSidePagination ? (externalSearchTerm || '') : internalSearchTerm;
+  const setSearchTerm = serverSidePagination ? (onSearchChange || (() => {})) : setInternalSearchTerm;
+
+  const filteredProducts = serverSidePagination ? products : products.filter(product => {
     // Text search filter
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.description?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -240,6 +265,7 @@ export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggl
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="pl-8 w-64 transition-all duration-200 focus:w-72"
+                      disabled={isLoading}
                     />
                   </div>
                   <Button
@@ -250,6 +276,7 @@ export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggl
                       "h-10 transition-all duration-200",
                       showFilters && "bg-primary/10 text-primary"
                     )}
+                    disabled={isLoading}
                   >
                     <Filter className="h-4 w-4 mr-1" />
                     Filtros
@@ -315,7 +342,56 @@ export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggl
             </div>
           )}
           <CardContent>
-          {filteredProducts.length === 0 ? (
+          {isLoading ? (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[50px]">
+                      <Skeleton className="h-4 w-4" />
+                    </TableHead>
+                    <TableHead>Nombre</TableHead>
+                    <TableHead>Categoría</TableHead>
+                    <TableHead>Precio</TableHead>
+                    <TableHead>Stock</TableHead>
+                    <TableHead>Descripción</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead className="w-[70px]">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Array.from({ length: 5 }).map((_, index) => (
+                    <TableRow key={index}>
+                      <TableCell>
+                        <Skeleton className="h-4 w-4" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-32" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-6 w-20 rounded-full" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-24" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-16" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-40" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-6 w-16 rounded-full" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-8 w-8 rounded" />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : filteredProducts.length === 0 ? (
             <div className="text-center py-12">
               <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-semibold mb-2">No se han encontrado productos</h3>
@@ -333,6 +409,7 @@ export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggl
                         checked={selectAll}
                         onCheckedChange={handleSelectAll}
                         aria-label="Seleccionar todos los productos"
+                        disabled={isLoading}
                       />
                     </TableHead>
                     <TableHead>Nombre</TableHead>
@@ -472,6 +549,60 @@ export function ProductsTable({ products, highlightId, onEdit, onDelete, onToggl
                   ))}
                 </TableBody>
               </Table>
+            </div>
+          )}
+          
+          {/* Pagination Controls */}
+          {serverSidePagination && paginationInfo && paginationInfo.totalPages > 1 && (
+            <div className="flex items-center justify-between px-2 py-4">
+              <div className="text-sm text-muted-foreground">
+                Mostrando {((paginationInfo.currentPage - 1) * paginationInfo.pageSize) + 1} a {Math.min(paginationInfo.currentPage * paginationInfo.pageSize, paginationInfo.total)} de {paginationInfo.total} productos
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onPageChange && onPageChange(paginationInfo.currentPage - 1)}
+                  disabled={paginationInfo.currentPage === 1}
+                >
+                  Anterior
+                </Button>
+                <div className="flex items-center space-x-1">
+                  {Array.from({ length: paginationInfo.totalPages }, (_, i) => i + 1).map((page) => {
+                    // Show first page, last page, current page, and pages around current
+                    const showPage = page === 1 || page === paginationInfo.totalPages || 
+                                   (page >= paginationInfo.currentPage - 1 && page <= paginationInfo.currentPage + 1);
+                    
+                    if (!showPage) {
+                      // Show ellipsis for gaps
+                      if (page === paginationInfo.currentPage - 2 || page === paginationInfo.currentPage + 2) {
+                        return <span key={page} className="px-2 text-muted-foreground">...</span>;
+                      }
+                      return null;
+                    }
+                    
+                    return (
+                      <Button
+                        key={page}
+                        variant={paginationInfo.currentPage === page ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => onPageChange && onPageChange(page)}
+                        className="w-8 h-8 p-0"
+                      >
+                        {page}
+                      </Button>
+                    );
+                  })}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onPageChange && onPageChange(paginationInfo.currentPage + 1)}
+                  disabled={paginationInfo.currentPage === paginationInfo.totalPages}
+                >
+                  Siguiente
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>

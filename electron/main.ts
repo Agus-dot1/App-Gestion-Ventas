@@ -53,6 +53,25 @@ function createWindow() {
 function setupIpcHandlers() {
   // Customer operations
   ipcMain.handle('db:customers:getAll', () => customerOperations.getAll());
+  ipcMain.handle('db:customers:getPaginated', (_, page, pageSize, searchTerm) => customerOperations.getPaginated(page, pageSize, searchTerm));
+  ipcMain.handle('db:customers:search', (_, searchTerm, limit) => customerOperations.search(searchTerm, limit));
+
+  // Add IPC handlers for pagination
+  ipcMain.handle('db:products:getPaginated', async (event, page: number, pageSize: number, searchTerm: string) => {
+    return productOperations.getPaginated(page, pageSize, searchTerm);
+  });
+
+  ipcMain.handle('db:products:search', async (event, searchTerm: string, limit?: number) => {
+    return productOperations.search(searchTerm, limit);
+  });
+
+  ipcMain.handle('db:sales:getPaginated', async (event, page: number, pageSize: number, searchTerm: string) => {
+    return saleOperations.getPaginated(page, pageSize, searchTerm);
+  });
+
+  ipcMain.handle('db:sales:search', async (event, searchTerm: string, limit?: number) => {
+    return saleOperations.search(searchTerm, limit);
+  });
   ipcMain.handle('db:customers:getById', (_, id) => customerOperations.getById(id));
   ipcMain.handle('db:customers:create', (_, customer) => customerOperations.create(customer));
   ipcMain.handle('db:customers:update', (_, id, customer) => customerOperations.update(id, customer));

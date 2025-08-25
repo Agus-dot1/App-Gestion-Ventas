@@ -23,6 +23,7 @@ import {
   X,
   Loader2
 } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { Customer, Sale } from '@/lib/database-operations';
 import { cn } from '@/lib/utils';
 
@@ -108,12 +109,117 @@ export function CustomerProfile({ customer, onEdit, onClose }: CustomerProfilePr
 
   if (isLoading) {
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <Card className="w-full max-w-4xl mx-4">
-          <CardContent className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin" />
-            <span className="ml-2">Cargando perfil del cliente...</span>
-          </CardContent>
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in-0 duration-300">
+        <Card className="w-full max-w-6xl max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+            <div className="flex items-center space-x-4">
+              <Skeleton className="w-12 h-12 rounded-full" />
+              <div className="space-y-2">
+                <Skeleton className="h-6 w-32" />
+                <Skeleton className="h-4 w-24" />
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Skeleton className="h-9 w-20" />
+              <Skeleton className="h-9 w-9" />
+            </div>
+          </CardHeader>
+
+          <ScrollArea className="max-h-[calc(90vh-120px)]">
+            <CardContent className="space-y-6">
+              {/* Contact Information Skeletons */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Skeleton className="h-4 w-4" />
+                      <Skeleton className="h-4 w-12" />
+                    </div>
+                    <Skeleton className="h-4 w-32" />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Skeleton className="h-4 w-4" />
+                      <Skeleton className="h-4 w-16" />
+                    </div>
+                    <Skeleton className="h-4 w-28" />
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Address and Tags Skeletons */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Skeleton className="h-4 w-4" />
+                      <Skeleton className="h-4 w-16" />
+                    </div>
+                    <Skeleton className="h-4 w-40" />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Skeleton className="h-4 w-4" />
+                      <Skeleton className="h-4 w-16" />
+                    </div>
+                    <div className="flex gap-2">
+                      <Skeleton className="h-5 w-16" />
+                      <Skeleton className="h-5 w-20" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Skeleton className="h-px w-full" />
+
+              {/* Statistics Skeletons */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Card key={i}>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Skeleton className="h-4 w-4" />
+                        <Skeleton className="h-4 w-24" />
+                      </div>
+                      <Skeleton className="h-8 w-16" />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Sales History Skeleton */}
+              <Card>
+                <CardHeader>
+                  <Skeleton className="h-6 w-32" />
+                  <Skeleton className="h-4 w-48" />
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {/* Table Header */}
+                    <div className="grid grid-cols-4 gap-4 pb-2 border-b">
+                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className="h-4 w-16" />
+                      <Skeleton className="h-4 w-12" />
+                      <Skeleton className="h-4 w-16" />
+                    </div>
+                    {/* Table Rows */}
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <div key={i} className="grid grid-cols-4 gap-4 py-2">
+                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-4 w-16" />
+                        <Skeleton className="h-5 w-20" />
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </CardContent>
+          </ScrollArea>
         </Card>
       </div>
     );

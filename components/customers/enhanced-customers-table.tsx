@@ -14,6 +14,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Checkbox } from '@/components/ui/checkbox';
 import { Search, MoreHorizontal, Edit, Trash2, Users, Phone, Calendar, Loader2, Mail, Building, Tag, Eye, Download, X, ChevronUp, ChevronDown, FileText } from 'lucide-react';
 import { CustomerProfile } from './customer-profile';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { Customer, Sale } from '@/lib/database-operations';
 import { cn } from '@/lib/utils';
 
@@ -24,6 +25,16 @@ interface EnhancedCustomersTableProps {
   onDelete: (customerId: number) => void;
   onView: (customer: Customer) => void;
   isLoading?: boolean;
+  searchTerm?: string;
+  onSearchChange?: (term: string) => void;
+  currentPage?: number;
+  onPageChange?: (page: number) => void;
+  paginationInfo?: {
+    total: number;
+    totalPages: number;
+    currentPage: number;
+  };
+  serverSidePagination?: boolean;
 }
 
 function formatDate(dateString: string): string {
@@ -34,13 +45,49 @@ function formatDate(dateString: string): string {
   });
 }
 
-export function EnhancedCustomersTable({ customers, highlightId, onEdit, onDelete, onView, isLoading = false }: EnhancedCustomersTableProps) {
-  const [searchTerm, setSearchTerm] = useState('');
+export function EnhancedCustomersTable({ 
+  customers, 
+  highlightId, 
+  onEdit, 
+  onDelete, 
+  onView, 
+  isLoading = false,
+  searchTerm: externalSearchTerm,
+  onSearchChange,
+  currentPage: externalCurrentPage,
+  onPageChange,
+  paginationInfo,
+  serverSidePagination = false
+}: EnhancedCustomersTableProps) {
+  const [internalSearchTerm, setInternalSearchTerm] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: keyof Customer; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
-  const [currentPage, setCurrentPage] = useState(1);
+  const [internalCurrentPage, setInternalCurrentPage] = useState(1);
   const [selectedCustomers, setSelectedCustomers] = useState<Set<number>>(new Set());
   const [deleteCustomer, setDeleteCustomer] = useState<Customer | null>(null);
   const itemsPerPage = 10;
+
+  // Use external state for server-side pagination, internal state for client-side
+  const searchTerm = serverSidePagination ? (externalSearchTerm || '') : internalSearchTerm;
+  const currentPage = serverSidePagination ? (externalCurrentPage || 1) : internalCurrentPage;
+  
+  const handleSearchChange = (term: string) => {
+    if (serverSidePagination && onSearchChange) {
+      onSearchChange(term);
+      // Reset to first page when searching
+      if (onPageChange) onPageChange(1);
+    } else {
+      setInternalSearchTerm(term);
+      setInternalCurrentPage(1);
+    }
+  };
+  
+  const handlePageChange = (page: number) => {
+    if (serverSidePagination && onPageChange) {
+      onPageChange(page);
+    } else {
+      setInternalCurrentPage(page);
+    }
+  };
 
   // Sort function
   const handleSort = (key: keyof Customer) => {
@@ -50,16 +97,18 @@ export function EnhancedCustomersTable({ customers, highlightId, onEdit, onDelet
     }));
   };
 
-  // Filter customers based on search term
-  const filteredCustomers = customers.filter(customer =>
+  // Client-side filtering and sorting (only when not using server-side pagination)
+  const filteredCustomers = serverSidePagination ? customers : customers.filter(customer =>
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.tags?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Sort customers
+  // Sort customers (only for client-side)
   const sortedCustomers = useMemo(() => {
+    if (serverSidePagination) return filteredCustomers;
+    
     const sorted = [...filteredCustomers];
     sorted.sort((a, b) => {
       const aValue = a[sortConfig.key] || '';
@@ -72,23 +121,18 @@ export function EnhancedCustomersTable({ customers, highlightId, onEdit, onDelet
       }
     });
     return sorted;
-  }, [filteredCustomers, sortConfig]);
+  }, [filteredCustomers, sortConfig, serverSidePagination]);
 
-  // Use sorted customers for pagination
-  const totalPages = Math.ceil(sortedCustomers.length / itemsPerPage);
+  // Pagination logic
+  const totalPages = serverSidePagination ? (paginationInfo?.totalPages || 1) : Math.ceil(sortedCustomers.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedCustomers = sortedCustomers.slice(startIndex, endIndex);
+  const paginatedCustomers = serverSidePagination ? sortedCustomers : sortedCustomers.slice(startIndex, endIndex);
 
-  // Reset to first page when search changes
-  const handleSearchChange = (value: string) => {
-    setSearchTerm(value);
-    setCurrentPage(1);
-  };
-
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-    setSelectedCustomers(new Set()); // Clear selections when changing pages
+  // Clear selections when changing pages
+  const handlePageChangeWithClear = (page: number) => {
+    handlePageChange(page);
+    setSelectedCustomers(new Set());
   };
 
   const handleSelectCustomer = (customerId: number | undefined, checked: boolean) => {
@@ -266,10 +310,11 @@ export function EnhancedCustomersTable({ customers, highlightId, onEdit, onDelet
                         checked={isAllSelected}
                         onCheckedChange={handleSelectAll}
                         aria-label="Seleccionar todos"
+                        disabled={isLoading}
                       />
                     </TableHead>
                     <TableHead>
-                      <Button variant="ghost" onClick={() => handleSort('name')} className="h-auto p-0 font-semibold">
+                      <Button variant="ghost" onClick={() => handleSort('name')} className="h-auto p-0 font-semibold" disabled={isLoading}>
                         Nombre
                         {sortConfig.key === 'name' && (
                           sortConfig.direction === 'asc' ? <ChevronUp className="ml-1 h-4 w-4" /> : <ChevronDown className="ml-1 h-4 w-4" />
@@ -277,7 +322,7 @@ export function EnhancedCustomersTable({ customers, highlightId, onEdit, onDelet
                       </Button>
                     </TableHead>
                     <TableHead>
-                      <Button variant="ghost" onClick={() => handleSort('email')} className="h-auto p-0 font-semibold">
+                      <Button variant="ghost" onClick={() => handleSort('email')} className="h-auto p-0 font-semibold" disabled={isLoading}>
                         Contacto
                         {sortConfig.key === 'email' && (
                           sortConfig.direction === 'asc' ? <ChevronUp className="ml-1 h-4 w-4" /> : <ChevronDown className="ml-1 h-4 w-4" />
@@ -285,7 +330,7 @@ export function EnhancedCustomersTable({ customers, highlightId, onEdit, onDelet
                       </Button>
                     </TableHead>
                     <TableHead>
-                      <Button variant="ghost" onClick={() => handleSort('address')} className="h-auto p-0 font-semibold">
+                      <Button variant="ghost" onClick={() => handleSort('address')} className="h-auto p-0 font-semibold" disabled={isLoading}>
                         Dirección
                         {sortConfig.key === 'address' && (
                           sortConfig.direction === 'asc' ? <ChevronUp className="ml-1 h-4 w-4" /> : <ChevronDown className="ml-1 h-4 w-4" />
@@ -297,14 +342,28 @@ export function EnhancedCustomersTable({ customers, highlightId, onEdit, onDelet
                 </TableHeader>
               <TableBody>
                   {isLoading ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8">
-                        <div className="flex items-center justify-center gap-2">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          <span className="text-muted-foreground">Cargando clientes...</span>
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                    Array.from({ length: 5 }).map((_, index) => (
+                      <TableRow key={index}>
+                        <TableCell>
+                          <Skeleton className="h-4 w-4" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-4 w-32" />
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <Skeleton className="h-4 w-40" />
+                            <Skeleton className="h-3 w-28" />
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-4 w-48" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-8 w-8" />
+                        </TableCell>
+                      </TableRow>
+                    ))
                   ) : paginatedCustomers.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
@@ -399,7 +458,7 @@ export function EnhancedCustomersTable({ customers, highlightId, onEdit, onDelet
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handlePageChange(currentPage - 1)}
+                  onClick={() => handlePageChangeWithClear(currentPage - 1)}
                   disabled={currentPage === 1}
                 >
                   Anterior
@@ -423,7 +482,7 @@ export function EnhancedCustomersTable({ customers, highlightId, onEdit, onDelet
                         key={page}
                         variant={currentPage === page ? "default" : "outline"}
                         size="sm"
-                        onClick={() => handlePageChange(page)}
+                        onClick={() => handlePageChangeWithClear(page)}
                         className="w-8 h-8 p-0"
                       >
                         {page}
@@ -434,7 +493,7 @@ export function EnhancedCustomersTable({ customers, highlightId, onEdit, onDelet
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handlePageChange(currentPage + 1)}
+                  onClick={() => handlePageChangeWithClear(currentPage + 1)}
                   disabled={currentPage === totalPages}
                 >
                   Siguiente

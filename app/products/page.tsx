@@ -18,6 +18,16 @@ export default function ProductsPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>();
   const [isElectron, setIsElectron] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [paginationInfo, setPaginationInfo] = useState({
+    total: 0,
+    totalPages: 0,
+    currentPage: 1,
+    pageSize: 25
+  });
+  const pageSize = 25; // Load 25 products per page for better performance
 
   useEffect(() => {
     setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
@@ -25,6 +35,13 @@ export default function ProductsPage() {
       loadProducts();
     }
   }, []);
+
+  // Reload products when search term or page changes
+  useEffect(() => {
+    if (isElectron) {
+      loadProducts();
+    }
+  }, [searchTerm, currentPage, isElectron]);
 
   // Highlight product if specified in URL
   const highlightedProduct = useMemo(() => {
@@ -49,10 +66,23 @@ export default function ProductsPage() {
   }, [highlightedProduct]);
   const loadProducts = async () => {
     try {
-      const allProducts = await window.electronAPI.database.products.getAll();
-      setProducts(allProducts);
+      setIsLoading(true);
+      const result = await window.electronAPI.database.products.getPaginated(
+        currentPage,
+        pageSize,
+        searchTerm
+      );
+      setProducts(result.products);
+      setPaginationInfo({
+        total: result.total,
+        totalPages: result.totalPages,
+        currentPage: result.currentPage,
+        pageSize: result.pageSize || pageSize
+      });
     } catch (error) {
       console.error('Error cargando productos:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -300,6 +330,12 @@ export default function ProductsPage() {
             onEdit={handleEditProduct}
             onDelete={handleDeleteProduct}
             onToggleStatus={handleToggleStatus}
+            searchTerm={searchTerm}
+            onSearchChange={(value) => setSearchTerm(value)}
+            currentPage={currentPage}
+            onPageChange={(page) => setCurrentPage(page)}
+            paginationInfo={paginationInfo}
+            serverSidePagination={true}
           />
         ) : (
           <Card>

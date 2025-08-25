@@ -8,22 +8,44 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Search, MoreHorizontal, Edit, Trash2, Eye, CreditCard, Calendar, DollarSign } from 'lucide-react';
+import { Search, MoreHorizontal, Edit, Trash2, Eye, CreditCard, Calendar, DollarSign, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Sale } from '@/lib/database-operations';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface SalesTableProps {
   sales: Sale[];
   highlightId?: string | null;
   onEdit: (sale: Sale) => void;
   onDelete: (saleId: number) => void;
+  isLoading?: boolean;
+  searchTerm?: string;
+  onSearchChange?: (value: string) => void;
+  currentPage?: number;
+  onPageChange?: (page: number) => void;
+  paginationInfo?: { total: number; totalPages: number; currentPage: number; pageSize: number };
+  serverSidePagination?: boolean;
 }
 
-export function SalesTable({ sales, highlightId, onEdit, onDelete }: SalesTableProps) {
-  const [searchTerm, setSearchTerm] = useState('');
+export function SalesTable({ 
+  sales, 
+  highlightId, 
+  onEdit, 
+  onDelete, 
+  isLoading = false,
+  searchTerm: externalSearchTerm,
+  onSearchChange,
+  currentPage,
+  onPageChange,
+  paginationInfo,
+  serverSidePagination = false
+}: SalesTableProps) {
+  const [internalSearchTerm, setInternalSearchTerm] = useState('');
+  const searchTerm = serverSidePagination ? (externalSearchTerm || '') : internalSearchTerm;
+  const setSearchTerm = serverSidePagination ? (onSearchChange || (() => {})) : setInternalSearchTerm;
   const [deleteSale, setDeleteSale] = useState<Sale | null>(null);
 
-  const filteredSales = sales.filter(sale =>
+  const filteredSales = serverSidePagination ? sales : sales.filter(sale =>
     sale.sale_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
     sale.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     sale.notes?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -110,13 +132,63 @@ export function SalesTable({ sales, highlightId, onEdit, onDelete }: SalesTableP
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-8 w-64"
+                  disabled={isLoading}
                 />
               </div>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          {filteredSales.length === 0 ? (
+          {isLoading ? (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Venta #</TableHead>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Método de pago</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead>Estado del pago</TableHead>
+                    <TableHead className="w-[70px]">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Array.from({ length: 5 }).map((_, index) => (
+                    <TableRow key={index}>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Skeleton className="w-8 h-8 rounded-full" />
+                          <Skeleton className="h-4 w-20" />
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Skeleton className="w-6 h-6 rounded-full" />
+                          <Skeleton className="h-4 w-32" />
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-24" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-6 w-20 rounded-full" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-28" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-6 w-16 rounded-full" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-8 w-8 rounded" />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : filteredSales.length === 0 ? (
             <div className="text-center py-12">
               <CreditCard className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-semibold mb-2">No se encontraron ventas</h3>
@@ -233,6 +305,42 @@ export function SalesTable({ sales, highlightId, onEdit, onDelete }: SalesTableP
           )}
         </CardContent>
       </Card>
+
+      {/* Pagination Controls */}
+      {serverSidePagination && paginationInfo && paginationInfo.totalPages > 1 && (
+        <div className="flex items-center justify-between px-2">
+          <div className="flex-1 text-sm text-muted-foreground">
+            Mostrando {((paginationInfo.currentPage - 1) * paginationInfo.pageSize) + 1} a{' '}
+            {Math.min(paginationInfo.currentPage * paginationInfo.pageSize, paginationInfo.total)} de{' '}
+            {paginationInfo.total} ventas
+          </div>
+          <div className="flex items-center space-x-6 lg:space-x-8">
+            <div className="flex items-center space-x-2">
+              <Button
+                variant="outline"
+                className="h-8 w-8 p-0"
+                onClick={() => onPageChange && onPageChange(paginationInfo.currentPage - 1)}
+                disabled={paginationInfo.currentPage <= 1}
+              >
+                <span className="sr-only">Ir a la página anterior</span>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div className="flex w-[100px] items-center justify-center text-sm font-medium">
+                Página {paginationInfo.currentPage} de {paginationInfo.totalPages}
+              </div>
+              <Button
+                variant="outline"
+                className="h-8 w-8 p-0"
+                onClick={() => onPageChange && onPageChange(paginationInfo.currentPage + 1)}
+                disabled={paginationInfo.currentPage >= paginationInfo.totalPages}
+              >
+                <span className="sr-only">Ir a la página siguiente</span>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deleteSale} onOpenChange={() => setDeleteSale(null)}>

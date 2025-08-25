@@ -41,7 +41,8 @@ exports.customerOperations = {
             customers,
             total,
             totalPages: Math.ceil(total / pageSize),
-            currentPage: page
+            currentPage: page,
+            pageSize
         };
     },
     // Optimized search function
@@ -161,6 +162,59 @@ exports.productOperations = {
         const stmt = db.prepare('SELECT * FROM products ORDER BY name');
         return stmt.all();
     },
+    getPaginated: (page = 1, pageSize = 10, searchTerm = '') => {
+        const db = (0, database_1.getDatabase)();
+        const offset = (page - 1) * pageSize;
+        let whereClause = '';
+        let params = [];
+        if (searchTerm.trim()) {
+            whereClause = 'WHERE name LIKE ? OR description LIKE ? OR category LIKE ?';
+            const searchPattern = `%${searchTerm.trim()}%`;
+            params = [searchPattern, searchPattern, searchPattern];
+        }
+        // Get total count for pagination
+        const countStmt = db.prepare(`SELECT COUNT(*) as total FROM products ${whereClause}`);
+        const { total } = countStmt.get(...params);
+        // Get paginated results
+        const stmt = db.prepare(`
+      SELECT * FROM products 
+      ${whereClause}
+      ORDER BY name 
+      LIMIT ? OFFSET ?
+    `);
+        const products = stmt.all(...params, pageSize, offset);
+        return {
+            products,
+            total,
+            totalPages: Math.ceil(total / pageSize),
+            currentPage: page,
+            pageSize
+        };
+    },
+    search: (searchTerm, limit = 50) => {
+        const db = (0, database_1.getDatabase)();
+        if (!searchTerm.trim())
+            return [];
+        const stmt = db.prepare(`
+      SELECT * FROM products 
+      WHERE 
+        name LIKE ? OR 
+        description LIKE ? OR 
+        category LIKE ?
+      ORDER BY 
+        CASE 
+          WHEN name LIKE ? THEN 1
+          WHEN description LIKE ? THEN 2
+          WHEN category LIKE ? THEN 3
+          ELSE 4
+        END,
+        name
+      LIMIT ?
+    `);
+        const searchPattern = `%${searchTerm.trim()}%`;
+        const exactPattern = `${searchTerm.trim()}%`;
+        return stmt.all(searchPattern, searchPattern, searchPattern, exactPattern, exactPattern, exactPattern, limit);
+    },
     getActive: () => {
         const db = (0, database_1.getDatabase)();
         const stmt = db.prepare('SELECT * FROM products WHERE is_active = 1 ORDER BY name');
@@ -233,6 +287,68 @@ exports.saleOperations = {
       ORDER BY s.date DESC
     `);
         return stmt.all();
+    },
+    getPaginated: (page = 1, pageSize = 10, searchTerm = '') => {
+        const db = (0, database_1.getDatabase)();
+        const offset = (page - 1) * pageSize;
+        let whereClause = '';
+        let params = [];
+        if (searchTerm.trim()) {
+            whereClause = 'WHERE s.sale_number LIKE ? OR c.name LIKE ? OR s.notes LIKE ?';
+            const searchPattern = `%${searchTerm.trim()}%`;
+            params = [searchPattern, searchPattern, searchPattern];
+        }
+        // Get total count for pagination
+        const countStmt = db.prepare(`
+      SELECT COUNT(*) as total 
+      FROM sales s
+      LEFT JOIN customers c ON s.customer_id = c.id
+      ${whereClause}
+    `);
+        const { total } = countStmt.get(...params);
+        // Get paginated results
+        const stmt = db.prepare(`
+      SELECT s.*, c.name as customer_name
+      FROM sales s
+      LEFT JOIN customers c ON s.customer_id = c.id
+      ${whereClause}
+      ORDER BY s.date DESC 
+      LIMIT ? OFFSET ?
+    `);
+        const sales = stmt.all(...params, pageSize, offset);
+        return {
+            sales,
+            total,
+            totalPages: Math.ceil(total / pageSize),
+            currentPage: page,
+            pageSize
+        };
+    },
+    search: (searchTerm, limit = 50) => {
+        const db = (0, database_1.getDatabase)();
+        if (!searchTerm.trim())
+            return [];
+        const stmt = db.prepare(`
+      SELECT s.*, c.name as customer_name
+      FROM sales s
+      LEFT JOIN customers c ON s.customer_id = c.id
+      WHERE 
+        s.sale_number LIKE ? OR 
+        c.name LIKE ? OR 
+        s.notes LIKE ?
+      ORDER BY 
+        CASE 
+          WHEN s.sale_number LIKE ? THEN 1
+          WHEN c.name LIKE ? THEN 2
+          WHEN s.notes LIKE ? THEN 3
+          ELSE 4
+        END,
+        s.date DESC
+      LIMIT ?
+    `);
+        const searchPattern = `%${searchTerm.trim()}%`;
+        const exactPattern = `${searchTerm.trim()}%`;
+        return stmt.all(searchPattern, searchPattern, searchPattern, exactPattern, exactPattern, exactPattern, limit);
     },
     getById: (id) => {
         const db = (0, database_1.getDatabase)();

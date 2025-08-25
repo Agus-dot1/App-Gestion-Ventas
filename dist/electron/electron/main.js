@@ -66,6 +66,21 @@ function createWindow() {
 function setupIpcHandlers() {
     // Customer operations
     electron_1.ipcMain.handle('db:customers:getAll', () => database_operations_1.customerOperations.getAll());
+    electron_1.ipcMain.handle('db:customers:getPaginated', (_, page, pageSize, searchTerm) => database_operations_1.customerOperations.getPaginated(page, pageSize, searchTerm));
+    electron_1.ipcMain.handle('db:customers:search', (_, searchTerm, limit) => database_operations_1.customerOperations.search(searchTerm, limit));
+    // Add IPC handlers for pagination
+    electron_1.ipcMain.handle('db:products:getPaginated', async (event, page, pageSize, searchTerm) => {
+        return database_operations_1.productOperations.getPaginated(page, pageSize, searchTerm);
+    });
+    electron_1.ipcMain.handle('db:products:search', async (event, searchTerm, limit) => {
+        return database_operations_1.productOperations.search(searchTerm, limit);
+    });
+    electron_1.ipcMain.handle('db:sales:getPaginated', async (event, page, pageSize, searchTerm) => {
+        return database_operations_1.saleOperations.getPaginated(page, pageSize, searchTerm);
+    });
+    electron_1.ipcMain.handle('db:sales:search', async (event, searchTerm, limit) => {
+        return database_operations_1.saleOperations.search(searchTerm, limit);
+    });
     electron_1.ipcMain.handle('db:customers:getById', (_, id) => database_operations_1.customerOperations.getById(id));
     electron_1.ipcMain.handle('db:customers:create', (_, customer) => database_operations_1.customerOperations.create(customer));
     electron_1.ipcMain.handle('db:customers:update', (_, id, customer) => database_operations_1.customerOperations.update(id, customer));

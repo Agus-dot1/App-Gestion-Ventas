@@ -22,6 +22,11 @@ export default function SalesPage() {
   const [editingSale, setEditingSale] = useState<Sale | undefined>();
   const [isElectron, setIsElectron] = useState(false);
   const [activeTab, setActiveTab] = useState(tabParam || 'sales');
+  const [isLoading, setIsLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [paginationInfo, setPaginationInfo] = useState<{ total: number; totalPages: number; currentPage: number; pageSize: number } | undefined>(undefined);
+  const pageSize = 25;
 
   useEffect(() => {
     setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
@@ -36,6 +41,12 @@ export default function SalesPage() {
       setActiveTab(tabParam);
     }
   }, [tabParam]);
+
+  useEffect(() => {
+    if (isElectron) {
+      loadSales();
+    }
+  }, [searchTerm, currentPage, isElectron]);
 
   // Highlight sale if specified in URL
   const highlightedSale = useMemo(() => {
@@ -60,10 +71,19 @@ export default function SalesPage() {
   }, [highlightedSale]);
   const loadSales = async () => {
     try {
-      const allSales = await window.electronAPI.database.sales.getAll();
-      setSales(allSales);
+      setIsLoading(true);
+      const result = await window.electronAPI.database.sales.getPaginated(currentPage, pageSize, searchTerm);
+      setSales(result.sales);
+      setPaginationInfo({
+        total: result.total,
+        totalPages: result.totalPages,
+        currentPage: result.currentPage,
+        pageSize: result.pageSize || pageSize
+      });
     } catch (error) {
       console.error('Error cargando ventas:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -234,6 +254,13 @@ export default function SalesPage() {
                 highlightId={highlightId}
                 onEdit={handleEditSale}
                 onDelete={handleDeleteSale}
+                isLoading={isLoading}
+                searchTerm={searchTerm}
+                onSearchChange={(value) => setSearchTerm(value)}
+                currentPage={currentPage}
+                onPageChange={(page) => setCurrentPage(page)}
+                paginationInfo={paginationInfo}
+                serverSidePagination={true}
               />
             ) : (
               <Card>

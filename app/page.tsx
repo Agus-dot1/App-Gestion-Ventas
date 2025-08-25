@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { 
   Activity, 
@@ -14,6 +15,7 @@ import {
 
 export default function Home() {
   const [isElectron, setIsElectron] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState({
     totalCustomers: 0,
     totalProducts: 0,
@@ -32,6 +34,7 @@ export default function Home() {
   }, []);
 
   const loadStats = async () => {
+    setIsLoading(true);
     try {
       const customers = await window.electronAPI.database.customers.getAll();
       const products = await window.electronAPI.database.products.getAll();
@@ -47,6 +50,8 @@ export default function Home() {
       });
     } catch (error) {
       console.error('Error loading stats:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -76,13 +81,22 @@ export default function Home() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                ${stats.totalRevenue.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
-              </div>
-              <div className="flex items-center text-xs text-muted-foreground">
-                <TrendingUp className="h-3 w-3 mr-2 text-green-500" />
-                Ganancias totales de todas las ventas
-              </div>
+              {isLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-8 w-32" />
+                  <Skeleton className="h-4 w-48" />
+                </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">
+                    ${stats.totalRevenue.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+                  </div>
+                  <div className="flex items-center text-xs text-muted-foreground">
+                    <TrendingUp className="h-3 w-3 mr-2 text-green-500" />
+                    Ganancias totales de todas las ventas
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -94,11 +108,20 @@ export default function Home() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.totalCustomers}</div>
-              <div className="flex items-center text-xs text-muted-foreground">
-                <Users className="h-3 w-3 mr-1 text-blue-500" />
-                Total de clientes registrados
-              </div>
+              {isLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-8 w-16" />
+                  <Skeleton className="h-4 w-40" />
+                </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">{stats.totalCustomers}</div>
+                  <div className="flex items-center text-xs text-muted-foreground">
+                    <Users className="h-3 w-3 mr-1 text-blue-500" />
+                    Total de clientes registrados
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -110,11 +133,20 @@ export default function Home() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.totalSales}</div>
-              <div className="flex items-center text-xs text-muted-foreground">
-                <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
-                Total de ventas realizadas
-              </div>
+              {isLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-8 w-16" />
+                  <Skeleton className="h-4 w-36" />
+                </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">{stats.totalSales}</div>
+                  <div className="flex items-center text-xs text-muted-foreground">
+                    <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
+                    Total de ventas realizadas
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -126,11 +158,20 @@ export default function Home() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.totalProducts}</div>
-              <div className="flex items-center text-xs text-muted-foreground">
-                <Activity className="h-3 w-3 mr-1 text-purple-500" />
-                Total de productos en inventario
-              </div>
+              {isLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-8 w-16" />
+                  <Skeleton className="h-4 w-44" />
+                </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">{stats.totalProducts}</div>
+                  <div className="flex items-center text-xs text-muted-foreground">
+                    <Activity className="h-3 w-3 mr-1 text-purple-500" />
+                    Total de productos en inventario
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>

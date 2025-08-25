@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   database: {
     customers: {
       getAll: () => ipcRenderer.invoke('db:customers:getAll'),
+      getPaginated: (page, pageSize, searchTerm) => ipcRenderer.invoke('db:customers:getPaginated', page, pageSize, searchTerm),
+      search: (searchTerm, limit) => ipcRenderer.invoke('db:customers:search', searchTerm, limit),
       getById: (id) => ipcRenderer.invoke('db:customers:getById', id),
       create: (customer) => ipcRenderer.invoke('db:customers:create', customer),
       update: (id, customer) => ipcRenderer.invoke('db:customers:update', id, customer),
@@ -11,6 +13,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     products: {
       getAll: () => ipcRenderer.invoke('db:products:getAll'),
+      getPaginated: (page, pageSize, searchTerm) => ipcRenderer.invoke('db:products:getPaginated', page, pageSize, searchTerm),
+      search: (searchTerm, limit) => ipcRenderer.invoke('db:products:search', searchTerm, limit),
       getById: (id) => ipcRenderer.invoke('db:products:getById', id),
       getActive: () => ipcRenderer.invoke('db:products:getActive'),
       create: (product) => ipcRenderer.invoke('db:products:create', product),
@@ -19,6 +23,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     sales: {
       getAll: () => ipcRenderer.invoke('db:sales:getAll'),
+      getPaginated: (page, pageSize, searchTerm) => ipcRenderer.invoke('db:sales:getPaginated', page, pageSize, searchTerm),
+      search: (searchTerm, limit) => ipcRenderer.invoke('db:sales:search', searchTerm, limit),
       getById: (id) => ipcRenderer.invoke('db:sales:getById', id),
       getByCustomer: (customerId) => ipcRenderer.invoke('db:sales:getByCustomer', customerId),
       create: (sale) => ipcRenderer.invoke('db:sales:create', sale),
