@@ -8,6 +8,7 @@ import { DashboardLayout } from '@/components/dashboard-layout';
 import { CustomerForm } from '@/components/customers/customer-form';
 import { CustomerProfile } from '@/components/customers/customer-profile';
 import { EnhancedCustomersTable } from '@/components/customers/enhanced-customers-table';
+import { CustomersSkeleton } from '@/components/skeletons/customers-skeleton';
 import { Plus, Users, TrendingUp, Calendar, Database } from 'lucide-react';
 import type { Customer } from '@/lib/database-operations';
 import { useDataCache, usePrefetch } from '@/hooks/use-data-cache';
@@ -19,7 +20,7 @@ export default function CustomersPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | undefined>();
   const [viewingCustomer, setViewingCustomer] = useState<Customer | undefined>();
-  const [isElectron, setIsElectron] = useState(false);
+  const [isElectron] = useState(() => typeof window !== 'undefined' && !!window.electronAPI);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -33,19 +34,28 @@ export default function CustomersPage() {
   const pageSize = 10; // Load 10 customers per page to match table pagination
 
   useEffect(() => {
-    setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
-    if (typeof window !== 'undefined' && window.electronAPI) {
+    if (isElectron) {
       loadCustomers();
       loadAllCustomerIds();
     }
   }, []);
 
-  // Reload customers when search term or page changes
+  // Initial data load
   useEffect(() => {
     if (isElectron) {
       loadCustomers();
     }
-  }, [searchTerm, currentPage, isElectron]);
+  }, [isElectron]);
+
+  // Reload customers when search term or page changes
+  useEffect(() => {
+    if (isElectron && customers.length > 0) {
+      // Only reload if we already have data loaded
+      setTimeout(() => {
+        loadCustomers();
+      }, 0);
+    }
+  }, [searchTerm, currentPage]);
 
   // Highlight customer if specified in URL
   const highlightedCustomer = useMemo(() => {
@@ -84,29 +94,34 @@ export default function CustomersPage() {
 
   const loadCustomers = async (forceRefresh = false) => {
     try {
-      setIsLoading(true);
+      // Check cache first and display immediately if available
+      const cachedData = dataCache.getCachedCustomers(currentPage, pageSize, searchTerm);
+      const isCacheExpired = dataCache.isCustomersCacheExpired(currentPage, pageSize, searchTerm);
       
-      // Check cache first (unless forcing refresh)
-      if (!forceRefresh) {
-        const cachedData = dataCache.getCachedCustomers(currentPage, pageSize, searchTerm);
-        if (cachedData) {
-          setCustomers(cachedData.items);
-          setPaginationInfo({
-            total: cachedData.total,
-            totalPages: cachedData.totalPages,
-            currentPage: cachedData.currentPage,
-            pageSize: cachedData.pageSize
-          });
-          setIsLoading(false);
-          
+      if (cachedData && !forceRefresh) {
+        // Show cached data immediately
+        setCustomers(cachedData.items);
+        setPaginationInfo({
+          total: cachedData.total,
+          totalPages: cachedData.totalPages,
+          currentPage: cachedData.currentPage,
+          pageSize: cachedData.pageSize
+        });
+        setIsLoading(false);
+        
+        // If cache is not expired, we're done
+        if (!isCacheExpired) {
           // Prefetch other pages in background
           setTimeout(() => {
             prefetchProducts();
             prefetchSales();
           }, 100);
-          
           return;
         }
+        // If expired, continue to refresh in background
+      } else {
+        // No cache, show loading
+        setIsLoading(true);
       }
       
       const result = await window.electronAPI.database.customers.getPaginated(
@@ -419,7 +434,21 @@ export default function CustomersPage() {
         </div>
 
         {/* Customers Table */}
-        {isElectron ? (
+        {!isElectron ? (
+          <Card>
+            <CardContent className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">Electron Required</h3>
+                <p className="text-muted-foreground">
+                  Customer management is only available in the Electron desktop app.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : isLoading && customers.length === 0 ? (
+          <CustomersSkeleton />
+        ) : (
           <EnhancedCustomersTable
             customers={customers}
             highlightId={highlightId}
@@ -437,18 +466,6 @@ export default function CustomersPage() {
             onSelectAll={handleSelectAll}
             onGetCustomersByIds={getCustomersByIds}
           />
-        ) : (
-          <Card>
-            <CardContent className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Electron Required</h3>
-                <p className="text-muted-foreground">
-                  Customer management is only available in the Electron desktop app.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
         )}
 
         {/* Customer Form Dialog */}

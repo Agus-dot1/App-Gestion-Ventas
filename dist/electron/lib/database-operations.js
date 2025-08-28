@@ -421,8 +421,20 @@ exports.saleOperations = {
         // Calculate totals
         const subtotal = saleData.items.reduce((sum, item) => sum + (item.quantity * item.unit_price) - (item.discount_per_item || 0), 0);
         const totalAmount = subtotal + (saleData.tax_amount || 0) - (saleData.discount_amount || 0);
-        // Generate sale number
-        const saleNumber = `SALE-${Date.now()}`;
+        // Generate sale number with a more readable format
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        // Get the count of sales for today to create a sequential number
+        const todayStart = `${year}-${month}-${day}`;
+        const todayCountStmt = db.prepare(`
+      SELECT COUNT(*) as count FROM sales 
+      WHERE date(date) = date(?)
+    `);
+        const todayCount = todayCountStmt.get(todayStart).count + 1;
+        const sequentialNumber = String(todayCount).padStart(3, '0');
+        const saleNumber = `VENTA-${year}${month}${day}-${sequentialNumber}`;
         // Insert sale
         const saleStmt = db.prepare(`
       INSERT INTO sales (
@@ -521,19 +533,19 @@ exports.saleOperations = {
     `);
         return stmt.all(limit);
     },
-    getSalesChartData: () => {
+    getSalesChartData: (days = 30) => {
         const db = (0, database_1.getDatabase)();
         const stmt = db.prepare(`
       SELECT 
-        strftime('%Y-%m', date) as month,
+        strftime('%Y-%m', date) as date,
         COUNT(*) as sales,
         COALESCE(SUM(total_amount), 0) as revenue
       FROM sales 
-      WHERE status != 'cancelled' AND date >= date('now', '-12 months')
+      WHERE status != 'cancelled' AND date >= date('now', '-' || ? || ' days')
       GROUP BY strftime('%Y-%m', date)
-      ORDER BY month
+      ORDER BY date
     `);
-        return stmt.all();
+        return stmt.all(days);
     },
     getStatsComparison: () => {
         const db = (0, database_1.getDatabase)();

@@ -56,6 +56,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     payments: {
       getBySale: (saleId) => ipcRenderer.invoke('db:payments:getBySale', saleId),
       create: (payment) => ipcRenderer.invoke('db:payments:create', payment)
+    },
+    saleItems: {
+      getBySale: (saleId) => ipcRenderer.invoke('db:saleItems:getBySale', saleId),
+      create: (saleItem) => ipcRenderer.invoke('db:saleItems:create', saleItem)
     }
   }
 });

@@ -10,6 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { SearchDialog } from '@/components/search/search-dialog';
 import { SearchTrigger } from '@/components/search/search-trigger';
 import { useSearchShortcut } from '@/hooks/use-search-shortcut';
+import { useRoutePrefetch } from '@/hooks/use-route-prefetch';
 import {
   Home,
   BarChart3,
@@ -31,6 +32,7 @@ export function Sidebar({ className }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const pathname = usePathname();
+  const { prefetchProducts, prefetchCustomers, prefetchSales, prefetchCalendar } = useRoutePrefetch();
 
   const handleOpenSearch = useCallback(() => {
     setSearchOpen(true);
@@ -42,27 +44,32 @@ export function Sidebar({ className }: SidebarProps) {
     {
       title: 'Dashboard',
       icon: Home,
-      href: '/'
+      href: '/',
+      prefetch: null
     },
     {
       title: 'Productos',
       icon: Package,
-      href: '/products'
+      href: '/products',
+      prefetch: prefetchProducts
     },
     {
       title: 'Clientes',
       icon: Users,
-      href: '/customers'
+      href: '/customers',
+      prefetch: prefetchCustomers
     },
     {
       title: 'Ventas',
       icon: CreditCard,
-      href: '/sales'
+      href: '/sales',
+      prefetch: prefetchSales
     },
     {
       title: 'Calendario',
       icon: Calendar,
-      href: '/calendar'
+      href: '/calendar',
+      prefetch: prefetchCalendar
     },
     // {
     //   title: 'Analytics',
@@ -130,6 +137,12 @@ export function Sidebar({ className }: SidebarProps) {
                   key={item.href}
                   href={item.href}
                   className="block"
+                  onMouseEnter={() => {
+                    // Prefetch data on hover for instant navigation
+                    if (item.prefetch) {
+                      item.prefetch();
+                    }
+                  }}
                 >
                   <Button
                     variant={isActive ? 'secondary' : 'ghost'}

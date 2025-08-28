@@ -8,6 +8,8 @@ import { DashboardLayout } from '@/components/dashboard-layout';
 import { SaleForm } from '@/components/sales/sale-form';
 import { SalesTable } from '@/components/sales/sales-table';
 import { InstallmentDashboard } from '@/components/sales/installment-dashboard';
+import { SalesSkeleton } from '@/components/skeletons/sales-skeleton';
+import { SalesFiltersComponent, applySalesFilters, type SalesFilters } from '@/components/sales/sales-filters';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, CreditCard, TrendingUp, DollarSign, Calendar, Database, AlertTriangle } from 'lucide-react';
 import type { Sale, Product, SaleFormData } from '@/lib/database-operations';
@@ -21,21 +23,32 @@ export default function SalesPage() {
   const [overdueSales, setOverdueSales] = useState<Sale[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | undefined>();
-  const [isElectron, setIsElectron] = useState(false);
+  const [isElectron] = useState(() => typeof window !== 'undefined' && !!window.electronAPI);
   const [activeTab, setActiveTab] = useState(tabParam || 'sales');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [salesFilters, setSalesFilters] = useState<SalesFilters>({
+    search: '',
+    sortBy: 'date',
+    sortOrder: 'desc',
+    paymentStatus: [],
+    paymentType: [],
+    minAmount: null,
+    maxAmount: null,
+    dateAfter: null,
+    dateBefore: null
+  });
   const [currentPage, setCurrentPage] = useState(1);
   const [paginationInfo, setPaginationInfo] = useState<{ total: number; totalPages: number; currentPage: number; pageSize: number } | undefined>(undefined);
   const pageSize = 25;
 
+  // Initial data load
   useEffect(() => {
-    setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
-    if (typeof window !== 'undefined' && window.electronAPI) {
+    if (isElectron) {
       loadSales();
       loadOverdueSales();
     }
-  }, []);
+  }, [isElectron]);
 
   useEffect(() => {
     if (tabParam) {
@@ -43,11 +56,35 @@ export default function SalesPage() {
     }
   }, [tabParam]);
 
+  // Handle search changes
   useEffect(() => {
-    if (isElectron) {
-      loadSales();
+    const timeoutId = setTimeout(() => {
+      if (isElectron) {
+        setCurrentPage(1);
+        loadSales();
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm, isElectron]);
+
+  // Reload sales when page changes
+  useEffect(() => {
+    if (isElectron && sales.length > 0) {
+      // Only reload if we already have data loaded
+      setTimeout(() => {
+        loadSales();
+      }, 0);
     }
-  }, [searchTerm, currentPage, isElectron]);
+  }, [currentPage]);
+
+  // Apply filters to sales data
+  const filteredSales = applySalesFilters(sales, salesFilters);
+
+  // Update search term when filters change
+  useEffect(() => {
+    setSearchTerm(salesFilters.search);
+  }, [salesFilters.search]);
 
   // Highlight sale if specified in URL
   const highlightedSale = useMemo(() => {
@@ -75,29 +112,34 @@ export default function SalesPage() {
 
   const loadSales = async (forceRefresh = false) => {
     try {
-      setIsLoading(true);
+      // Check cache first and display immediately if available
+      const cachedData = dataCache.getCachedSales(currentPage, pageSize, searchTerm);
+      const isCacheExpired = dataCache.isSalesCacheExpired(currentPage, pageSize, searchTerm);
       
-      // Check cache first (unless forcing refresh)
-      if (!forceRefresh) {
-        const cachedData = dataCache.getCachedSales(currentPage, pageSize, searchTerm);
-        if (cachedData) {
-          setSales(cachedData.items);
-          setPaginationInfo({
-            total: cachedData.total,
-            totalPages: cachedData.totalPages,
-            currentPage: cachedData.currentPage,
-            pageSize: cachedData.pageSize
-          });
-          setIsLoading(false);
-          
+      if (cachedData && !forceRefresh) {
+        // Show cached data immediately
+        setSales(cachedData.items);
+        setPaginationInfo({
+          total: cachedData.total,
+          totalPages: cachedData.totalPages,
+          currentPage: cachedData.currentPage,
+          pageSize: cachedData.pageSize
+        });
+        setIsLoading(false);
+        
+        // If cache is not expired, we're done
+        if (!isCacheExpired) {
           // Prefetch other pages in background
           setTimeout(() => {
             prefetchCustomers();
             prefetchProducts();
           }, 100);
-          
           return;
         }
+        // If expired, continue to refresh in background
+      } else {
+        // No cache or forcing refresh, show loading
+        setIsLoading(true);
       }
       
       const result = await window.electronAPI.database.sales.getPaginated(currentPage, pageSize, searchTerm);
@@ -190,6 +232,44 @@ export default function SalesPage() {
     }
   };
 
+  const handleBulkDeleteSales = async (saleIds: number[]) => {
+    try {
+      // Delete each sale individually
+      for (const saleId of saleIds) {
+        await window.electronAPI.database.sales.delete(saleId);
+      }
+      // Clear cache to ensure fresh data is loaded
+      dataCache.invalidateCache('sales');
+      await loadSales();
+      await loadOverdueSales();
+    } catch (error) {
+      console.error('Error eliminando ventas:', error);
+      throw error;
+    }
+  };
+
+  const handleBulkStatusUpdate = async (saleIds: number[], status: Sale['payment_status']) => {
+    try {
+      // Update each sale's payment status
+      for (const saleId of saleIds) {
+        const sale = sales.find(s => s.id === saleId);
+        if (sale) {
+          await window.electronAPI.database.sales.update(saleId, {
+            ...sale,
+            payment_status: status
+          });
+        }
+      }
+      // Clear cache to ensure fresh data is loaded
+      dataCache.invalidateCache('sales');
+      await loadSales();
+      await loadOverdueSales();
+    } catch (error) {
+      console.error('Error actualizando estado de ventas:', error);
+      throw error;
+    }
+  };
+
   const handleAddSale = () => {
     setEditingSale(undefined);
     setIsFormOpen(true);
@@ -212,6 +292,16 @@ export default function SalesPage() {
     pendingSales: sales.filter(sale => sale.payment_status === 'unpaid' || sale.payment_status === 'partial').length
   };
 
+  // Show skeleton only if loading and no cached data
+  if (isLoading && sales.length === 0) {
+    return <SalesSkeleton />;
+  }
+
+  // Show skeleton if not in Electron environment
+  if (!isElectron) {
+    return <SalesSkeleton />;
+  }
+
   return (
     <DashboardLayout>
       <div className="p-8">
@@ -224,7 +314,7 @@ export default function SalesPage() {
               </p>
             </div>
             <div className="flex gap-2">
-              <Button onClick={handleAddSale} disabled={!isElectron}>
+              <Button onClick={handleAddSale}>
                 <Plus className="mr-2 h-4 w-4" />
                 Nueva venta
               </Button>
@@ -308,55 +398,36 @@ export default function SalesPage() {
             <TabsTrigger value="installments">Cuotas</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="sales">
-            {isElectron ? (
-              <SalesTable
-                sales={sales}
-                highlightId={highlightId}
-                onEdit={handleEditSale}
-                onDelete={handleDeleteSale}
-                isLoading={isLoading}
-                searchTerm={searchTerm}
-                onSearchChange={(value) => setSearchTerm(value)}
-                currentPage={currentPage}
-                onPageChange={(page) => setCurrentPage(page)}
-                paginationInfo={paginationInfo}
-                serverSidePagination={true}
-              />
-            ) : (
-              <Card>
-                <CardContent className="flex items-center justify-center py-12">
-                  <div className="text-center">
-                    <CreditCard className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">Electron Required</h3>
-                    <p className="text-muted-foreground">
-                      Sales management is only available in the Electron desktop app.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+          <TabsContent value="sales" className="space-y-4">
+            <SalesFiltersComponent
+              filters={salesFilters}
+              onFiltersChange={setSalesFilters}
+              sales={sales}
+            />
+            <SalesTable
+              sales={filteredSales}
+              highlightId={highlightId}
+              onEdit={handleEditSale}
+              onDelete={handleDeleteSale}
+              onBulkDelete={handleBulkDeleteSales}
+              onBulkStatusUpdate={handleBulkStatusUpdate}
+              isLoading={isLoading}
+              searchTerm={searchTerm}
+              onSearchChange={(value) => setSalesFilters(prev => ({ ...prev, search: value }))}
+              currentPage={currentPage}
+              onPageChange={(page) => setCurrentPage(page)}
+              paginationInfo={paginationInfo}
+              serverSidePagination={false}
+            />
           </TabsContent>
 
-          <TabsContent value="installments">
-            {isElectron ? (
+          <TabsContent value="installments" className="-m-8 min-h-screen">
+            <div className="p-8 min-h-screen bg-background">
               <InstallmentDashboard 
                 highlightId={highlightId}
                 onRefresh={() => { loadSales(); loadOverdueSales(); }} 
               />
-            ) : (
-              <Card>
-                <CardContent className="flex items-center justify-center py-12">
-                  <div className="text-center">
-                    <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">Electron Required</h3>
-                    <p className="text-muted-foreground">
-                      Installment management is only available in the Electron desktop app.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            </div>
           </TabsContent>
         </Tabs>
 

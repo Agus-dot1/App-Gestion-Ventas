@@ -63,8 +63,8 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         discount_amount: sale.discount_amount,
         notes: sale.notes || ''
       });
-      // Note: For editing, we'd need to load the sale items
-      // This is a simplified version for new sales
+      // Load sale items when editing
+      loadSaleItems(sale.id!);
     } else {
       // Reset form for new sale
       setFormData({
@@ -95,6 +95,23 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
       setProducts(activeProducts);
     } catch (error) {
       console.error('Error cargando productos:', error);
+    }
+  };
+
+  const loadSaleItems = async (saleId: number) => {
+    try {
+      const saleItems = await window.electronAPI.database.saleItems.getBySale(saleId);
+      const formattedItems: SaleItem[] = saleItems.map(item => ({
+        product_id: item.product_id,
+        product_name: item.product_name || '',
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        discount_per_item: item.discount_per_item || 0,
+        line_total: item.line_total
+      }));
+      setItems(formattedItems);
+    } catch (error) {
+      console.error('Error cargando items de la venta:', error);
     }
   };
 

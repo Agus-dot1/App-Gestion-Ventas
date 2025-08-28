@@ -209,7 +209,7 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
                     )}
                     {event.installmentNumber && (
                       <div className="flex justify-between">
-                        <span>Installment Number:</span>
+                        <span>Número de Cuota:</span>
                         <span className="font-medium">#{event.installmentNumber}</span>
                       </div>
                     )}
@@ -223,12 +223,12 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
                       <User className="w-4 h-4" />
-                      Customer Information
+                      Información del Cliente
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="flex justify-between">
-                      <span>Customer:</span>
+                      <span>Cliente:</span>
                       <span className="font-medium">{event.customerName}</span>
                     </div>
                     
@@ -236,11 +236,11 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
                     <div className="flex gap-2 pt-2">
                       <Button size="sm" variant="outline">
                         <Phone className="w-4 h-4 mr-1" />
-                        Call
+                        Llamar
                       </Button>
                       <Button size="sm" variant="outline">
                         <Mail className="w-4 h-4 mr-1" />
-                        Email
+                        Correo
                       </Button>
                       <Button size="sm" variant="outline">
                         <MessageSquare className="w-4 h-4 mr-1" />
@@ -255,7 +255,7 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
               {event.notes && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base">Notes</CardTitle>
+                    <CardTitle className="text-base">Notas</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <p className="text-muted-foreground whitespace-pre-wrap">{event.notes}</p>
@@ -268,18 +268,18 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
             <div className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="title">Event Title *</Label>
+                  <Label htmlFor="title">Título del Evento *</Label>
                   <Input
                     id="title"
                     value={formData.title}
                     onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                    placeholder="Enter event title"
+                    placeholder="Ingrese el título del evento"
                     disabled={!!(event && (event.type === 'sale' || event.type === 'installment'))}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="type">Event Type</Label>
+                  <Label htmlFor="type">Tipo de Evento</Label>
                   <Select
                     value={formData.type}
                     onValueChange={(value: EventType) => setFormData(prev => ({ ...prev, type: value }))}
@@ -289,10 +289,10 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="custom">Custom Event</SelectItem>
-                      <SelectItem value="reminder">Reminder</SelectItem>
-                      {event && event.type === 'sale' && <SelectItem value="sale">Sale</SelectItem>}
-                      {event && event.type === 'installment' && <SelectItem value="installment">Installment</SelectItem>}
+                      <SelectItem value="custom">Evento Personalizado</SelectItem>
+                      <SelectItem value="reminder">Recordatorio</SelectItem>
+                      {event && event.type === 'sale' && <SelectItem value="sale">Venta</SelectItem>}
+                      {event && event.type === 'installment' && <SelectItem value="installment">Cuota</SelectItem>}
                     </SelectContent>
                   </Select>
                 </div>
@@ -300,7 +300,7 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
 
               {/* Date and Time - always show for editable events */}
               <div className="space-y-2">
-                <Label htmlFor="date">Date and Time</Label>
+                <Label htmlFor="date">Fecha y Hora</Label>
                 <Input
                   id="date"
                   type="datetime-local"
@@ -311,18 +311,18 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
+                <Label htmlFor="description">Descripción</Label>
                 <Input
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="Brief description of the event"
+                  placeholder="Breve descripción del evento"
                   disabled={!!(event && (event.type === 'sale' || event.type === 'installment'))}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="status">Status</Label>
+                <Label htmlFor="status">Estado</Label>
                 <Select
                   value={formData.status}
                   onValueChange={(value: EventStatus) => setFormData(prev => ({ ...prev, status: value }))}
@@ -332,23 +332,23 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                    <SelectItem value="pending">Pendiente</SelectItem>
+                    <SelectItem value="completed">Completado</SelectItem>
+                    <SelectItem value="cancelled">Cancelado</SelectItem>
                     {formData.type === 'installment' && (
-                      <SelectItem value="overdue">Overdue</SelectItem>
+                      <SelectItem value="overdue">Vencido</SelectItem>
                     )}
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="notes">Additional Notes</Label>
+                <Label htmlFor="notes">Notas Adicionales</Label>
                 <Textarea
                   id="notes"
                   value={formData.notes}
                   onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                  placeholder="Any additional notes or details..."
+                  placeholder="Cualquier nota o detalle adicional..."
                   rows={3}
                   disabled={!!(event && (event.type === 'sale' || event.type === 'installment'))}
                 />
@@ -367,7 +367,7 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
                   size="sm"
                 >
                   <Trash2 className="w-4 h-4 mr-1" />
-                  Delete
+                  Eliminar
                 </Button>
               )}
             </div>
@@ -383,19 +383,19 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
                   }
                 }}
               >
-                Cancel
+                Cancelar
               </Button>
               
               {event && !isEditing && canEdit && (
                 <Button onClick={() => setIsEditing(true)}>
                   <Edit className="w-4 h-4 mr-1" />
-                  Edit
+                  Editar
                 </Button>
               )}
               
               {(isEditing || !event) && (
                 <Button onClick={handleSave} disabled={!formData.title.trim()}>
-                  {event ? 'Save Changes' : 'Create Event'}
+                  {event ? 'Guardar Cambios' : 'Crear Evento'}
                 </Button>
               )}
             </div>

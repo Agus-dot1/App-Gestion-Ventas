@@ -7,6 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DashboardLayout } from "@/components/dashboard-layout";
+import { DashboardSkeleton } from "@/components/skeletons/dashboard-skeleton";
+import { useRoutePrefetch } from "@/hooks/use-route-prefetch";
 import { 
   Activity, 
   CreditCard, 
@@ -43,7 +45,8 @@ type Customer = {
 
 export default function Home() {
   const router = useRouter();
-  const [isElectron, setIsElectron] = useState(false);
+  const { prefetchAllRoutes } = useRoutePrefetch();
+  const [isElectron] = useState(() => typeof window !== 'undefined' && !!window.electronAPI);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [stats, setStats] = useState({
@@ -62,12 +65,9 @@ export default function Home() {
     products: {current: number, previous: number, percentage: number}
   } | null>(null);
 
+  // Initial data load
   useEffect(() => {
-    // Check if we're running in Electron
-    setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
-    
-    // Load initial stats if in Electron
-    if (typeof window !== 'undefined' && window.electronAPI) {
+    if (isElectron) {
       loadStats();
     }
   }, []);
@@ -130,6 +130,11 @@ export default function Home() {
            }
          });
          
+         // Prefetch other routes after dashboard loads
+         setTimeout(() => {
+           prefetchAllRoutes();
+         }, 500);
+         
        } else {
          // Non-Electron version - use API calls
          const response = await fetch('/api/dashboard');
@@ -174,6 +179,10 @@ export default function Home() {
         break;
     }
   };
+
+  if (isLoading) {
+    return <DashboardSkeleton />;
+  }
 
   return (
     <DashboardLayout>

@@ -9,6 +9,7 @@ import { DashboardLayout } from '@/components/dashboard-layout';
 import { CalendarComponent } from '../../components/calendar/calendar-component';
 import { EventDialog } from '../../components/calendar/event-dialog';
 import { EventList } from '../../components/calendar/event-list';
+import { CalendarSkeleton } from '@/components/skeletons/calendar-skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Calendar as CalendarIcon,
@@ -31,7 +32,7 @@ export default function CalendarPage() {
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [isEventDialogOpen, setIsEventDialogOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-  const [isElectron, setIsElectron] = useState(false);
+  const [isElectron] = useState(() => typeof window !== 'undefined' && !!window.electronAPI);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<EventType | 'all'>('all');
   const [filterStatus, setFilterStatus] = useState<EventStatus | 'all'>('all');
@@ -41,14 +42,14 @@ export default function CalendarPage() {
     end: null
   });
 
+  // Initial data load
   useEffect(() => {
-    setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
-    if (typeof window !== 'undefined' && window.electronAPI) {
+    if (isElectron) {
       loadCalendarEvents();
     } else {
       setLoading(false);
     }
-  }, []);
+  }, [isElectron]);
 
   const loadCalendarEvents = async () => {
     setLoading(true);
@@ -206,17 +207,9 @@ export default function CalendarPage() {
     };
   }, [filteredEvents]);
 
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center h-64">
-          <div className="flex items-center gap-2">
-            <CalendarIcon className="h-6 w-6 animate-pulse" />
-            <span>Loading calendar events...</span>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
+  // Show skeleton only if loading and no cached data
+  if (loading && events.length === 0) {
+    return <CalendarSkeleton />;
   }
 
   return (

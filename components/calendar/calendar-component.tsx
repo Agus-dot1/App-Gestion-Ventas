@@ -191,7 +191,7 @@ export function CalendarComponent({
               variant="outline"
               size="sm"
               onClick={() => navigateMonth('prev')}
-              aria-label="Previous month"
+              aria-label="Mes anterior"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -200,13 +200,13 @@ export function CalendarComponent({
               size="sm"
               onClick={goToToday}
             >
-              Today
+              Hoy
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() => navigateMonth('next')}
-              aria-label="Next month"
+              aria-label="Mes siguiente"
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
@@ -246,7 +246,7 @@ export function CalendarComponent({
                 onKeyDown={(e) => handleKeyDown(e, day.date, weekIndex, dayIndex)}
                 tabIndex={0}
                 role="button"
-                aria-label={`${day.date.toLocaleDateString()}, ${day.events.length} events`}
+                aria-label={`${day.date.toLocaleDateString()}, ${day.events.length} eventos`}
               >
                 <div className="flex flex-col h-full">
                   {/* Date number */}
@@ -296,12 +296,12 @@ export function CalendarComponent({
                         <PopoverTrigger asChild>
                           <div className="text-xs text-muted-foreground text-center py-1 cursor-pointer hover:underline flex items-center justify-center gap-1">
                             <MoreHorizontal className="w-3 h-3" />
-                            +{day.events.length - 2} more
+                            +{day.events.length - 2} más
                           </div>
                         </PopoverTrigger>
                         <PopoverContent className="w-80 p-0" align="center">
                           <div className="max-h-60 overflow-y-auto p-2">
-                            <h4 className="font-medium text-sm p-2 border-b">More Events ({day.events.length})</h4>
+                            <h4 className="font-medium text-sm p-2 border-b">Más Eventos ({day.events.length})</h4>
                             <div className="space-y-2 p-2">
                               {day.events.slice(2).map((event) => (
                                 <div
@@ -337,7 +337,7 @@ export function CalendarComponent({
                                   )}
                                   {event.amount && (
                                     <div className="text-xs mt-1">
-                                      Amount: <span className="font-medium">${event.amount.toLocaleString()}</span>
+                                      Monto: <span className="font-medium">${event.amount.toLocaleString()}</span>
                                     </div>
                                   )}
                                 </div>
@@ -359,19 +359,19 @@ export function CalendarComponent({
           <div className="flex flex-wrap gap-4 text-sm">
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded bg-green-500" />
-              <span>Sales</span>
+              <span>Ventas</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded bg-blue-500" />
-              <span>Installments</span>
+              <span>Cuotas</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded bg-yellow-500" />
-              <span>Reminders</span>
+              <span>Recordatorios</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded bg-red-500" />
-              <span>Overdue</span>
+              <span>Vencido</span>
             </div>
           </div>
         </div>

@@ -109,7 +109,7 @@ function setupIpcHandlers() {
     electron_1.ipcMain.handle('db:sales:getCount', () => database_operations_1.saleOperations.getCount());
     electron_1.ipcMain.handle('db:sales:getTotalRevenue', () => database_operations_1.saleOperations.getTotalRevenue());
     electron_1.ipcMain.handle('db:sales:getRecent', (_, limit) => database_operations_1.saleOperations.getRecent(limit));
-    electron_1.ipcMain.handle('db:sales:getSalesChartData', () => database_operations_1.saleOperations.getSalesChartData());
+    electron_1.ipcMain.handle('db:sales:getSalesChartData', (_, days) => database_operations_1.saleOperations.getSalesChartData(days));
     electron_1.ipcMain.handle('db:sales:getStatsComparison', () => database_operations_1.saleOperations.getStatsComparison());
     // Installment operations
     electron_1.ipcMain.handle('db:installments:getBySale', (_, saleId) => database_operations_1.installmentOperations.getBySale(saleId));

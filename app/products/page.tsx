@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { DashboardLayout } from '@/components/dashboard-layout';
 import { ProductForm } from '@/components/products/product-form';
 import { ProductsTable } from '@/components/products/products-table';
+import { ProductsSkeleton } from '@/components/skeletons/products-skeleton';
 import { Plus, Package, TrendingUp, DollarSign, Eye } from 'lucide-react';
 import { Database } from 'lucide-react';
 import type { Product } from '@/lib/database-operations';
@@ -19,6 +20,11 @@ export default function ProductsPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>();
   const [isElectron, setIsElectron] = useState(false);
+
+  // Check for Electron after component mounts to avoid hydration mismatch
+  useEffect(() => {
+    setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
+  }, []);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -30,19 +36,22 @@ export default function ProductsPage() {
   });
   const pageSize = 25; // Load 25 products per page for better performance
 
-  useEffect(() => {
-    setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
-    if (typeof window !== 'undefined' && window.electronAPI) {
-      loadProducts();
-    }
-  }, []);
-
-  // Reload products when search term or page changes
+  // Initial data load
   useEffect(() => {
     if (isElectron) {
       loadProducts();
     }
-  }, [searchTerm, currentPage, isElectron]);
+  }, [isElectron]);
+
+  // Reload products when search term or page changes
+  useEffect(() => {
+    if (isElectron && products.length > 0) {
+      // Only reload if we already have data loaded
+      setTimeout(() => {
+        loadProducts();
+      }, 0);
+    }
+  }, [searchTerm, currentPage]);
 
   // Highlight product if specified in URL
   const highlightedProduct = useMemo(() => {
@@ -70,29 +79,34 @@ export default function ProductsPage() {
 
   const loadProducts = async (forceRefresh = false) => {
     try {
-      setIsLoading(true);
+      // Check cache first and display immediately if available
+      const cachedData = dataCache.getCachedProducts(currentPage, pageSize, searchTerm);
+      const isCacheExpired = dataCache.isProductsCacheExpired(currentPage, pageSize, searchTerm);
       
-      // Check cache first (unless forcing refresh)
-      if (!forceRefresh) {
-        const cachedData = dataCache.getCachedProducts(currentPage, pageSize, searchTerm);
-        if (cachedData) {
-          setProducts(cachedData.items);
-          setPaginationInfo({
-            total: cachedData.total,
-            totalPages: cachedData.totalPages,
-            currentPage: cachedData.currentPage,
-            pageSize: cachedData.pageSize
-          });
-          setIsLoading(false);
-          
+      if (cachedData && !forceRefresh) {
+        // Show cached data immediately
+        setProducts(cachedData.items);
+        setPaginationInfo({
+          total: cachedData.total,
+          totalPages: cachedData.totalPages,
+          currentPage: cachedData.currentPage,
+          pageSize: cachedData.pageSize
+        });
+        setIsLoading(false);
+        
+        // If cache is not expired, we're done
+        if (!isCacheExpired) {
           // Prefetch other pages in background
           setTimeout(() => {
             prefetchCustomers();
             prefetchSales();
           }, 100);
-          
           return;
         }
+        // If expired, continue to refresh in background
+      } else {
+        // No cache or forcing refresh, show loading
+        setIsLoading(true);
       }
       
       const result = await window.electronAPI.database.products.getPaginated(
@@ -397,6 +411,9 @@ export default function ProductsPage() {
 
         {/* Products Table */}
         {isElectron ? (
+          isLoading && products.length === 0 ? (
+            <ProductsSkeleton />
+          ) : (
           <ProductsTable
             products={products}
             highlightId={highlightId}
@@ -411,6 +428,7 @@ export default function ProductsPage() {
             paginationInfo={paginationInfo}
             serverSidePagination={true}
           />
+          )
         ) : (
           <Card>
             <CardContent className="flex items-center justify-center py-12">

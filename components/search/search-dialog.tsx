@@ -114,7 +114,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
           id: `customer-${customer.id}`,
           type: 'customer',
           title: customer.name,
-          subtitle: `${customerSales.length} sales • $${totalSpent.toLocaleString()}`,
+          subtitle: `${customerSales.length} ventas • $${totalSpent.toLocaleString()}`,
           description: customer.contact_info || 'No contact information',
           metadata: {
             customer,
@@ -133,7 +133,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
           results.push({
             id: `sale-${sale.id}`,
             type: 'sale',
-            title: `Sale ${sale.sale_number}`,
+            title: `Venta ${sale.sale_number}`,
             subtitle: `${customer.name} • ${formatCurrency(sale.total_amount)}`,
             description: `${sale.payment_type} • ${sale.payment_status}`,
             metadata: { sale, customer },
@@ -158,7 +158,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
           results.push({
             id: `sale-${sale.id}`,
             type: 'sale',
-            title: `Sale ${sale.sale_number}`,
+            title: `Venta ${sale.sale_number}`,
             subtitle: `${sale.customer_name} • ${formatCurrency(sale.total_amount)}`,
             description: `${formatDate(sale.date)} • ${sale.payment_status}`,
             metadata: { sale },
@@ -185,7 +185,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
           id: `product-${product.id}`,
           type: 'product',
           title: product.name,
-          subtitle: `${formatCurrency(product.price)} • ${productSales.length} sales`,
+          subtitle: `${formatCurrency(product.price)} • ${productSales.length} ventas`,
           description: product.description || 'No description',
           metadata: { product, salesCount: productSales.length },
           action: () => {
@@ -204,9 +204,9 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
           results.push({
             id: `overdue-${sale.id}`,
             type: 'installment',
-            title: `Overdue Payment - ${sale.customer_name}`,
-            subtitle: `Sale ${sale.sale_number} • ${formatCurrency(sale.total_amount)}`,
-            description: `Due since ${formatDate(sale.date)}`,
+            title: `Pago Vencido - ${sale.customer_name}`,
+            subtitle: `Venta ${sale.sale_number} • ${formatCurrency(sale.total_amount)}`,
+            description: `Vencido desde ${formatDate(sale.date)}`,
             metadata: { sale, isOverdue: true },
             action: () => {
               router.push(`/sales?tab=installments&highlight=${sale.id}`);
@@ -310,10 +310,10 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
         <DialogHeader className="px-6 pt-6 pb-2">
           <DialogTitle className="flex items-center gap-2">
             <Search className="w-5 h-5" />
-            Search Everything
+Buscar Todo
           </DialogTitle>
           <DialogDescription>
-            Search customers, sales, products, and payments. Use ↑↓ to navigate, Enter to select.
+Buscar clientes, ventas, productos y pagos. Usa ↑↓ para navegar, Enter para seleccionar.
           </DialogDescription>
         </DialogHeader>
 
@@ -321,7 +321,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search customers, sales, products..."
+              placeholder="Buscar clientes, ventas, productos..."
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
@@ -338,29 +338,29 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
             <div className="flex items-center justify-center py-8">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Search className="w-4 h-4 animate-pulse" />
-                <span>Loading...</span>
+                <span>Cargando...</span>
               </div>
             </div>
           ) : !isElectron ? (
             <div className="text-center py-8">
               <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Electron Required</h3>
+              <h3 className="text-lg font-semibold mb-2">Electron Requerido</h3>
               <p className="text-muted-foreground">
-                Search functionality is only available in the Electron desktop app.
+La funcionalidad de búsqueda solo está disponible en la aplicación de escritorio Electron.
               </p>
             </div>
           ) : query.trim() === '' ? (
             <div className="space-y-4">
               <div className="text-center py-8">
                 <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Start Searching</h3>
+                <h3 className="text-lg font-semibold mb-2">Comenzar Búsqueda</h3>
                 <p className="text-muted-foreground">
-                  Type to search customers, sales, products, and payments
+                  Escribe para buscar clientes, ventas, productos y pagos
                 </p>
               </div>
               
               <div className="space-y-3">
-                <h4 className="text-sm font-medium text-muted-foreground">Quick Actions</h4>
+                <h4 className="text-sm font-medium text-muted-foreground">Acciones Rápidas</h4>
                 <div className="grid gap-2">
                   <Button
                     variant="ghost"
@@ -372,8 +372,8 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
                   >
                     <User className="w-4 h-4 mr-3" />
                     <div className="text-left">
-                      <div className="font-medium">View All Customers</div>
-                      <div className="text-sm text-muted-foreground">Manage customer database</div>
+                      <div className="font-medium">Ver Todos los Clientes</div>
+                      <div className="text-sm text-muted-foreground">Gestionar base de datos de clientes</div>
                     </div>
                   </Button>
                   <Button
@@ -386,8 +386,8 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
                   >
                     <CreditCard className="w-4 h-4 mr-3" />
                     <div className="text-left">
-                      <div className="font-medium">View All Sales</div>
-                      <div className="text-sm text-muted-foreground">Track transactions</div>
+                      <div className="font-medium">Ver Todas las Ventas</div>
+                      <div className="text-sm text-muted-foreground">Rastrear transacciones</div>
                     </div>
                   </Button>
                   <Button
@@ -400,8 +400,8 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
                   >
                     <AlertTriangle className="w-4 h-4 mr-3" />
                     <div className="text-left">
-                      <div className="font-medium">Overdue Payments</div>
-                      <div className="text-sm text-muted-foreground">Check payment status</div>
+                      <div className="font-medium">Pagos Vencidos</div>
+                      <div className="text-sm text-muted-foreground">Verificar estado de pagos</div>
                     </div>
                   </Button>
                 </div>
@@ -410,9 +410,9 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
           ) : searchResults.length === 0 ? (
             <div className="text-center py-8">
               <Search className="h-8 w-8 text-muted-foreground mx-auto mb-4" />
-              <h3 className="font-semibold mb-2">No results found</h3>
+              <h3 className="font-semibold mb-2">No se encontraron resultados</h3>
               <p className="text-muted-foreground text-sm">
-                Try searching for customer names, sale numbers, or product names
+                Intenta buscar nombres de clientes, números de venta o nombres de productos
               </p>
             </div>
           ) : (
@@ -422,7 +422,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
                 <div>
                   <h4 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
                     <User className="w-4 h-4" />
-                    Customers ({groupedResults.customers.length})
+                    Clientes ({groupedResults.customers.length})
                   </h4>
                   <div className="space-y-1">
                     {groupedResults.customers.map((result, index) => (
@@ -443,7 +443,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
                   {groupedResults.customers.length > 0 && <Separator />}
                   <h4 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
                     <CreditCard className="w-4 h-4" />
-                    Sales ({groupedResults.sales.length})
+                    Ventas ({groupedResults.sales.length})
                   </h4>
                   <div className="space-y-1">
                     {groupedResults.sales.map((result, index) => (
@@ -464,7 +464,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
                   {(groupedResults.customers.length > 0 || groupedResults.sales.length > 0) && <Separator />}
                   <h4 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
                     <Package className="w-4 h-4" />
-                    Products ({groupedResults.products.length})
+                    Productos ({groupedResults.products.length})
                   </h4>
                   <div className="space-y-1">
                     {groupedResults.products.map((result, index) => (
@@ -506,11 +506,11 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
         {searchResults.length > 0 && (
           <div className="px-6 py-3 border-t bg-muted/30">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>{searchResults.length} results found</span>
+              <span>{searchResults.length} resultados encontrados</span>
               <div className="flex items-center gap-4">
-                <span>↑↓ Navigate</span>
-                <span>Enter Select</span>
-                <span>Esc Close</span>
+                <span>↑↓ Navegar</span>
+                <span>Enter Seleccionar</span>
+                <span>Esc Cerrar</span>
               </div>
             </div>
           </div>
@@ -601,7 +601,7 @@ function SearchResultItem({ result, isSelected, onClick }: SearchResultItemProps
                   {result.metadata.salesCount > 0 && (
                     <div className="flex items-center gap-1">
                       <CreditCard className="w-3 h-3" />
-                      <span>{result.metadata.salesCount} sales</span>
+                      <span>{result.metadata.salesCount} ventas</span>
                     </div>
                   )}
                   {result.metadata.overdueCount > 0 && (

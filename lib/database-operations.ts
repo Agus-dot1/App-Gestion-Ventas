@@ -135,6 +135,9 @@ declare global {
           create: (customer: Omit<Customer, 'id' | 'created_at'>) => Promise<number>;
           update: (id: number, customer: Partial<Customer>) => Promise<void>;
           delete: (id: number) => Promise<void>;
+          getCount: () => Promise<number>;
+          getRecent: (limit?: number) => Promise<Customer[]>;
+          getMonthlyComparison: () => Promise<{ current: number; previous: number; change: number }>;
         };
         products: {
           getAll: () => Promise<Product[]>;
@@ -151,6 +154,8 @@ declare global {
           create: (product: Omit<Product, 'id'>) => Promise<number>;
           update: (id: number, product: Partial<Product>) => Promise<void>;
           delete: (id: number) => Promise<void>;
+          getCount: () => Promise<number>;
+          getMonthlyComparison: () => Promise<{ current: number; previous: number; change: number }>;
         };
         sales: {
           getAll: () => Promise<Sale[]>;
@@ -169,6 +174,11 @@ declare global {
           delete: (id: number) => Promise<void>;
           getWithDetails: (id: number) => Promise<Sale>;
           getOverdueSales: () => Promise<Sale[]>;
+          getCount: () => Promise<number>;
+          getTotalRevenue: () => Promise<number>;
+          getRecent: (limit?: number) => Promise<Sale[]>;
+          getSalesChartData: (days?: number) => Promise<Array<{ date: string; sales: number; revenue: number }>>;
+          getStatsComparison: () => Promise<{ current: number; previous: number; change: number }>;
         };
         installments: {
           getBySale: (saleId: number) => Promise<Installment[]>;
@@ -180,6 +190,10 @@ declare global {
         payments: {
           getBySale: (saleId: number) => Promise<PaymentTransaction[]>;
           create: (payment: Omit<PaymentTransaction, 'id' | 'created_at'>) => Promise<number>;
+        };
+        saleItems: {
+          getBySale: (saleId: number) => Promise<SaleItem[]>;
+          create: (saleItem: Omit<SaleItem, 'id'>) => Promise<number>;
         };
       };
     };
@@ -716,8 +730,22 @@ export const saleOperations = {
     );
     const totalAmount = subtotal + (saleData.tax_amount || 0) - (saleData.discount_amount || 0);
     
-    // Generate sale number
-    const saleNumber = `SALE-${Date.now()}`;
+    // Generate sale number with a more readable format
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    
+    // Get the count of sales for today to create a sequential number
+    const todayStart = `${year}-${month}-${day}`;
+    const todayCountStmt = db.prepare(`
+      SELECT COUNT(*) as count FROM sales 
+      WHERE date(date) = date(?)
+    `);
+    const todayCount = (todayCountStmt.get(todayStart) as { count: number }).count + 1;
+    const sequentialNumber = String(todayCount).padStart(3, '0');
+    
+    const saleNumber = `VENTA-${year}${month}${day}-${sequentialNumber}`;
     
     // Insert sale
     const saleStmt = db.prepare(`
@@ -874,19 +902,19 @@ export const saleOperations = {
     return stmt.all(limit) as Sale[];
   },
 
-  getSalesChartData: (): Array<{ month: string; sales: number; revenue: number }> => {
+  getSalesChartData: (days: number = 30): Array<{ date: string; sales: number; revenue: number }> => {
     const db = getDatabase();
     const stmt = db.prepare(`
       SELECT 
-        strftime('%Y-%m', date) as month,
+        strftime('%Y-%m', date) as date,
         COUNT(*) as sales,
         COALESCE(SUM(total_amount), 0) as revenue
       FROM sales 
-      WHERE status != 'cancelled' AND date >= date('now', '-12 months')
+      WHERE status != 'cancelled' AND date >= date('now', '-' || ? || ' days')
       GROUP BY strftime('%Y-%m', date)
-      ORDER BY month
+      ORDER BY date
     `);
-    return stmt.all() as Array<{ month: string; sales: number; revenue: number }>;
+    return stmt.all(days) as Array<{ date: string; sales: number; revenue: number }>;
   },
 
   getStatsComparison: (): { current: number; previous: number; change: number } => {

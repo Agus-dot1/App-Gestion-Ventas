@@ -102,7 +102,7 @@ function setupIpcHandlers() {
   ipcMain.handle('db:sales:getCount', () => saleOperations.getCount());
   ipcMain.handle('db:sales:getTotalRevenue', () => saleOperations.getTotalRevenue());
   ipcMain.handle('db:sales:getRecent', (_, limit) => saleOperations.getRecent(limit));
-  ipcMain.handle('db:sales:getSalesChartData', () => saleOperations.getSalesChartData());
+  ipcMain.handle('db:sales:getSalesChartData', (_, days) => saleOperations.getSalesChartData(days));
   ipcMain.handle('db:sales:getStatsComparison', () => saleOperations.getStatsComparison());
 
   // Installment operations

@@ -22,14 +22,17 @@ interface DataCacheContextType {
   // Customer cache
   getCachedCustomers: (page: number, pageSize: number, searchTerm: string) => PaginatedData<Customer> | null;
   setCachedCustomers: (page: number, pageSize: number, searchTerm: string, data: PaginatedData<Customer>) => void;
+  isCustomersCacheExpired: (page: number, pageSize: number, searchTerm: string) => boolean;
   
   // Product cache
   getCachedProducts: (page: number, pageSize: number, searchTerm: string) => PaginatedData<Product> | null;
   setCachedProducts: (page: number, pageSize: number, searchTerm: string, data: PaginatedData<Product>) => void;
+  isProductsCacheExpired: (page: number, pageSize: number, searchTerm: string) => boolean;
   
   // Sales cache
   getCachedSales: (page: number, pageSize: number, searchTerm: string) => PaginatedData<Sale> | null;
   setCachedSales: (page: number, pageSize: number, searchTerm: string, data: PaginatedData<Sale>) => void;
+  isSalesCacheExpired: (page: number, pageSize: number, searchTerm: string) => boolean;
   
   // Cache management
   clearCache: () => void;
@@ -58,11 +61,18 @@ export function DataCacheProvider({ children }: { children: ReactNode }) {
     const key = generateCacheKey(page, pageSize, searchTerm);
     const entry = customerCache.get(key);
     
-    if (!entry || isExpired(entry)) {
-      return null;
+    if (entry) {
+      // Return cached data immediately, even if expired
+      return entry.data;
     }
     
-    return entry.data;
+    return null;
+  }, [customerCache]);
+
+  const isCustomersCacheExpired = useCallback((page: number, pageSize: number, searchTerm: string) => {
+    const key = generateCacheKey(page, pageSize, searchTerm);
+    const entry = customerCache.get(key);
+    return !entry || isExpired(entry);
   }, [customerCache]);
 
   const setCachedCustomers = useCallback((page: number, pageSize: number, searchTerm: string, data: PaginatedData<Customer>) => {
@@ -92,11 +102,18 @@ export function DataCacheProvider({ children }: { children: ReactNode }) {
     const key = generateCacheKey(page, pageSize, searchTerm);
     const entry = productCache.get(key);
     
-    if (!entry || isExpired(entry)) {
-      return null;
+    if (entry) {
+      // Return cached data immediately, even if expired
+      return entry.data;
     }
     
-    return entry.data;
+    return null;
+  }, [productCache]);
+
+  const isProductsCacheExpired = useCallback((page: number, pageSize: number, searchTerm: string) => {
+    const key = generateCacheKey(page, pageSize, searchTerm);
+    const entry = productCache.get(key);
+    return !entry || isExpired(entry);
   }, [productCache]);
 
   const setCachedProducts = useCallback((page: number, pageSize: number, searchTerm: string, data: PaginatedData<Product>) => {
@@ -125,11 +142,18 @@ export function DataCacheProvider({ children }: { children: ReactNode }) {
     const key = generateCacheKey(page, pageSize, searchTerm);
     const entry = salesCache.get(key);
     
-    if (!entry || isExpired(entry)) {
-      return null;
+    if (entry) {
+      // Return cached data immediately, even if expired
+      return entry.data;
     }
     
-    return entry.data;
+    return null;
+  }, [salesCache]);
+
+  const isSalesCacheExpired = useCallback((page: number, pageSize: number, searchTerm: string) => {
+    const key = generateCacheKey(page, pageSize, searchTerm);
+    const entry = salesCache.get(key);
+    return !entry || isExpired(entry);
   }, [salesCache]);
 
   const setCachedSales = useCallback((page: number, pageSize: number, searchTerm: string, data: PaginatedData<Sale>) => {
@@ -177,10 +201,13 @@ export function DataCacheProvider({ children }: { children: ReactNode }) {
   const value: DataCacheContextType = {
     getCachedCustomers,
     setCachedCustomers,
+    isCustomersCacheExpired,
     getCachedProducts,
     setCachedProducts,
+    isProductsCacheExpired,
     getCachedSales,
     setCachedSales,
+    isSalesCacheExpired,
     clearCache,
     invalidateCache
   };
