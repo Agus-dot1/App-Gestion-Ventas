@@ -39,7 +39,7 @@ export interface Sale {
   payment_status: 'paid' | 'partial' | 'unpaid' | 'overdue';
   number_of_installments?: number;
   installment_amount?: number;
-  down_payment: number;
+  advance_installments: number;
   transaction_type: 'sale' | 'return' | 'exchange' | 'refund';
   status: 'pending' | 'completed' | 'cancelled' | 'refunded';
   created_by?: number;
@@ -110,7 +110,7 @@ export interface SaleFormData {
   }>;
   payment_type: 'cash' | 'installments' | 'credit' | 'mixed';
   number_of_installments?: number;
-  down_payment?: number;
+  advance_installments?: number;
   tax_amount?: number;
   discount_amount?: number;
   notes?: string;
@@ -183,6 +183,7 @@ declare global {
         installments: {
           getBySale: (saleId: number) => Promise<Installment[]>;
           getOverdue: () => Promise<Installment[]>;
+          create: (installment: Omit<Installment, 'id' | 'created_at' | 'updated_at'>) => Promise<number>;
           recordPayment: (installmentId: number, amount: number, paymentMethod: string, reference?: string) => Promise<void>;
           revertPayment: (installmentId: number, transactionId: number) => Promise<void>;
           applyLateFee: (installmentId: number, fee: number) => Promise<void>;
@@ -752,13 +753,13 @@ export const saleOperations = {
       INSERT INTO sales (
         customer_id, sale_number, date, due_date, subtotal, tax_amount,
         discount_amount, total_amount, payment_type, payment_status,
-        number_of_installments, installment_amount, down_payment,
+        number_of_installments, installment_amount, advance_installments,
         transaction_type, status, notes
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
     const installmentAmount = saleData.payment_type === 'installments' && saleData.number_of_installments
-      ? (totalAmount - (saleData.down_payment || 0)) / saleData.number_of_installments
+      ? totalAmount / saleData.number_of_installments
       : null;
     
     const saleResult = saleStmt.run(
@@ -774,7 +775,7 @@ export const saleOperations = {
       saleData.payment_type === 'cash' ? 'paid' : 'unpaid',
       saleData.number_of_installments || null,
       installmentAmount,
-      saleData.down_payment || 0,
+      saleData.advance_installments || 0, // advance_installments
       'sale',
       'completed',
       saleData.notes || null
@@ -809,8 +810,8 @@ export const saleOperations = {
     
     // Create installments if needed
     if (saleData.payment_type === 'installments' && saleData.number_of_installments) {
-      const remainingAmount = totalAmount - (saleData.down_payment || 0);
-      const monthlyAmount = remainingAmount / saleData.number_of_installments;
+      const monthlyAmount = totalAmount / saleData.number_of_installments;
+      const advanceInstallments = saleData.advance_installments || 0;
       
       const installmentStmt = db.prepare(`
         INSERT INTO installments (
@@ -823,18 +824,50 @@ export const saleOperations = {
         const dueDate = new Date();
         dueDate.setMonth(dueDate.getMonth() + i);
         
+        // Mark advance installments as paid
+        const isPaid = i <= advanceInstallments;
+        
         installmentStmt.run(
           saleId,
           i,
           dueDate.toISOString().split('T')[0],
           monthlyAmount,
-          0,
-          monthlyAmount,
-          'pending',
+          isPaid ? monthlyAmount : 0,
+          isPaid ? 0 : monthlyAmount,
+          isPaid ? 'paid' : 'pending',
           0,
           0,
           0
         );
+      }
+      
+      // Create payment transactions for advance installments
+      if (advanceInstallments > 0) {
+        const paymentStmt = db.prepare(`
+           INSERT INTO payment_transactions (
+             sale_id, installment_id, amount, payment_method, payment_reference,
+             transaction_date, status
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)
+         `);
+        
+        // Get the created installment IDs for advance payments
+        const installmentIds = db.prepare(`
+          SELECT id FROM installments 
+          WHERE sale_id = ? AND installment_number <= ?
+          ORDER BY installment_number
+        `).all(saleId, advanceInstallments);
+        
+        installmentIds.forEach((installment: any) => {
+          paymentStmt.run(
+            saleId,
+            installment.id,
+            monthlyAmount,
+            'cash',
+            'Pago adelantado',
+            new Date().toISOString(),
+            'completed'
+          );
+        });
       }
     }
     

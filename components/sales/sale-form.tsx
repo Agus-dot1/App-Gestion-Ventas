@@ -36,7 +36,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
     customer_id: 0,
     payment_type: 'cash' as 'cash' | 'installments' | 'credit' | 'mixed',
     number_of_installments: 6,
-    down_payment: 0,
+    advance_installments: 0,
     tax_amount: 0,
     discount_amount: 0,
     notes: ''
@@ -58,7 +58,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         customer_id: sale.customer_id,
         payment_type: sale.payment_type,
         number_of_installments: sale.number_of_installments || 6,
-        down_payment: sale.down_payment,
+        advance_installments: sale.advance_installments || 0,
         tax_amount: sale.tax_amount,
         discount_amount: sale.discount_amount,
         notes: sale.notes || ''
@@ -71,7 +71,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         customer_id: 0,
         payment_type: 'cash',
         number_of_installments: 6,
-        down_payment: 0,
+        advance_installments: 0,
         tax_amount: 0,
         discount_amount: 0,
         notes: ''
@@ -184,9 +184,6 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
       if (!formData.number_of_installments || formData.number_of_installments < 2) {
         newErrors.number_of_installments = 'El número de cuotas debe ser al menos 2';
       }
-      if (formData.down_payment < 0) {
-        newErrors.down_payment = 'La seña no puede ser negativa';
-      }
     }
 
     setErrors(newErrors);
@@ -210,7 +207,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         })),
         payment_type: formData.payment_type,
         number_of_installments: formData.payment_type === 'installments' ? formData.number_of_installments : undefined,
-        down_payment: formData.payment_type === 'installments' ? formData.down_payment : undefined,
+        advance_installments: formData.payment_type === 'installments' ? formData.advance_installments : undefined,
         tax_amount: formData.tax_amount,
         discount_amount: formData.discount_amount,
         notes: formData.notes
@@ -223,7 +220,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         customer_id: 0,
         payment_type: 'cash',
         number_of_installments: 6,
-        down_payment: 0,
+        advance_installments: 0,
         tax_amount: 0,
         discount_amount: 0,
         notes: ''
@@ -444,23 +441,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                       )}
                     </div>
                     
-                    <div>
-                      <Label>Seña</Label>
-                      <Input
-                        type="number"
-                        step="1"
-                        min="0"
-                        value={formData.down_payment}
-                        onChange={(e) => setFormData(prev => ({ ...prev, down_payment: parseFloat(e.target.value) || 0 }))}
-                        className={errors.down_payment ? 'border-red-500' : ''}
-                      />
-                      {errors.down_payment && (
-                        <div className="flex items-center gap-1 text-sm text-red-600 mt-1">
-                          <AlertCircle className="h-3 w-3" />
-                          {errors.down_payment}
-                        </div>
-                      )}
-                    </div>
+
                   </>
                 )}
               </div>
@@ -509,19 +490,30 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                     <Separator />
                     <div className="space-y-1 text-sm text-muted-foreground">
                       <div className="flex justify-between">
-                        <span>Seña:</span>
-                        <span>${Math.round(formData.down_payment)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Total restante:</span>
-                        <span>${Math.round((total - formData.down_payment))}</span>
-                      </div>
-                      <div className="flex justify-between">
                         <span>Pago mensual:</span>
-                        <span>${Math.round((total - formData.down_payment) / formData.number_of_installments)}</span>
-
+                        <span>${Math.round(total / formData.number_of_installments)}</span>
                       </div>
                     </div>
+
+                    <div>
+                      <Label>Cuotas pagadas por adelantado</Label>
+                      <Select
+                        value={formData.advance_installments.toString()}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, advance_installments: parseInt(value) }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: formData.number_of_installments + 1 }, (_, i) => (
+                            <SelectItem key={i} value={i.toString()}>
+                              {i === 0 ? 'Ninguna' : `${i} cuota${i > 1 ? 's' : ''}`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
                   </>
                 )}
               </div>

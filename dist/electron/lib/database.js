@@ -143,7 +143,7 @@ function createTables() {
       payment_status TEXT CHECK(payment_status IN ('paid', 'partial', 'unpaid', 'overdue')) DEFAULT 'unpaid',
       number_of_installments INTEGER,
       installment_amount DECIMAL(10,2),
-      down_payment DECIMAL(10,2) DEFAULT 0,
+      advance_installments INTEGER DEFAULT 0,
       transaction_type TEXT CHECK(transaction_type IN ('sale', 'return', 'exchange', 'refund')) DEFAULT 'sale',
       status TEXT CHECK(status IN ('pending', 'completed', 'cancelled', 'refunded')) DEFAULT 'completed',
       created_by INTEGER,
@@ -276,7 +276,7 @@ function runMigrations() {
     const columnNames = tableInfo.map((col) => col.name);
     console.log('Current sales table columns:', columnNames);
     // Check if we have the old schema (missing required columns)
-    const requiredColumns = ['sale_number', 'subtotal', 'tax_amount', 'discount_amount', 'payment_status', 'down_payment'];
+    const requiredColumns = ['sale_number', 'subtotal', 'tax_amount', 'discount_amount', 'payment_status', 'advance_installments'];
     const missingColumns = requiredColumns.filter(col => !columnNames.includes(col));
     // Check if sale_items table needs to be migrated to allow NULL product_id
     const saleItemsTableInfo = db.prepare("PRAGMA table_info(sale_items)").all();
@@ -322,7 +322,7 @@ function createSalesRelatedTables() {
       payment_status TEXT CHECK(payment_status IN ('paid', 'partial', 'unpaid', 'overdue')) DEFAULT 'unpaid',
       number_of_installments INTEGER,
       installment_amount DECIMAL(10,2),
-      down_payment DECIMAL(10,2) DEFAULT 0,
+      advance_installments INTEGER DEFAULT 0,
       transaction_type TEXT CHECK(transaction_type IN ('sale', 'return', 'exchange', 'refund')) DEFAULT 'sale',
       status TEXT CHECK(status IN ('pending', 'completed', 'cancelled', 'refunded')) DEFAULT 'completed',
       created_by INTEGER,

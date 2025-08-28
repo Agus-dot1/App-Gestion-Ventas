@@ -91,7 +91,7 @@ export function SalesTable({
       }
       
       // Handle different data types
-      if (sortConfig.key === 'total_amount' || sortConfig.key === 'down_payment') {
+      if (sortConfig.key === 'total_amount' || sortConfig.key === 'advance_installments') {
         const aNum = Number(aValue);
         const bNum = Number(bValue);
         return sortConfig.direction === 'asc' ? aNum - bNum : bNum - aNum;
@@ -592,9 +592,9 @@ export function SalesTable({
                             <DollarSign className="w-4 h-4 text-green-600" />
                             <span className="font-medium">{formatCurrency(sale.total_amount)}</span>
                           </div>
-                          {sale.payment_type === 'installments' && sale.down_payment > 0 && (
+                          {sale.payment_type === 'installments' && sale.advance_installments > 0 && (
                             <div className="text-xs text-muted-foreground">
-                              Seña: {formatCurrency(sale.down_payment)}
+                              Cuotas adelantadas: {sale.advance_installments}
                             </div>
                           )}
                         </TableCell>

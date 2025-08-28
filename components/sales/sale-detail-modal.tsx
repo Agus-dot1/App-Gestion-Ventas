@@ -482,9 +482,9 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{formatCurrency(sale.total_amount)}</div>
-                  {sale.down_payment > 0 && (
+                  {sale.advance_installments > 0 && (
                     <div className="text-sm text-muted-foreground">
-                      Anticipo: {formatCurrency(sale.down_payment)}
+                      Cuotas adelantadas: {sale.advance_installments}
                     </div>
                   )}
                 </CardContent>
@@ -776,8 +776,8 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
                       </CardTitle>
                       <CardDescription>
                         {sale.number_of_installments} cuotas de {formatCurrency(sale.installment_amount || 0)}
-                        {sale.down_payment > 0 && (
-                          <span> + anticipo de {formatCurrency(sale.down_payment)}</span>
+                        {sale.advance_installments > 0 && (
+                          <span> + {sale.advance_installments} cuotas adelantadas</span>
                         )}
                       </CardDescription>
                     </CardHeader>

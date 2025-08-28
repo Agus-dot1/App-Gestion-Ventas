@@ -440,15 +440,16 @@ exports.saleOperations = {
       INSERT INTO sales (
         customer_id, sale_number, date, due_date, subtotal, tax_amount,
         discount_amount, total_amount, payment_type, payment_status,
-        number_of_installments, installment_amount, down_payment,
+        number_of_installments, installment_amount, advance_installments,
         transaction_type, status, notes
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
         const installmentAmount = saleData.payment_type === 'installments' && saleData.number_of_installments
-            ? (totalAmount - (saleData.down_payment || 0)) / saleData.number_of_installments
+            ? totalAmount / saleData.number_of_installments
             : null;
         const saleResult = saleStmt.run(saleData.customer_id, saleNumber, new Date().toISOString(), null, // due_date
-        subtotal, saleData.tax_amount || 0, saleData.discount_amount || 0, totalAmount, saleData.payment_type, saleData.payment_type === 'cash' ? 'paid' : 'unpaid', saleData.number_of_installments || null, installmentAmount, saleData.down_payment || 0, 'sale', 'completed', saleData.notes || null);
+        subtotal, saleData.tax_amount || 0, saleData.discount_amount || 0, totalAmount, saleData.payment_type, saleData.payment_type === 'cash' ? 'paid' : 'unpaid', saleData.number_of_installments || null, installmentAmount, saleData.advance_installments || 0, // advance_installments
+        'sale', 'completed', saleData.notes || null);
         const saleId = saleResult.lastInsertRowid;
         // Insert sale items
         const itemStmt = db.prepare(`
@@ -464,8 +465,8 @@ exports.saleOperations = {
         }
         // Create installments if needed
         if (saleData.payment_type === 'installments' && saleData.number_of_installments) {
-            const remainingAmount = totalAmount - (saleData.down_payment || 0);
-            const monthlyAmount = remainingAmount / saleData.number_of_installments;
+            const monthlyAmount = totalAmount / saleData.number_of_installments;
+            const advanceInstallments = saleData.advance_installments || 0;
             const installmentStmt = db.prepare(`
         INSERT INTO installments (
           sale_id, installment_number, due_date, amount, paid_amount,
@@ -475,7 +476,27 @@ exports.saleOperations = {
             for (let i = 1; i <= saleData.number_of_installments; i++) {
                 const dueDate = new Date();
                 dueDate.setMonth(dueDate.getMonth() + i);
-                installmentStmt.run(saleId, i, dueDate.toISOString().split('T')[0], monthlyAmount, 0, monthlyAmount, 'pending', 0, 0, 0);
+                // Mark advance installments as paid
+                const isPaid = i <= advanceInstallments;
+                installmentStmt.run(saleId, i, dueDate.toISOString().split('T')[0], monthlyAmount, isPaid ? monthlyAmount : 0, isPaid ? 0 : monthlyAmount, isPaid ? 'paid' : 'pending', 0, 0, 0);
+            }
+            // Create payment transactions for advance installments
+            if (advanceInstallments > 0) {
+                const paymentStmt = db.prepare(`
+           INSERT INTO payment_transactions (
+             sale_id, installment_id, amount, payment_method, payment_reference,
+             transaction_date, status
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)
+         `);
+                // Get the created installment IDs for advance payments
+                const installmentIds = db.prepare(`
+          SELECT id FROM installments 
+          WHERE sale_id = ? AND installment_number <= ?
+          ORDER BY installment_number
+        `).all(saleId, advanceInstallments);
+                installmentIds.forEach((installment) => {
+                    paymentStmt.run(saleId, installment.id, monthlyAmount, 'cash', 'Pago adelantado', new Date().toISOString(), 'completed');
+                });
             }
         }
         return saleId;

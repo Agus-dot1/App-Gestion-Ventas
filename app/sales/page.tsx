@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { DashboardLayout } from '@/components/dashboard-layout';
 import { SaleForm } from '@/components/sales/sale-form';
 import { SalesTable } from '@/components/sales/sales-table';
-import { InstallmentDashboard } from '@/components/sales/installment-dashboard';
+import { InstallmentDashboard } from '@/components/sales/installments-dashboard/installment-dashboard';
 import { SalesSkeleton } from '@/components/skeletons/sales-skeleton';
 import { SalesFiltersComponent, applySalesFilters, type SalesFilters } from '@/components/sales/sales-filters';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -305,7 +305,15 @@ export default function SalesPage() {
   return (
     <DashboardLayout>
       <div className="p-8">
-        <div className="mb-8">
+        {/* Main Content Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="sales">Todas las ventas</TabsTrigger>
+            <TabsTrigger value="installments">Cuotas</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="sales" className="space-y-4">
+                    <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold tracking-tight">Ventas</h1>
@@ -321,7 +329,7 @@ export default function SalesPage() {
             </div>
           </div>
         </div>
-
+            
         {/* Statistics Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
           <Card>
@@ -390,15 +398,6 @@ export default function SalesPage() {
             </CardContent>
           </Card>
         </div>
-
-        {/* Main Content Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="sales">Todas las ventas</TabsTrigger>
-            <TabsTrigger value="installments">Cuotas</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="sales" className="space-y-4">
             <SalesFiltersComponent
               filters={salesFilters}
               onFiltersChange={setSalesFilters}
@@ -421,8 +420,8 @@ export default function SalesPage() {
             />
           </TabsContent>
 
-          <TabsContent value="installments" className="-m-8 min-h-screen">
-            <div className="p-8 min-h-screen bg-background">
+          <TabsContent value="installments" className="-m-8">
+            <div className="px-8">
               <InstallmentDashboard 
                 highlightId={highlightId}
                 onRefresh={() => { loadSales(); loadOverdueSales(); }} 

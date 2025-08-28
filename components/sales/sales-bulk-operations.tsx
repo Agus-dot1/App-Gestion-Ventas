@@ -127,7 +127,7 @@ export function SalesBulkOperations({
       'Estado de Pago': getPaymentStatusBadge(sale.payment_status).label,
       'Cuotas': sale.number_of_installments || '',
       'Monto Cuota': sale.installment_amount || '',
-      'Anticipo': sale.down_payment,
+      'Cuotas Adelantadas': sale.advance_installments,
       'Estado': sale.status === 'pending' ? 'Pendiente' :
                sale.status === 'completed' ? 'Completada' :
                sale.status === 'cancelled' ? 'Cancelada' : 'Reembolsada',
