@@ -9,7 +9,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { 
   Search, 
@@ -24,18 +23,14 @@ import {
   Plus,
   Edit,
   Trash2,
-  Filter,
-  X,
   CreditCard,
   Phone,
-  Mail,
-  MapPin,
-  Eye,
-  MoreHorizontal
+  Mail
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InstallmentForm } from './installment-form';
 import { PaymentForm } from './payment-form';
+import { InstallmentDetailView } from './installments-dashboard/installment-detail-view';
 import type { Customer, Sale, Installment } from '@/lib/database-operations';
 
 interface CustomerWithInstallments extends Customer {
@@ -57,6 +52,7 @@ type SortBy = 'customer' | 'amount' | 'dueDate' | 'status';
 export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDashboardProps) {
   const [customers, setCustomers] = useState<CustomerWithInstallments[]>([]);
   const [expandedCustomers, setExpandedCustomers] = useState<Set<number>>(new Set());
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerWithInstallments | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -177,8 +173,6 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
     if (!deleteInstallment?.id) return;
     
     try {
-      // Note: This would need to be implemented in the database operations
-      // await window.electronAPI.database.installments.delete(deleteInstallment.id);
       console.log('Delete installment:', deleteInstallment.id);
       await loadInstallmentData();
       onRefresh?.();
@@ -339,6 +333,20 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
           </div>
         </CardContent>
       </Card>
+    );
+  }
+
+  // Show detailed view if a customer is selected
+  if (selectedCustomer) {
+    return (
+      <InstallmentDetailView
+        customer={selectedCustomer}
+        onBack={() => setSelectedCustomer(null)}
+        onMarkAsPaid={handleMarkAsPaid}
+        onRecordPayment={handleRecordPayment}
+        onEditInstallment={handleEditInstallment}
+        onDeleteInstallment={handleDeleteInstallment}
+      />
     );
   }
 
@@ -561,6 +569,16 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
                             <div className="text-sm text-muted-foreground">
                               {customer.installments.length} cuotas
                             </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedCustomer(customer);
+                              }}
+                            >
+                              Ver Detalles
+                            </Button>
                           </div>
                         </div>
                       </CardHeader>
@@ -585,6 +603,7 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
                             <TableBody>
                               {customer.installments
                                 .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
+                                .slice(0, 5)
                                 .map((installment) => {
                                   const sale = customer.sales.find(s => s.id === installment.sale_id);
                                   const isOverdue = new Date(installment.due_date) < new Date() && installment.status !== 'paid';
@@ -629,43 +648,19 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
                                       <TableCell>
                                         <div className="flex items-center gap-1">
                                           {installment.status !== 'paid' && (
-                                            <>
-                                              <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() => handleMarkAsPaid(installment)}
-                                                className="h-7 px-2 text-xs"
-                                              >
-                                                <CheckCircle className="h-3 w-3 mr-1" />
-                                                Marcar Pagada
-                                              </Button>
-                                              <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() => handleRecordPayment(installment)}
-                                                className="h-7 px-2 text-xs"
-                                              >
-                                                <DollarSign className="h-3 w-3 mr-1" />
-                                                Pago
-                                              </Button>
-                                            </>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleMarkAsPaid(installment);
+                                              }}
+                                              className="h-7 px-2 text-xs"
+                                            >
+                                              <CheckCircle className="h-3 w-3 mr-1" />
+                                              Pagada
+                                            </Button>
                                           )}
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            onClick={() => handleEditInstallment(installment)}
-                                            className="h-7 w-7 p-0"
-                                          >
-                                            <Edit className="h-3 w-3" />
-                                          </Button>
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            onClick={() => handleDeleteInstallment(installment)}
-                                            className="h-7 w-7 p-0 text-red-600 hover:text-red-700"
-                                          >
-                                            <Trash2 className="h-3 w-3" />
-                                          </Button>
                                         </div>
                                       </TableCell>
                                     </TableRow>
@@ -673,6 +668,17 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
                                 })}
                             </TableBody>
                           </Table>
+                          {customer.installments.length > 5 && (
+                            <div className="text-center pt-4">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setSelectedCustomer(customer)}
+                              >
+                                Ver todas las {customer.installments.length} cuotas
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       </CardContent>
                     </CollapsibleContent>
@@ -684,7 +690,7 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
         </CardContent>
       </Card>
 
-      {/* Installment Form */}
+      {/* Forms */}
       <InstallmentForm
         installment={selectedInstallment}
         open={isInstallmentFormOpen}
@@ -700,7 +706,6 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
         }}
       />
 
-      {/* Payment Form */}
       <PaymentForm
         installment={selectedInstallment}
         open={isPaymentFormOpen}
