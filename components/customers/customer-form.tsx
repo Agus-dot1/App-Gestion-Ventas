@@ -99,7 +99,7 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
         contact_info: buildContactInfo() // Keep for backward compatibility
       });
       
-      // Reset form
+      // Reset form - parent component will handle closing
       setFormData({
         name: '',
         phone: '',
@@ -109,7 +109,6 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
         tags: ''
       });
       setErrors({});
-      onOpenChange(false);
     } catch (error) {
       console.error('Error guardando cambios:', error);
     } finally {

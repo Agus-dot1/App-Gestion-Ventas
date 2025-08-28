@@ -67,7 +67,7 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
         is_active: formData.is_active
       });
       
-      // Reset form
+      // Reset form - parent component will handle closing
       setFormData({
         name: '',
         price: '',
@@ -77,7 +77,6 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
         is_active: true
       });
       setErrors({});
-      onOpenChange(false);
     } catch (error) {
       console.error('Error añadiendo producto:', error);
     } finally {

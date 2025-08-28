@@ -55,6 +55,9 @@ function setupIpcHandlers() {
   ipcMain.handle('db:customers:getAll', () => customerOperations.getAll());
   ipcMain.handle('db:customers:getPaginated', (_, page, pageSize, searchTerm) => customerOperations.getPaginated(page, pageSize, searchTerm));
   ipcMain.handle('db:customers:search', (_, searchTerm, limit) => customerOperations.search(searchTerm, limit));
+  ipcMain.handle('db:customers:getCount', () => customerOperations.getCount());
+  ipcMain.handle('db:customers:getRecent', (_, limit) => customerOperations.getRecent(limit));
+  ipcMain.handle('db:customers:getMonthlyComparison', () => customerOperations.getMonthlyComparison());
 
   // Add IPC handlers for pagination
   ipcMain.handle('db:products:getPaginated', async (event, page: number, pageSize: number, searchTerm: string) => {
@@ -84,6 +87,8 @@ function setupIpcHandlers() {
   ipcMain.handle('db:products:create', (_, product) => productOperations.create(product));
   ipcMain.handle('db:products:update', (_, id, product) => productOperations.update(id, product));
   ipcMain.handle('db:products:delete', (_, id) => productOperations.delete(id));
+  ipcMain.handle('db:products:getCount', () => productOperations.getCount());
+  ipcMain.handle('db:products:getMonthlyComparison', () => productOperations.getMonthlyComparison());
 
   // Sale operations
   ipcMain.handle('db:sales:getAll', () => saleOperations.getAll());
@@ -94,6 +99,11 @@ function setupIpcHandlers() {
   ipcMain.handle('db:sales:delete', (_, id) => saleOperations.delete(id));
   ipcMain.handle('db:sales:getWithDetails', (_, id) => saleOperations.getWithDetails(id));
   ipcMain.handle('db:sales:getOverdueSales', () => saleOperations.getOverdueSales());
+  ipcMain.handle('db:sales:getCount', () => saleOperations.getCount());
+  ipcMain.handle('db:sales:getTotalRevenue', () => saleOperations.getTotalRevenue());
+  ipcMain.handle('db:sales:getRecent', (_, limit) => saleOperations.getRecent(limit));
+  ipcMain.handle('db:sales:getSalesChartData', () => saleOperations.getSalesChartData());
+  ipcMain.handle('db:sales:getStatsComparison', () => saleOperations.getStatsComparison());
 
   // Installment operations
   ipcMain.handle('db:installments:getBySale', (_, saleId) => installmentOperations.getBySale(saleId));

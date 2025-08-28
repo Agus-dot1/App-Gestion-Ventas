@@ -23,6 +23,7 @@ interface ProductsTableProps {
   highlightId?: string | null;
   onEdit: (product: Product) => void;
   onDelete: (productId: number) => void;
+  onBulkDelete: (productIds: number[]) => void;
   onToggleStatus: (productId: number, isActive: boolean) => void;
   isLoading?: boolean;
   searchTerm?: string;
@@ -38,6 +39,7 @@ export function ProductsTable({
   highlightId, 
   onEdit, 
   onDelete, 
+  onBulkDelete,
   onToggleStatus, 
   isLoading = false,
   searchTerm: externalSearchTerm,
@@ -49,6 +51,7 @@ export function ProductsTable({
 }: ProductsTableProps) {
   const [internalSearchTerm, setInternalSearchTerm] = useState('');
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -93,6 +96,16 @@ export function ProductsTable({
     if (deleteProduct?.id) {
       await onDelete(deleteProduct.id);
       setDeleteProduct(null);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const productIds = Array.from(selectedProducts);
+    if (productIds.length > 0) {
+      await onBulkDelete(productIds);
+      setSelectedProducts(new Set());
+      setSelectAll(false);
+      setShowBulkDeleteDialog(false);
     }
   };
 
@@ -254,6 +267,15 @@ export function ProductsTable({
                     >
                       <Download className="h-4 w-4 mr-1" />
                       Exportar
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setShowBulkDeleteDialog(true)}
+                      className="h-8"
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Eliminar
                     </Button>
                   </div>
                 )}
@@ -621,6 +643,24 @@ export function ProductsTable({
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700 text-slate-50">
               Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar productos seleccionados</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estas seguro de eliminar {selectedProducts.size} producto{selectedProducts.size !== 1 ? 's' : ''}? Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkDelete} className="bg-red-600 hover:bg-red-700 text-slate-50">
+              Eliminar {selectedProducts.size} producto{selectedProducts.size !== 1 ? 's' : ''}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

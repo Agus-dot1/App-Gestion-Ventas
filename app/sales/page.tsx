@@ -10,7 +10,8 @@ import { SalesTable } from '@/components/sales/sales-table';
 import { InstallmentDashboard } from '@/components/sales/installment-dashboard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, CreditCard, TrendingUp, DollarSign, Calendar, Database, AlertTriangle } from 'lucide-react';
-import type { Sale } from '@/lib/database-operations';
+import type { Sale, Product, SaleFormData } from '@/lib/database-operations';
+import { useDataCache, usePrefetch } from '@/hooks/use-data-cache';
 
 export default function SalesPage() {
   const searchParams = useSearchParams();
@@ -69,10 +70,38 @@ export default function SalesPage() {
       }, 100);
     }
   }, [highlightedSale]);
-  const loadSales = async () => {
+  const dataCache = useDataCache();
+  const { prefetchCustomers, prefetchProducts } = usePrefetch();
+
+  const loadSales = async (forceRefresh = false) => {
     try {
       setIsLoading(true);
+      
+      // Check cache first (unless forcing refresh)
+      if (!forceRefresh) {
+        const cachedData = dataCache.getCachedSales(currentPage, pageSize, searchTerm);
+        if (cachedData) {
+          setSales(cachedData.items);
+          setPaginationInfo({
+            total: cachedData.total,
+            totalPages: cachedData.totalPages,
+            currentPage: cachedData.currentPage,
+            pageSize: cachedData.pageSize
+          });
+          setIsLoading(false);
+          
+          // Prefetch other pages in background
+          setTimeout(() => {
+            prefetchCustomers();
+            prefetchProducts();
+          }, 100);
+          
+          return;
+        }
+      }
+      
       const result = await window.electronAPI.database.sales.getPaginated(currentPage, pageSize, searchTerm);
+      
       setSales(result.sales);
       setPaginationInfo({
         total: result.total,
@@ -80,6 +109,24 @@ export default function SalesPage() {
         currentPage: result.currentPage,
         pageSize: result.pageSize || pageSize
       });
+      
+      // Cache the result
+      dataCache.setCachedSales(currentPage, pageSize, searchTerm, {
+        items: result.sales,
+        total: result.total,
+        totalPages: result.totalPages,
+        currentPage: result.currentPage,
+        pageSize: result.pageSize || pageSize,
+        searchTerm,
+        timestamp: Date.now()
+      });
+      
+      // Prefetch other pages in background
+      setTimeout(() => {
+        prefetchCustomers();
+        prefetchProducts();
+      }, 100);
+      
     } catch (error) {
       console.error('Error cargando ventas:', error);
     } finally {
@@ -96,21 +143,33 @@ export default function SalesPage() {
     }
   };
 
-  const handleSaveSale = async (saleData: any) => {
+  const handleSaveSale = async (saleData: SaleFormData) => {
     try {
       if (editingSale?.id) {
-        // Update existing sale
-        await window.electronAPI.database.sales.update(editingSale.id, saleData);
+        // Update existing sale - only pass fields that the update method accepts
+        const updateData = {
+          customer_id: saleData.customer_id,
+          tax_amount: saleData.tax_amount,
+          discount_amount: saleData.discount_amount,
+          notes: saleData.notes
+        };
+        await window.electronAPI.database.sales.update(editingSale.id, updateData);
       } else {
         // Create new sale
         await window.electronAPI.database.sales.create(saleData);
       }
       
-      await loadSales();
+      // Clear cache and force refresh to ensure fresh data is loaded
+      dataCache.invalidateCache('sales');
+      await loadSales(true);
       await loadOverdueSales();
+      
+      // Close form and reset editing state after successful save and reload
       setEditingSale(undefined);
+      setIsFormOpen(false);
     } catch (error) {
       console.error('Error guardando venta:', error);
+      throw error; // Re-throw to let the form handle the error
     }
   };
 
@@ -122,6 +181,8 @@ export default function SalesPage() {
   const handleDeleteSale = async (saleId: number) => {
     try {
       await window.electronAPI.database.sales.delete(saleId);
+      // Clear cache to ensure fresh data is loaded
+      dataCache.invalidateCache('sales');
       await loadSales();
       await loadOverdueSales();
     } catch (error) {

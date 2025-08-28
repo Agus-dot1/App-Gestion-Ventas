@@ -10,6 +10,7 @@ import { ProductsTable } from '@/components/products/products-table';
 import { Plus, Package, TrendingUp, DollarSign, Eye } from 'lucide-react';
 import { Database } from 'lucide-react';
 import type { Product } from '@/lib/database-operations';
+import { useDataCache, usePrefetch } from '@/hooks/use-data-cache';
 
 export default function ProductsPage() {
   const searchParams = useSearchParams();
@@ -64,14 +65,42 @@ export default function ProductsPage() {
       }, 100);
     }
   }, [highlightedProduct]);
-  const loadProducts = async () => {
+  const dataCache = useDataCache();
+  const { prefetchCustomers, prefetchSales } = usePrefetch();
+
+  const loadProducts = async (forceRefresh = false) => {
     try {
       setIsLoading(true);
+      
+      // Check cache first (unless forcing refresh)
+      if (!forceRefresh) {
+        const cachedData = dataCache.getCachedProducts(currentPage, pageSize, searchTerm);
+        if (cachedData) {
+          setProducts(cachedData.items);
+          setPaginationInfo({
+            total: cachedData.total,
+            totalPages: cachedData.totalPages,
+            currentPage: cachedData.currentPage,
+            pageSize: cachedData.pageSize
+          });
+          setIsLoading(false);
+          
+          // Prefetch other pages in background
+          setTimeout(() => {
+            prefetchCustomers();
+            prefetchSales();
+          }, 100);
+          
+          return;
+        }
+      }
+      
       const result = await window.electronAPI.database.products.getPaginated(
         currentPage,
         pageSize,
         searchTerm
       );
+      
       setProducts(result.products);
       setPaginationInfo({
         total: result.total,
@@ -79,6 +108,24 @@ export default function ProductsPage() {
         currentPage: result.currentPage,
         pageSize: result.pageSize || pageSize
       });
+      
+      // Cache the result
+      dataCache.setCachedProducts(currentPage, pageSize, searchTerm, {
+        items: result.products,
+        total: result.total,
+        totalPages: result.totalPages,
+        currentPage: result.currentPage,
+        pageSize: result.pageSize || pageSize,
+        searchTerm,
+        timestamp: Date.now()
+      });
+      
+      // Prefetch other pages in background
+      setTimeout(() => {
+        prefetchCustomers();
+        prefetchSales();
+      }, 100);
+      
     } catch (error) {
       console.error('Error cargando productos:', error);
     } finally {
@@ -90,16 +137,22 @@ export default function ProductsPage() {
     try {
       if (editingProduct?.id) {
         // Update existing product
-        window.electronAPI.database.products.update(editingProduct.id, productData);
+        await window.electronAPI.database.products.update(editingProduct.id, productData);
       } else {
         // Create new product
-        window.electronAPI.database.products.create(productData);
+        await window.electronAPI.database.products.create(productData);
       }
       
-      await loadProducts();
+      // Clear cache and force refresh to ensure fresh data is loaded
+      dataCache.invalidateCache('products');
+      await loadProducts(true);
+      
+      // Close form and reset editing state after successful save and reload
       setEditingProduct(undefined);
+      setIsFormOpen(false);
     } catch (error) {
       console.error('Error añadiendo producto:', error);
+      throw error; // Re-throw to let the form handle the error
     }
   };
 
@@ -186,6 +239,8 @@ export default function ProductsPage() {
   const handleDeleteProduct = async (productId: number) => {
     try {
       await window.electronAPI.database.products.delete(productId);
+      // Clear cache to ensure fresh data is loaded
+      dataCache.invalidateCache('products');
       await loadProducts();
     } catch (error: any) {
       console.error('Error eliminando product:', error);
@@ -194,9 +249,27 @@ export default function ProductsPage() {
     }
   };
 
+  const handleBulkDeleteProducts = async (productIds: number[]) => {
+    try {
+      // Delete products one by one
+      for (const productId of productIds) {
+        await window.electronAPI.database.products.delete(productId);
+      }
+      // Clear cache to ensure fresh data is loaded
+      dataCache.invalidateCache('products');
+      await loadProducts();
+    } catch (error: any) {
+      console.error('Error eliminando productos:', error);
+      // Display error message to user
+      alert(error.message || 'Error deleting products. Please try again.');
+    }
+  };
+
   const handleToggleStatus = async (productId: number, isActive: boolean) => {
     try {
-      window.electronAPI.database.products.update(productId, { is_active: isActive });
+      await window.electronAPI.database.products.update(productId, { is_active: isActive });
+      // Clear cache to ensure fresh data is loaded
+      dataCache.invalidateCache('products');
       await loadProducts();
     } catch (error) {
       console.error('Error actualizando producto:', error);
@@ -329,6 +402,7 @@ export default function ProductsPage() {
             highlightId={highlightId}
             onEdit={handleEditProduct}
             onDelete={handleDeleteProduct}
+            onBulkDelete={handleBulkDeleteProducts}
             onToggleStatus={handleToggleStatus}
             searchTerm={searchTerm}
             onSearchChange={(value) => setSearchTerm(value)}

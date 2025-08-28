@@ -201,7 +201,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
       
       await onSave(saleData);
       
-      // Reset form
+      // Reset form - parent component will handle closing
       setFormData({
         customer_id: 0,
         payment_type: 'cash',
@@ -213,7 +213,6 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
       });
       setItems([]);
       setErrors({});
-      onOpenChange(false);
     } catch (error) {
       console.error('Error al registrar venta:', error);
     } finally {

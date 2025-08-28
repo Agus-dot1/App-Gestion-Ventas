@@ -35,6 +35,9 @@ interface EnhancedCustomersTableProps {
     currentPage: number;
   };
   serverSidePagination?: boolean;
+  onSelectAll?: (selectAll: boolean) => void;
+  allCustomerIds?: number[];
+  onGetCustomersByIds?: (ids: number[]) => Promise<Customer[]>;
 }
 
 function formatDate(dateString: string): string {
@@ -57,13 +60,27 @@ export function EnhancedCustomersTable({
   currentPage: externalCurrentPage,
   onPageChange,
   paginationInfo,
-  serverSidePagination = false
+  serverSidePagination = false,
+  onSelectAll,
+  allCustomerIds = [],
+  onGetCustomersByIds
 }: EnhancedCustomersTableProps) {
   const [internalSearchTerm, setInternalSearchTerm] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: keyof Customer; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
   const [internalCurrentPage, setInternalCurrentPage] = useState(1);
   const [selectedCustomers, setSelectedCustomers] = useState<Set<number>>(new Set());
   const [deleteCustomer, setDeleteCustomer] = useState<Customer | null>(null);
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
+
+  // Bulk delete handler
+  const handleBulkDelete = async () => {
+    const selectedIds = Array.from(selectedCustomers);
+    for (const customerId of selectedIds) {
+      await onDelete(customerId);
+    }
+    setSelectedCustomers(new Set());
+    setShowBulkDeleteDialog(false);
+  };
   const itemsPerPage = 10;
 
   // Use external state for server-side pagination, internal state for client-side
@@ -127,7 +144,7 @@ export function EnhancedCustomersTable({
   const totalPages = serverSidePagination ? (paginationInfo?.totalPages || 1) : Math.ceil(sortedCustomers.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedCustomers = serverSidePagination ? sortedCustomers : sortedCustomers.slice(startIndex, endIndex);
+  const paginatedCustomers = serverSidePagination ? customers : sortedCustomers.slice(startIndex, endIndex);
 
   // Clear selections when changing pages
   const handlePageChangeWithClear = (page: number) => {
@@ -155,22 +172,43 @@ export function EnhancedCustomersTable({
   };
 
   const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      // Select all customers in the entire dataset, not just current page
-      setSelectedCustomers(new Set(sortedCustomers.map(c => c.id).filter(id => id !== undefined) as number[]));
+    if (serverSidePagination && onSelectAll) {
+      // For server-side pagination, delegate to parent component
+      onSelectAll(checked);
+      if (checked) {
+        // Select all customer IDs provided by parent
+        setSelectedCustomers(new Set(allCustomerIds));
+      } else {
+        setSelectedCustomers(new Set());
+      }
     } else {
-      setSelectedCustomers(new Set());
+      // For client-side pagination, select all in current filtered dataset
+      if (checked) {
+        setSelectedCustomers(new Set(sortedCustomers.map(c => c.id).filter(id => id !== undefined) as number[]));
+      } else {
+        setSelectedCustomers(new Set());
+      }
     }
   };
 
-  // Check if all customers are selected (across all pages)
-  const allCustomerIds = new Set(sortedCustomers.map(c => c.id).filter(id => id !== undefined));
-  const isAllSelected = sortedCustomers.length > 0 && selectedCustomers.size === allCustomerIds.size;
-  const isIndeterminate = selectedCustomers.size > 0 && selectedCustomers.size < allCustomerIds.size;
+  // Check if all customers are selected
+  const isAllSelected = serverSidePagination 
+    ? allCustomerIds.length > 0 && selectedCustomers.size === allCustomerIds.length
+    : sortedCustomers.length > 0 && selectedCustomers.size === sortedCustomers.filter(c => c.id !== undefined).length;
 
   // Export functions
-  const exportToPDF = () => {
-    const selectedData = customers.filter(c => c.id && selectedCustomers.has(c.id));
+  const exportToPDF = async () => {
+    let selectedData: Customer[];
+    
+    if (serverSidePagination && onGetCustomersByIds && selectedCustomers.size > 0) {
+      // For server-side pagination, fetch all selected customers from database
+      const selectedIds = Array.from(selectedCustomers);
+      selectedData = await onGetCustomersByIds(selectedIds);
+    } else {
+      // For client-side pagination, filter from current customers array
+      selectedData = customers.filter(c => c.id && selectedCustomers.has(c.id));
+    }
+    
     const doc = new jsPDF();
     
     // Add title
@@ -197,8 +235,18 @@ export function EnhancedCustomersTable({
     doc.save('clientes_seleccionados.pdf');
   };
 
-  const exportToExcel = () => {
-    const selectedData = customers.filter(c => c.id && selectedCustomers.has(c.id));
+  const exportToExcel = async () => {
+    let selectedData: Customer[];
+    
+    if (serverSidePagination && onGetCustomersByIds && selectedCustomers.size > 0) {
+      // For server-side pagination, fetch all selected customers from database
+      const selectedIds = Array.from(selectedCustomers);
+      selectedData = await onGetCustomersByIds(selectedIds);
+    } else {
+      // For client-side pagination, filter from current customers array
+      selectedData = customers.filter(c => c.id && selectedCustomers.has(c.id));
+    }
+    
     const worksheetData = selectedData.map(customer => ({
       'Nombre': customer.name,
       'Email': customer.email || '',
@@ -229,77 +277,60 @@ export function EnhancedCustomersTable({
                 Aquí puedes ver y gestionar todos tus clientes.
               </CardDescription>
             </div>
-            <div className="relative w-64">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar..."
-                value={searchTerm}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                className="pl-8"
-                disabled={isLoading}
-              />
+            <div className="flex items-center gap-2">
+              {selectedCustomers.size > 0 && (
+                <div className="flex items-center gap-2 mr-4">
+                  <Badge variant="secondary" className="bg-primary/10 text-primary">
+                    {selectedCustomers.size} seleccionado{selectedCustomers.size !== 1 ? 's' : ''}
+                  </Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={exportToPDF}
+                    className="h-8"
+                    disabled={isLoading}
+                  >
+                    <FileText className="h-4 w-4 mr-1" />
+                    PDF
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={exportToExcel}
+                    className="h-8"
+                    disabled={isLoading}
+                  >
+                    <Download className="h-4 w-4 mr-1" />
+                    Excel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setShowBulkDeleteDialog(true)}
+                    className="h-8"
+                    disabled={isLoading}
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Eliminar
+                  </Button>
+                </div>
+              )}
+              <div className="relative w-64">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar..."
+                  value={searchTerm}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="pl-8"
+                  disabled={isLoading}
+                />
+              </div>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-              {/* Bulk Actions Bar */}
-              {selectedCustomers.size > 0 && !isLoading && (
-                <div className="flex items-center justify-between p-4 bg-muted/50 border border-border rounded-lg mb-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-foreground">
-                      {selectedCustomers.size} cliente{selectedCustomers.size !== 1 ? 's' : ''} seleccionado{selectedCustomers.size !== 1 ? 's' : ''}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={isLoading}
-                      onClick={exportToPDF}
-                    >
-                      <FileText className="h-4 w-4 mr-2" />
-                      Exportar PDF
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={isLoading}
-                      onClick={exportToExcel}
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Exportar Excel
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={isLoading}
-                      onClick={() => {
-                        const selectedData = paginatedCustomers.filter(c => c.id && selectedCustomers.has(c.id));
-                        selectedData.forEach(customer => {
-                          if (customer.id) {
-                            onDelete(customer.id);
-                          }
-                        });
-                        setSelectedCustomers(new Set());
-                      }}
-                      className="text-destructive hover:bg-destructive/10"
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Eliminar Seleccionados
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={isLoading}
-                      onClick={() => setSelectedCustomers(new Set())}
-                    >
-                      <X className="h-4 w-4 mr-2" />
-                      Cancelar
-                    </Button>
-                  </div>
-                </div>
-              )}
+
 
               <div className="rounded-md border">
               <Table>
@@ -449,10 +480,14 @@ export function EnhancedCustomersTable({
           
           
           {/* Pagination Controls */}
-          {!isLoading && sortedCustomers.length > itemsPerPage && (
+          {!isLoading && (serverSidePagination ? (paginationInfo?.totalPages || 0) > 1 : sortedCustomers.length > itemsPerPage) && (
             <div className="flex items-center justify-between px-2 py-4">
               <div className="text-sm text-muted-foreground">
-                Mostrando {startIndex + 1} a {Math.min(endIndex, sortedCustomers.length)} de {sortedCustomers.length} clientes
+                {serverSidePagination ? (
+                  `Mostrando ${((currentPage - 1) * itemsPerPage) + 1} a ${Math.min(currentPage * itemsPerPage, paginationInfo?.total || 0)} de ${paginationInfo?.total || 0} clientes`
+                ) : (
+                  `Mostrando ${startIndex + 1} a ${Math.min(endIndex, sortedCustomers.length)} de ${sortedCustomers.length} clientes`
+                )}
               </div>
               <div className="flex items-center space-x-2">
                 <Button
@@ -517,6 +552,24 @@ export function EnhancedCustomersTable({
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700 text-slate-50">
               Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar clientes seleccionados</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de eliminar {selectedCustomers.size} cliente{selectedCustomers.size !== 1 ? 's' : ''}? Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkDelete} className="bg-red-600 hover:bg-red-700 text-slate-50">
+              Eliminar {selectedCustomers.size} cliente{selectedCustomers.size !== 1 ? 's' : ''}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -68,6 +68,9 @@ function setupIpcHandlers() {
     electron_1.ipcMain.handle('db:customers:getAll', () => database_operations_1.customerOperations.getAll());
     electron_1.ipcMain.handle('db:customers:getPaginated', (_, page, pageSize, searchTerm) => database_operations_1.customerOperations.getPaginated(page, pageSize, searchTerm));
     electron_1.ipcMain.handle('db:customers:search', (_, searchTerm, limit) => database_operations_1.customerOperations.search(searchTerm, limit));
+    electron_1.ipcMain.handle('db:customers:getCount', () => database_operations_1.customerOperations.getCount());
+    electron_1.ipcMain.handle('db:customers:getRecent', (_, limit) => database_operations_1.customerOperations.getRecent(limit));
+    electron_1.ipcMain.handle('db:customers:getMonthlyComparison', () => database_operations_1.customerOperations.getMonthlyComparison());
     // Add IPC handlers for pagination
     electron_1.ipcMain.handle('db:products:getPaginated', async (event, page, pageSize, searchTerm) => {
         return database_operations_1.productOperations.getPaginated(page, pageSize, searchTerm);
@@ -92,6 +95,8 @@ function setupIpcHandlers() {
     electron_1.ipcMain.handle('db:products:create', (_, product) => database_operations_1.productOperations.create(product));
     electron_1.ipcMain.handle('db:products:update', (_, id, product) => database_operations_1.productOperations.update(id, product));
     electron_1.ipcMain.handle('db:products:delete', (_, id) => database_operations_1.productOperations.delete(id));
+    electron_1.ipcMain.handle('db:products:getCount', () => database_operations_1.productOperations.getCount());
+    electron_1.ipcMain.handle('db:products:getMonthlyComparison', () => database_operations_1.productOperations.getMonthlyComparison());
     // Sale operations
     electron_1.ipcMain.handle('db:sales:getAll', () => database_operations_1.saleOperations.getAll());
     electron_1.ipcMain.handle('db:sales:getById', (_, id) => database_operations_1.saleOperations.getById(id));
@@ -101,6 +106,11 @@ function setupIpcHandlers() {
     electron_1.ipcMain.handle('db:sales:delete', (_, id) => database_operations_1.saleOperations.delete(id));
     electron_1.ipcMain.handle('db:sales:getWithDetails', (_, id) => database_operations_1.saleOperations.getWithDetails(id));
     electron_1.ipcMain.handle('db:sales:getOverdueSales', () => database_operations_1.saleOperations.getOverdueSales());
+    electron_1.ipcMain.handle('db:sales:getCount', () => database_operations_1.saleOperations.getCount());
+    electron_1.ipcMain.handle('db:sales:getTotalRevenue', () => database_operations_1.saleOperations.getTotalRevenue());
+    electron_1.ipcMain.handle('db:sales:getRecent', (_, limit) => database_operations_1.saleOperations.getRecent(limit));
+    electron_1.ipcMain.handle('db:sales:getSalesChartData', () => database_operations_1.saleOperations.getSalesChartData());
+    electron_1.ipcMain.handle('db:sales:getStatsComparison', () => database_operations_1.saleOperations.getStatsComparison());
     // Installment operations
     electron_1.ipcMain.handle('db:installments:getBySale', (_, saleId) => database_operations_1.installmentOperations.getBySale(saleId));
     electron_1.ipcMain.handle('db:installments:getOverdue', () => database_operations_1.installmentOperations.getOverdue());

@@ -154,6 +154,32 @@ exports.customerOperations = {
         const stmt = db.prepare('DELETE FROM customers WHERE id = ?');
         const result = stmt.run(id);
         return { deletedSales };
+    },
+    getCount: () => {
+        const db = (0, database_1.getDatabase)();
+        const stmt = db.prepare('SELECT COUNT(*) as count FROM customers');
+        const result = stmt.get();
+        return result.count;
+    },
+    getRecent: (limit = 5) => {
+        const db = (0, database_1.getDatabase)();
+        const stmt = db.prepare('SELECT * FROM customers ORDER BY created_at DESC LIMIT ?');
+        return stmt.all(limit);
+    },
+    getMonthlyComparison: () => {
+        const db = (0, database_1.getDatabase)();
+        const currentMonthStmt = db.prepare(`
+      SELECT COUNT(*) as count FROM customers 
+      WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')
+    `);
+        const previousMonthStmt = db.prepare(`
+      SELECT COUNT(*) as count FROM customers 
+      WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now', '-1 month')
+    `);
+        const current = currentMonthStmt.get().count;
+        const previous = previousMonthStmt.get().count;
+        const change = previous === 0 ? 0 : ((current - previous) / previous) * 100;
+        return { current, previous, change };
     }
 };
 exports.productOperations = {
@@ -275,6 +301,21 @@ exports.productOperations = {
         // The foreign key constraint will automatically set product_id to NULL in sale_items
         const stmt = db.prepare('DELETE FROM products WHERE id = ?');
         stmt.run(id);
+    },
+    getCount: () => {
+        const db = (0, database_1.getDatabase)();
+        const stmt = db.prepare('SELECT COUNT(*) as count FROM products');
+        const result = stmt.get();
+        return result.count;
+    },
+    getMonthlyComparison: () => {
+        const db = (0, database_1.getDatabase)();
+        // Since products table doesn't have created_at column, return total active products
+        // This is a placeholder implementation - in a real scenario, you'd need to add created_at to products
+        const totalStmt = db.prepare('SELECT COUNT(*) as count FROM products WHERE is_active = 1');
+        const total = totalStmt.get().count;
+        // Return same count for both months as placeholder
+        return { current: total, previous: total, change: 0 };
     }
 };
 exports.saleOperations = {
@@ -452,6 +493,62 @@ exports.saleOperations = {
         const db = (0, database_1.getDatabase)();
         const stmt = db.prepare('DELETE FROM sales WHERE id = ?');
         stmt.run(id);
+    },
+    getCount: () => {
+        const db = (0, database_1.getDatabase)();
+        const stmt = db.prepare('SELECT COUNT(*) as count FROM sales');
+        const result = stmt.get();
+        return result.count;
+    },
+    getTotalRevenue: () => {
+        const db = (0, database_1.getDatabase)();
+        const stmt = db.prepare(`
+      SELECT COALESCE(SUM(total_amount), 0) as total
+      FROM sales 
+      WHERE status != 'refunded'
+    `);
+        const result = stmt.get();
+        return result.total;
+    },
+    getRecent: (limit = 5) => {
+        const db = (0, database_1.getDatabase)();
+        const stmt = db.prepare(`
+      SELECT s.*, c.name as customer_name
+      FROM sales s
+      LEFT JOIN customers c ON s.customer_id = c.id
+      ORDER BY s.created_at DESC 
+      LIMIT ?
+    `);
+        return stmt.all(limit);
+    },
+    getSalesChartData: () => {
+        const db = (0, database_1.getDatabase)();
+        const stmt = db.prepare(`
+      SELECT 
+        strftime('%Y-%m', date) as month,
+        COUNT(*) as sales,
+        COALESCE(SUM(total_amount), 0) as revenue
+      FROM sales 
+      WHERE status != 'cancelled' AND date >= date('now', '-12 months')
+      GROUP BY strftime('%Y-%m', date)
+      ORDER BY month
+    `);
+        return stmt.all();
+    },
+    getStatsComparison: () => {
+        const db = (0, database_1.getDatabase)();
+        const currentMonthStmt = db.prepare(`
+      SELECT COALESCE(SUM(total_amount), 0) as total FROM sales 
+      WHERE strftime('%Y-%m', date) = strftime('%Y-%m', 'now') AND status != 'refunded'
+    `);
+        const previousMonthStmt = db.prepare(`
+      SELECT COALESCE(SUM(total_amount), 0) as total FROM sales 
+      WHERE strftime('%Y-%m', date) = strftime('%Y-%m', 'now', '-1 month') AND status != 'refunded'
+    `);
+        const current = currentMonthStmt.get().total;
+        const previous = previousMonthStmt.get().total;
+        const change = previous === 0 ? 0 : ((current - previous) / previous) * 100;
+        return { current, previous, change };
     },
     getWithDetails: (id) => {
         const sale = exports.saleOperations.getById(id);

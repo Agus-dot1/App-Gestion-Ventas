@@ -10,6 +10,7 @@ import { CustomerProfile } from '@/components/customers/customer-profile';
 import { EnhancedCustomersTable } from '@/components/customers/enhanced-customers-table';
 import { Plus, Users, TrendingUp, Calendar, Database } from 'lucide-react';
 import type { Customer } from '@/lib/database-operations';
+import { useDataCache, usePrefetch } from '@/hooks/use-data-cache';
 
 export default function CustomersPage() {
   const searchParams = useSearchParams();
@@ -22,18 +23,20 @@ export default function CustomersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [allCustomerIds, setAllCustomerIds] = useState<number[]>([]);
   const [paginationInfo, setPaginationInfo] = useState({
     total: 0,
     totalPages: 0,
     currentPage: 1,
-    pageSize: 25
+    pageSize: 10
   });
-  const pageSize = 25; // Load 25 customers per page for better performance
+  const pageSize = 10; // Load 10 customers per page to match table pagination
 
   useEffect(() => {
     setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
     if (typeof window !== 'undefined' && window.electronAPI) {
       loadCustomers();
+      loadAllCustomerIds();
     }
   }, []);
 
@@ -51,7 +54,7 @@ export default function CustomersPage() {
   }, [customers, highlightId]);
 
   useEffect(() => {
-    if (highlightedCustomer) {
+    if (highlightedCustomer && highlightedCustomer.id) {
       // Scroll to highlighted customer after a short delay
       setTimeout(() => {
         const element = document.getElementById(`customer-${highlightedCustomer.id}`);
@@ -65,14 +68,53 @@ export default function CustomersPage() {
       }, 100);
     }
   }, [highlightedCustomer]);
-  const loadCustomers = async () => {
+  const dataCache = useDataCache();
+  const { prefetchProducts, prefetchSales } = usePrefetch();
+
+  // Load all customer IDs for global selection
+  const loadAllCustomerIds = async () => {
+    try {
+      const allCustomers = await window.electronAPI.database.customers.getAll();
+      const ids = allCustomers.map(c => c.id).filter(id => id !== undefined) as number[];
+      setAllCustomerIds(ids);
+    } catch (error) {
+      console.error('Error loading all customer IDs:', error);
+    }
+  };
+
+  const loadCustomers = async (forceRefresh = false) => {
     try {
       setIsLoading(true);
+      
+      // Check cache first (unless forcing refresh)
+      if (!forceRefresh) {
+        const cachedData = dataCache.getCachedCustomers(currentPage, pageSize, searchTerm);
+        if (cachedData) {
+          setCustomers(cachedData.items);
+          setPaginationInfo({
+            total: cachedData.total,
+            totalPages: cachedData.totalPages,
+            currentPage: cachedData.currentPage,
+            pageSize: cachedData.pageSize
+          });
+          setIsLoading(false);
+          
+          // Prefetch other pages in background
+          setTimeout(() => {
+            prefetchProducts();
+            prefetchSales();
+          }, 100);
+          
+          return;
+        }
+      }
+      
       const result = await window.electronAPI.database.customers.getPaginated(
         currentPage,
         pageSize,
         searchTerm
       );
+      
       setCustomers(result.customers);
       setPaginationInfo({
         total: result.total,
@@ -80,6 +122,24 @@ export default function CustomersPage() {
         currentPage: result.currentPage,
         pageSize: result.pageSize || pageSize
       });
+      
+      // Cache the result
+      dataCache.setCachedCustomers(currentPage, pageSize, searchTerm, {
+        items: result.customers,
+        total: result.total,
+        totalPages: result.totalPages,
+        currentPage: result.currentPage,
+        pageSize: result.pageSize || pageSize,
+        searchTerm,
+        timestamp: Date.now()
+      });
+      
+      // Prefetch other pages in background
+      setTimeout(() => {
+        prefetchProducts();
+        prefetchSales();
+      }, 100);
+      
     } catch (error) {
       console.error('Error cargando clientes:', error);
     } finally {
@@ -91,16 +151,23 @@ export default function CustomersPage() {
     try {
       if (editingCustomer?.id) {
         // Update existing customer
-        window.electronAPI.database.customers.update(editingCustomer.id, customerData);
+        await window.electronAPI.database.customers.update(editingCustomer.id, customerData);
       } else {
         // Create new customer
-        window.electronAPI.database.customers.create(customerData);
+        await window.electronAPI.database.customers.create(customerData);
       }
       
-      await loadCustomers();
+      // Clear cache and force refresh to ensure fresh data is loaded
+      dataCache.invalidateCache('customers');
+      await loadCustomers(true);
+      await loadAllCustomerIds(); // Refresh all customer IDs
+      
+      // Close form and reset editing state after successful save and reload
       setEditingCustomer(undefined);
+      setIsFormOpen(false);
     } catch (error) {
       console.error('Error guardando cliente:', error);
+      throw error; // Re-throw to let the form handle the error
     }
   };
 
@@ -108,39 +175,60 @@ export default function CustomersPage() {
     const mockCustomers = [
       {
         name: 'John Smith',
-        contact_info: 'Phone: (555) 123-4567\nEmail: john.smith@email.com\nAddress: 123 Main St, Anytown, ST 12345\nPreferred contact method: Email'
+        email: 'john.smith@email.com',
+        phone: '(555) 123-4567',
+        address: '123 Main St, Anytown, ST 12345',
+        notes: 'Preferred contact method: Email'
       },
       {
         name: 'Sarah Johnson',
-        contact_info: 'Phone: (555) 987-6543\nEmail: sarah.j@email.com\nAddress: 456 Oak Avenue, Springfield, ST 67890'
+        email: 'sarah.j@email.com',
+        phone: '(555) 987-6543',
+        address: '456 Oak Avenue, Springfield, ST 67890'
       },
       {
         name: 'Michael Brown',
-        contact_info: 'Phone: (555) 456-7890\nAddress: 789 Pine Street, Riverside, ST 54321\nBest time to call: Evenings'
+        phone: '(555) 456-7890',
+        address: '789 Pine Street, Riverside, ST 54321',
+        notes: 'Best time to call: Evenings'
       },
       {
         name: 'Emily Davis',
-        contact_info: 'Email: emily.davis@email.com\nPhone: (555) 234-5678\nAddress: 321 Elm Drive, Lakeside, ST 98765'
+        email: 'emily.davis@email.com',
+        phone: '(555) 234-5678',
+        address: '321 Elm Drive, Lakeside, ST 98765'
       },
       {
         name: 'David Wilson',
-        contact_info: 'Phone: (555) 345-6789\nEmail: d.wilson@email.com\nAddress: 654 Maple Drive, Hilltown, ST 13579\nCompany: Wilson Enterprises'
+        email: 'd.wilson@email.com',
+        phone: '(555) 345-6789',
+        address: '654 Maple Drive, Hilltown, ST 13579',
+        company: 'Wilson Enterprises'
       },
       {
         name: 'Lisa Anderson',
-        contact_info: 'Phone: (555) 567-8901\nEmail: lisa.anderson@email.com\nAddress: 987 Cedar Lane, Brookfield, ST 24680'
+        email: 'lisa.anderson@email.com',
+        phone: '(555) 567-8901',
+        address: '987 Cedar Lane, Brookfield, ST 24680'
       },
       {
         name: 'Robert Taylor',
-        contact_info: 'Phone: (555) 678-9012\nAddress: 147 Birch Road, Greenville, ST 35791\nPreferred contact: Text messages'
+        phone: '(555) 678-9012',
+        address: '147 Birch Road, Greenville, ST 35791',
+        notes: 'Preferred contact: Text messages'
       },
       {
         name: 'Jennifer Martinez',
-        contact_info: 'Email: j.martinez@email.com\nPhone: (555) 789-0123\nAddress: 258 Willow Street, Fairview, ST 46802'
+        email: 'j.martinez@email.com',
+        phone: '(555) 789-0123',
+        address: '258 Willow Street, Fairview, ST 46802'
       },
       {
         name: 'Christopher Lee',
-        contact_info: 'Phone: (555) 890-1234\nEmail: chris.lee@email.com\nAddress: 369 Spruce Avenue, Riverside, ST 57913\nBusiness owner'
+        email: 'chris.lee@email.com',
+        phone: '(555) 890-1234',
+        address: '369 Spruce Avenue, Riverside, ST 57913',
+        notes: 'Business owner'
       },
       {
         name: 'Amanda Garcia',
@@ -192,15 +280,33 @@ export default function CustomersPage() {
         address: '579 Hickory Drive, Garden City, ST 24680'
       },
       {
-         name: 'Brandon Walker',
-         email: 'brandon.walker@email.com',
-         phone: '(555) 678-9012',
-         company: 'Walker Construction',
-         address: '680 Walnut Street, Hillside, ST 35791'
-       },
-       {
-         name: 'Amanda White',
-        contact_info: 'Phone: (555) 901-2345\nEmail: amanda.white@email.com\nAddress: 741 Poplar Court, Westfield, ST 68024\nFrequent customer since 2020'
+        name: 'Brandon Walker',
+        email: 'brandon.walker@email.com',
+        phone: '(555) 678-9012',
+        company: 'Walker Construction',
+        address: '680 Walnut Street, Hillside, ST 35791'
+      },
+      {
+        name: 'Amanda White',
+        email: 'amanda.white@email.com',
+        phone: '(555) 901-2345',
+        address: '741 Poplar Court, Westfield, ST 68024',
+        notes: 'Frequent customer since 2020'
+      },
+      {
+        name: 'Carlos Mendez',
+        email: 'carlos.mendez@email.com',
+        phone: '(555) 111-2222',
+        company: 'Mendez Imports',
+        address: '123 Commerce Street, Trade City, ST 11111',
+        tags: 'VIP,Wholesale'
+      },
+      {
+        name: 'Sofia Ramirez',
+        email: 'sofia.ramirez@email.com',
+        phone: '(555) 333-4444',
+        address: '456 Residential Ave, Hometown, ST 22222',
+        tags: 'Regular,Local'
       }
     ];
 
@@ -226,12 +332,35 @@ export default function CustomersPage() {
 
   const handleDeleteCustomer = async (customerId: number) => {
     try {
-      window.electronAPI.database.customers.delete(customerId);
+      await window.electronAPI.database.customers.delete(customerId);
+      // Clear cache to ensure fresh data is loaded
+      dataCache.invalidateCache('customers');
       await loadCustomers();
+      await loadAllCustomerIds(); // Refresh all customer IDs
     } catch (error: any) {
       console.error('Error eliminando cliente:', error);
       // Show error to user
       alert(error.message || 'Error al eliminar cliente. Porfavor intente de nuevo.');
+    }
+  };
+
+  const handleSelectAll = (selectAll: boolean) => {
+    // This function is called when the user clicks "select all"
+    // The actual selection state is managed by the table component
+    // We just need to ensure all customer IDs are available
+    if (selectAll && allCustomerIds.length === 0) {
+      loadAllCustomerIds();
+    }
+  };
+
+  // Function to fetch customers by their IDs for export functionality
+  const getCustomersByIds = async (ids: number[]): Promise<Customer[]> => {
+    try {
+      const allCustomers = await window.electronAPI.database.customers.getAll();
+      return allCustomers.filter(customer => customer.id && ids.includes(customer.id));
+    } catch (error) {
+      console.error('Error fetching customers by IDs:', error);
+      return [];
     }
   };
 
@@ -304,6 +433,9 @@ export default function CustomersPage() {
             onPageChange={setCurrentPage}
             paginationInfo={paginationInfo}
             serverSidePagination={true}
+            allCustomerIds={allCustomerIds}
+            onSelectAll={handleSelectAll}
+            onGetCustomersByIds={getCustomersByIds}
           />
         ) : (
           <Card>

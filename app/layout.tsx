@@ -1,6 +1,7 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
+import { DataCacheProvider } from '@/hooks/use-data-cache';
 
 export const metadata: Metadata = {
   title: 'Gestion de ventas',
@@ -15,9 +16,11 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className="antialiased dark">
-        <Suspense fallback={<div>Loading...</div>}>
-          {children}
-        </Suspense>
+        <DataCacheProvider>
+          <Suspense fallback={<div>Loading...</div>}>
+            {children}
+          </Suspense>
+        </DataCacheProvider>
       </body>
     </html>
   );
