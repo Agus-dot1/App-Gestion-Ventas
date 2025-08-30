@@ -116,6 +116,7 @@ function setupIpcHandlers() {
     installmentOperations.applyLateFee(installmentId, fee));
 ipcMain.handle('db:installments:revertPayment', (_, installmentId, transactionId) =>
     installmentOperations.revertPayment(installmentId, transactionId));
+  ipcMain.handle('db:installments:delete', (_, id) => installmentOperations.delete(id));
 
   // Sale item operations
   ipcMain.handle('db:saleItems:getBySale', (_, saleId) => saleItemOperations.getBySale(saleId));

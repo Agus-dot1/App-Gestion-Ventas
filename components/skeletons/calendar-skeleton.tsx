@@ -49,10 +49,10 @@ export function CalendarSkeleton() {
                       <div key={day} className="h-20 border rounded-md p-1">
                         <Skeleton className="h-4 w-6 mb-1" />
                         <div className="space-y-1">
-                          {Math.random() > 0.7 && (
+                          {(week + day) % 3 === 0 && (
                             <Skeleton className="h-2 w-full" />
                           )}
-                          {Math.random() > 0.8 && (
+                          {(week + day) % 5 === 0 && (
                             <Skeleton className="h-2 w-3/4" />
                           )}
                         </div>

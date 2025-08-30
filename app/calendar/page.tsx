@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +11,8 @@ import { EventDialog } from '../../components/calendar/event-dialog';
 import { EventList } from '../../components/calendar/event-list';
 import { CalendarSkeleton } from '@/components/skeletons/calendar-skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useDataCache } from '@/hooks/use-data-cache';
 import {
   Calendar as CalendarIcon,
   Plus,
@@ -22,17 +24,31 @@ import {
   DollarSign,
   Users,
   CreditCard,
-  TrendingUp
+  TrendingUp,
+  RefreshCw,
+  TrendingDown,
+  Search,
+  X
 } from 'lucide-react';
 import type { CalendarEvent, EventType, EventStatus } from '../../lib/calendar-types';
+import type { Sale } from '@/lib/database-operations';
 
 export default function CalendarPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0); // Normalize to start of day
+    return now;
+  });
+  const [currentMonth, setCurrentMonth] = useState<Date>(() => {
+    const now = new Date();
+    now.setDate(1); // Set to first day of month
+    now.setHours(0, 0, 0, 0);
+    return now;
+  });
   const [isEventDialogOpen, setIsEventDialogOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-  const [isElectron] = useState(() => typeof window !== 'undefined' && !!window.electronAPI);
+  const [isElectron, setIsElectron] = useState(false);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<EventType | 'all'>('all');
   const [filterStatus, setFilterStatus] = useState<EventStatus | 'all'>('all');
@@ -41,6 +57,171 @@ export default function CalendarPage() {
     start: null,
     end: null
   });
+  const [lastRefresh, setLastRefresh] = useState<number>(0);
+  const [selectedEvents, setSelectedEvents] = useState<string[]>([]);
+  const [bulkActionMode, setBulkActionMode] = useState(false);
+  
+  // Use data cache for performance
+  const dataCache = useDataCache();
+
+  // Set isElectron after component mounts to avoid hydration mismatch
+  useEffect(() => {
+    setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
+  }, []);
+
+  const loadCalendarEvents = useCallback(async (forceRefresh = false) => {
+    if (!isElectron) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      // Check if we have cached sales data to avoid unnecessary loading states
+      const cachedSales = dataCache.getCachedSales(1, 1000, '');
+      const shouldShowLoading = !cachedSales || forceRefresh;
+      
+      if (shouldShowLoading) {
+        setLoading(true);
+      }
+
+      const calendarEvents: CalendarEvent[] = [];
+      const errors: string[] = [];
+
+      // Load sales events - try cache first
+      let sales: Sale[];
+      if (cachedSales && !forceRefresh && !dataCache.isSalesCacheExpired(1, 1000, '')) {
+        sales = cachedSales.items;
+      } else {
+        try {
+          sales = await window.electronAPI.database.sales.getAll();
+          // Validate sales data
+          if (!Array.isArray(sales)) {
+            throw new Error('Invalid sales data format received');
+          }
+          
+          // Cache the sales data for future use
+          if (sales.length > 0) {
+            dataCache.setCachedSales(1, 1000, '', {
+              items: sales,
+              total: sales.length,
+              totalPages: 1,
+              currentPage: 1,
+              pageSize: 1000,
+              searchTerm: '',
+              timestamp: Date.now()
+            });
+          }
+        } catch (error) {
+          console.error('Error loading sales data:', error);
+          errors.push('Failed to load sales data');
+          sales = [];
+        }
+      }
+
+      // Process sales events with validation
+      sales.forEach((sale, index) => {
+        try {
+          // Validate required fields
+          if (!sale.id || !sale.customer_name || !sale.date || !sale.total_amount) {
+            console.warn(`Skipping invalid sale at index ${index}:`, sale);
+            return;
+          }
+
+          const saleDate = new Date(sale.date);
+          if (isNaN(saleDate.getTime())) {
+            console.warn(`Invalid date for sale ${sale.id}:`, sale.date);
+            return;
+          }
+
+          calendarEvents.push({
+            id: `sale-${sale.id}`,
+            title: `Venta: ${sale.customer_name}`,
+            date: saleDate,
+            type: 'sale',
+            description: `Venta #${sale.sale_number || sale.id} - ${formatCurrency(sale.total_amount)}`,
+            customerId: sale.customer_id,
+            saleId: sale.id,
+            amount: sale.total_amount,
+            status: sale.payment_status === 'paid' ? 'completed' : 'pending'
+          });
+        } catch (error) {
+          console.error(`Error processing sale ${sale.id}:`, error);
+          errors.push(`Failed to process sale ${sale.id}`);
+        }
+      });
+
+      // Load installment events with improved error handling
+      const installmentPromises = sales
+        .filter(sale => sale.payment_type === 'installments' && sale.id)
+        .map(async (sale) => {
+          try {
+            const installments = await window.electronAPI.database.installments.getBySale(sale.id!);
+            
+            if (!Array.isArray(installments)) {
+              console.warn(`Invalid installments data for sale ${sale.id}`);
+              return [];
+            }
+
+            return installments
+              .filter(installment => installment.id && installment.due_date && installment.amount)
+              .map(installment => {
+                try {
+                  const dueDate = new Date(installment.due_date);
+                  if (isNaN(dueDate.getTime())) {
+                    console.warn(`Invalid due date for installment ${installment.id}:`, installment.due_date);
+                    return null;
+                  }
+
+                  const isOverdue = dueDate < new Date() && installment.status !== 'paid';
+                  const eventStatus: EventStatus = installment.status === 'paid' ? 'completed' : isOverdue ? 'overdue' : 'pending';
+                  return {
+                    id: `installment-${installment.id}`,
+                    title: `Pago: ${sale.customer_name}`,
+                    date: dueDate,
+                    type: 'installment' as EventType,
+                    description: `Cuota #${installment.installment_number || 'N/A'} - ${formatCurrency(installment.amount)}`,
+                    customerId: sale.customer_id,
+                    saleId: sale.id,
+                    installmentId: installment.id,
+                    amount: installment.amount,
+                    status: eventStatus,
+                    installmentNumber: installment.installment_number,
+                    balance: installment.balance || 0
+                  } as CalendarEvent;
+                } catch (error) {
+                  console.error(`Error processing installment ${installment.id}:`, error);
+                  return null;
+                }
+              })
+              .filter((item): item is CalendarEvent => item !== null); // Remove null entries
+          } catch (error) {
+            console.error(`Error loading installments for sale ${sale.id}:`, error);
+            errors.push(`Failed to load installments for sale ${sale.id}`);
+            return [];
+          }
+        });
+
+      const installmentResults = await Promise.all(installmentPromises);
+      const allInstallments = installmentResults.flat();
+      calendarEvents.push(...allInstallments);
+
+      // Sort events by date for better organization
+      calendarEvents.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+      setEvents(calendarEvents);
+      setLastRefresh(Date.now());
+
+      // Log any errors that occurred during data loading
+      if (errors.length > 0) {
+        console.warn('Calendar data synchronization completed with errors:', errors);
+      }
+    } catch (error) {
+      console.error('Critical error loading calendar events:', error);
+      // Don't clear existing events on error, just stop loading
+    } finally {
+      setLoading(false);
+    }
+  }, [isElectron, dataCache]);
 
   // Initial data load
   useEffect(() => {
@@ -49,60 +230,39 @@ export default function CalendarPage() {
     } else {
       setLoading(false);
     }
-  }, [isElectron]);
+  }, [isElectron, loadCalendarEvents]);
 
-  const loadCalendarEvents = async () => {
-    setLoading(true);
-    try {
-      const calendarEvents: CalendarEvent[] = [];
+  // Auto-refresh data every 5 minutes to keep calendar synchronized
+  useEffect(() => {
+    if (!isElectron) return;
 
-      // Load sales events
-      const sales = await window.electronAPI.database.sales.getAll();
-      sales.forEach(sale => {
-        calendarEvents.push({
-          id: `sale-${sale.id}`,
-          title: `Sale: ${sale.customer_name}`,
-          date: new Date(sale.date),
-          type: 'sale',
-          description: `Sale #${sale.sale_number} - ${formatCurrency(sale.total_amount)}`,
-          customerId: sale.customer_id,
-          saleId: sale.id,
-          amount: sale.total_amount,
-          status: sale.payment_status === 'paid' ? 'completed' : 'pending'
-        });
-      });
+    const interval = setInterval(() => {
+      // Only refresh if the page is visible and not currently loading
+      if (!document.hidden && !loading) {
+        loadCalendarEvents();
+      }
+    }, 5 * 60 * 1000); // 5 minutes
 
-      // Load installment events
-      for (const sale of sales) {
-        if (sale.payment_type === 'installments') {
-          const installments = await window.electronAPI.database.installments.getBySale(sale.id!);
-          installments.forEach(installment => {
-            const isOverdue = new Date(installment.due_date) < new Date() && installment.status !== 'paid';
-            calendarEvents.push({
-              id: `installment-${installment.id}`,
-              title: `Payment: ${sale.customer_name}`,
-              date: new Date(installment.due_date),
-              type: 'installment',
-              description: `Installment #${installment.installment_number} - ${formatCurrency(installment.amount)}`,
-              customerId: sale.customer_id,
-              saleId: sale.id,
-              installmentId: installment.id,
-              amount: installment.amount,
-              status: installment.status === 'paid' ? 'completed' : isOverdue ? 'overdue' : 'pending',
-              installmentNumber: installment.installment_number,
-              balance: installment.balance
-            });
-          });
+    return () => clearInterval(interval);
+  }, [isElectron, loading, loadCalendarEvents]);
+
+  // Listen for visibility changes to refresh when user returns to tab
+  useEffect(() => {
+    if (!isElectron) return;
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden && !loading) {
+        // Refresh data when user returns to the tab after being away for more than 2 minutes
+        const timeSinceLastRefresh = Date.now() - lastRefresh;
+        if (timeSinceLastRefresh > 2 * 60 * 1000) {
+          loadCalendarEvents();
         }
       }
+    };
 
-      setEvents(calendarEvents);
-    } catch (error) {
-      console.error('Error loading calendar events:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+   }, [isElectron, loading, lastRefresh, loadCalendarEvents]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -125,6 +285,76 @@ export default function CalendarPage() {
     setIsEventDialogOpen(true);
   };
 
+  // Bulk operation handlers
+  const handleSelectEvent = (eventId: string) => {
+    setSelectedEvents(prev => 
+      prev.includes(eventId) 
+        ? prev.filter(id => id !== eventId)
+        : [...prev, eventId]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedEvents.length === filteredEvents.length) {
+      setSelectedEvents([]);
+    } else {
+      setSelectedEvents(filteredEvents.map(event => event.id));
+    }
+  };
+
+  // Keyboard navigation handlers
+  const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    if (event.target && (event.target as HTMLElement).tagName === 'INPUT') {
+      return; // Don't interfere with input fields
+    }
+
+    switch (event.key) {
+      case 'n':
+      case 'N':
+        if (event.ctrlKey || event.metaKey) {
+          event.preventDefault();
+          handleAddEvent();
+        }
+        break;
+      case 'r':
+      case 'R':
+        if (event.ctrlKey || event.metaKey) {
+          event.preventDefault();
+          loadCalendarEvents(true);
+        }
+        break;
+      case 'f':
+      case 'F':
+        if (event.ctrlKey || event.metaKey) {
+          event.preventDefault();
+          const searchInput = document.querySelector('input[placeholder*="Search"]') as HTMLInputElement;
+          if (searchInput) {
+            searchInput.focus();
+          }
+        }
+        break;
+      case 'Escape':
+        if (bulkActionMode) {
+          setBulkActionMode(false);
+          setSelectedEvents([]);
+        }
+        break;
+      case 'a':
+      case 'A':
+        if ((event.ctrlKey || event.metaKey) && bulkActionMode) {
+          event.preventDefault();
+          handleSelectAll();
+        }
+        break;
+    }
+  }, [bulkActionMode, handleSelectAll, loadCalendarEvents]);
+
+  // Add keyboard event listeners
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
   const handleEventSave = async (eventData: Partial<CalendarEvent>) => {
     // For custom events, we'll store them in local state
     // In a real application, this would integrate with your database
@@ -137,7 +367,9 @@ export default function CalendarPage() {
       // if there was backend integration
     }
     
-    await loadCalendarEvents();
+    // Invalidate cache and reload
+    dataCache.invalidateCache('sales');
+    await loadCalendarEvents(true);
     setIsEventDialogOpen(false);
   };
 
@@ -153,8 +385,59 @@ export default function CalendarPage() {
       // if there was backend integration
     }
     
-    await loadCalendarEvents();
+    // Invalidate cache and reload
+    dataCache.invalidateCache('sales');
+    await loadCalendarEvents(true);
     setIsEventDialogOpen(false);
+  };
+
+  const handleBulkStatusUpdate = async (newStatus: EventStatus) => {
+    console.log(`Updating ${selectedEvents.length} events to status: ${newStatus}`);
+    // In a real app, this would update the database
+    // For now, we'll just log the action
+    
+    // Clear selection after bulk action
+    setSelectedEvents([]);
+    setBulkActionMode(false);
+    
+    // Reload events to reflect changes
+    await loadCalendarEvents(true);
+  };
+
+  const handleBulkDelete = async () => {
+    if (window.confirm(`Are you sure you want to delete ${selectedEvents.length} selected events?`)) {
+      console.log(`Deleting ${selectedEvents.length} events:`, selectedEvents);
+      // In a real app, this would delete from the database
+      
+      // Clear selection after bulk action
+      setSelectedEvents([]);
+      setBulkActionMode(false);
+      
+      // Reload events to reflect changes
+      await loadCalendarEvents(true);
+    }
+  };
+
+  const handleBulkExport = () => {
+    const selectedEventData = filteredEvents.filter(event => selectedEvents.includes(event.id));
+    const csvContent = [
+      'Title,Date,Type,Status,Amount,Description',
+      ...selectedEventData.map(event => 
+        `"${event.title}","${event.date.toISOString().split('T')[0]}","${event.type}","${event.status}","${event.amount || 0}","${event.description || ''}"`
+      )
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `calendar-events-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    
+    console.log(`Exported ${selectedEvents.length} events to CSV`);
   };
 
   const filteredEvents = useMemo(() => {
@@ -214,188 +497,312 @@ export default function CalendarPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-8">
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
+      <div className="p-4 md:p-8">
+        <div className="mb-6 md:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight">Calendar</h1>
-              <p className="text-muted-foreground">
-                Track sales, installment payments, and important business dates
+              <h1 className="text-2xl md:text-3xl font-bold tracking-tight" id="calendar-title">Calendario</h1>
+              <p className="text-muted-foreground text-sm md:text-base" aria-describedby="calendar-title">
+                Rastrea ventas, pagos de cuotas y fechas importantes del negocio
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={loadCalendarEvents}>
-                <CalendarIcon className="w-4 h-4 mr-2" />
-                Refresh
-              </Button>
-              <Button variant="outline">
-                <Download className="w-4 h-4 mr-2" />
-                Export
-              </Button>
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder="Search events..."
-                  value={searchQuery}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
-                  className="w-40"
-                />
-                <Button onClick={handleAddEvent}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Event
-                </Button>
-              </div>
+            <div className="flex items-center gap-2 flex-wrap" role="toolbar" aria-label="Calendar actions">
+              {!bulkActionMode ? (
+                <>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => loadCalendarEvents(true)}
+                    disabled={loading}
+                    className="min-w-[100px]"
+                    aria-label="Refresh calendar events"
+                  >
+                    {loading ? (
+                      <>
+                        <div className="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
+                        Loading
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                         Actualizar
+                      </>
+                    )}
+                  </Button>
+                  <Button onClick={handleAddEvent} aria-label="Agregar nuevo evento del calendario">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Agregar Evento
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div className="text-sm text-muted-foreground mr-2">
+                    {selectedEvents.length} seleccionados
+                  </div>
+                  <Button
+                    onClick={handleSelectAll}
+                    variant="outline"
+                    size="sm"
+                  >
+                    {selectedEvents.length === filteredEvents.length ? 'Deseleccionar Todo' : 'Seleccionar Todo'}
+                  </Button>
+                  {selectedEvents.length > 0 && (
+                    <>
+                      <Button
+                        onClick={() => handleBulkStatusUpdate('completed')}
+                        variant="outline"
+                        size="sm"
+                        className="text-green-600 hover:text-green-700"
+                      >
+                        <CheckCircle className="w-4 h-4 mr-1" />
+                        Completar
+                      </Button>
+                      <Button
+                        onClick={handleBulkDelete}
+                        variant="outline"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <AlertTriangle className="w-4 h-4 mr-1" />
+                        Eliminar
+                      </Button>
+                    </>
+                  )}
+                  <Button
+                    onClick={() => {
+                      setBulkActionMode(false);
+                      setSelectedEvents([]);
+                    }}
+                    variant="ghost"
+                    size="sm"
+                  >
+                    Cancelar
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>
 
         {/* Statistics Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          <Card>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-6 md:mb-8" role="region" aria-label="Calendar statistics">
+          <Card className="transition-all hover:shadow-md" role="article" aria-labelledby="total-events-title">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Total Events</CardTitle>
-                <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium" id="total-events-title">Total de Eventos</CardTitle>
+                <CalendarIcon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.totalEvents}</div>
+              <div className="text-xl md:text-2xl font-bold">{stats.totalEvents}</div>
               <div className="flex items-center text-xs text-muted-foreground">
                 <TrendingUp className="h-3 w-3 mr-1 text-blue-500" />
-                {stats.salesEvents} sales, {stats.installmentEvents} payments
+                {stats.salesEvents} ventas, {stats.installmentEvents} pagos
               </div>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="transition-all hover:shadow-md" role="article" aria-labelledby="total-value-title">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Total Value</CardTitle>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium" id="total-value-title">Valor Total</CardTitle>
+                <DollarSign className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(stats.totalAmount)}</div>
+              <div className="text-xl md:text-2xl font-bold">{formatCurrency(stats.totalAmount)}</div>
               <div className="flex items-center text-xs text-muted-foreground">
                 <DollarSign className="h-3 w-3 mr-1 text-green-500" />
-                Combined sales and payments
+                Ventas y pagos combinados
               </div>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="transition-all hover:shadow-md" role="article" aria-labelledby="overdue-payments-title">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Overdue Payments</CardTitle>
-                <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium" id="overdue-payments-title">Pagos Vencidos</CardTitle>
+                <AlertTriangle className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-red-600">{stats.overdueEvents}</div>
+              <div className="text-xl md:text-2xl font-bold text-red-600">{stats.overdueEvents}</div>
               <div className="flex items-center text-xs text-muted-foreground">
                 <AlertTriangle className="h-3 w-3 mr-1 text-red-500" />
-                {formatCurrency(stats.overdueAmount)} overdue
+                {formatCurrency(stats.overdueAmount)} vencidos
               </div>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="transition-all hover:shadow-md" role="article" aria-labelledby="completed-title">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Completed</CardTitle>
-                <CheckCircle className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium" id="completed-title">Completados</CardTitle>
+                <CheckCircle className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">{stats.completedEvents}</div>
+              <div className="text-xl md:text-2xl font-bold text-green-600">{stats.completedEvents}</div>
               <div className="flex items-center text-xs text-muted-foreground">
                 <CheckCircle className="h-3 w-3 mr-1 text-green-500" />
-                {stats.pendingEvents} still pending
+                {stats.pendingEvents} aún pendientes
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Filter Tabs */}
-        <div className="flex flex-wrap gap-4 mb-6">
-          <Tabs value={filterType} onValueChange={(value) => setFilterType(value as EventType | 'all')}>
-            <TabsList>
-              <TabsTrigger value="all">All Events ({stats.totalEvents})</TabsTrigger>
-              <TabsTrigger value="sale">Sales ({stats.salesEvents})</TabsTrigger>
-              <TabsTrigger value="installment">Payments ({stats.installmentEvents})</TabsTrigger>
-              <TabsTrigger value="reminder">Reminders</TabsTrigger>
-              <TabsTrigger value="custom">Custom</TabsTrigger>
-            </TabsList>
-          </Tabs>
-          
-          <Tabs value={filterStatus} onValueChange={(value) => setFilterStatus(value as EventStatus | 'all')}>
-            <TabsList>
-              <TabsTrigger value="all">All Status</TabsTrigger>
-              <TabsTrigger value="pending">Pending</TabsTrigger>
-              <TabsTrigger value="completed">Completed</TabsTrigger>
-              <TabsTrigger value="overdue">Overdue</TabsTrigger>
-              <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-
-        {isElectron ? (
-          <div className="grid gap-6 lg:grid-cols-3">
-            {/* Calendar Component */}
-            <div className="lg:col-span-2">
-              <CalendarComponent
-                events={filteredEvents}
-                selectedDate={selectedDate}
-                currentMonth={currentMonth}
-                onDateSelect={handleDateSelect}
-                onMonthChange={setCurrentMonth}
-                onEventClick={handleEventClick}
-              />
+        {/* Filters */}
+        <Card className="mb-6" role="region" aria-label="Calendar filters">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg font-semibold">
+                Filtros
+              </CardTitle>
+              <Badge variant="secondary" className="text-xs">
+                {filteredEvents.length} eventos
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-0">
+            {/* Search Section */}
+            <div className="space-y-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Buscar eventos..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
             </div>
 
-            {/* Event List Sidebar */}
-            <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <CalendarIcon className="h-5 w-5" />
-                    {selectedDate.toLocaleDateString('en-US', { 
-                      weekday: 'long', 
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric' 
-                    })}
-                  </CardTitle>
-                  <CardDescription>
-                    {selectedDateEvents.length} event{selectedDateEvents.length !== 1 ? 's' : ''} on this date
-                  </CardDescription>
+
+
+            {/* Status Section */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium" id="status-label">Estado</label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setFilterStatus('all')}
+                  className="text-xs h-6 px-2"
+                >
+                  Limpiar
+                </Button>
+              </div>
+              <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value as EventStatus | 'all')}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Seleccionar estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                      Todos
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="pending">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-yellow-400"></div>
+                      Pendiente
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="completed">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-green-400"></div>
+                      Completado
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="overdue">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-red-400"></div>
+                      Vencido
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        {isElectron ? (
+          <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+            <div className="xl:col-span-3">
+              <Card className="shadow-sm border-0 bg-gradient-to-br from-background to-muted/20">
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2">
+                      <CalendarIcon className="h-5 w-5" />
+                      Vista de Calendario
+                    </CardTitle>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">
+                        {filteredEvents.length} eventos
+                      </Badge>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleAddEvent}
+                        className="text-xs"
+                      >
+                        <Plus className="h-3 w-3 mr-1" />
+                        Agregar Evento
+                      </Button>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent>
+                  <CalendarComponent
+                    events={filteredEvents}
+                    selectedDate={selectedDate}
+                    currentMonth={currentMonth}
+                    onDateSelect={handleDateSelect}
+                    onEventClick={handleEventClick}
+                    onMonthChange={setCurrentMonth}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+            <div className="xl:col-span-1">
+              <Card className="shadow-sm border-0 bg-gradient-to-br from-background to-muted/20 h-fit">
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <Clock className="h-4 w-4" />
+                    Eventos para {selectedDate.toLocaleDateString()}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
                   <EventList
                     events={selectedDateEvents}
                     onEventClick={handleEventClick}
+                    bulkActionMode={bulkActionMode}
+                    selectedEvents={selectedEvents}
+                    onSelectEvent={handleSelectEvent}
                   />
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="mt-6 shadow-sm border-0 bg-gradient-to-br from-background to-muted/20">
                 <CardHeader>
-                  <CardTitle>This Month</CardTitle>
+                  <CardTitle>Este Mes</CardTitle>
                   <CardDescription>
-                    {monthEvents.length} event{monthEvents.length !== 1 ? 's' : ''} in {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                    {monthEvents.length} evento{monthEvents.length !== 1 ? 's' : ''} en {currentMonth.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span>Sales:</span>
+                      <span>Ventas:</span>
                       <span>{monthEvents.filter(e => e.type === 'sale').length}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span>Payments:</span>
+                      <span>Pagos:</span>
                       <span>{monthEvents.filter(e => e.type === 'installment').length}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span>Overdue:</span>
+                      <span>Vencidos:</span>
                       <span className="text-red-600">{monthEvents.filter(e => e.status === 'overdue').length}</span>
                     </div>
                   </div>
@@ -404,15 +811,20 @@ export default function CalendarPage() {
             </div>
           </div>
         ) : (
-          <Card>
-            <CardContent className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <CalendarIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Electron Required</h3>
-                <p className="text-muted-foreground">
-                  Calendar functionality is only available in the Electron desktop app.
-                </p>
+          <Card className="shadow-lg border-0">
+            <CardContent className="p-12 text-center">
+              <div className="mx-auto w-24 h-24 bg-muted rounded-full flex items-center justify-center mb-6">
+                <CalendarIcon className="h-12 w-12 text-muted-foreground" />
               </div>
+              <h3 className="text-xl font-semibold mb-3">Calendario No Disponible</h3>
+              <p className="text-muted-foreground max-w-md mx-auto leading-relaxed">
+                La funcionalidad del calendario solo está disponible en la aplicación de escritorio Electron. 
+                Por favor usa la versión de escritorio para acceder a las funciones del calendario.
+              </p>
+              <Button variant="outline" className="mt-6" onClick={() => window.location.reload()}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Actualizar Página
+              </Button>
             </CardContent>
           </Card>
         )}

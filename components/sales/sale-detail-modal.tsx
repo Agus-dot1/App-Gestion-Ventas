@@ -775,7 +775,7 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
                         Plan de Cuotas
                       </CardTitle>
                       <CardDescription>
-                        {sale.number_of_installments} cuotas de {formatCurrency(sale.installment_amount || 0)}
+                        {sale.number_of_installments} cuotas de {formatCurrency(Math.round(sale.installment_amount || 0))}
                         {sale.advance_installments > 0 && (
                           <span> + {sale.advance_installments} cuotas adelantadas</span>
                         )}

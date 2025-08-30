@@ -92,15 +92,6 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
     });
   };
 
-  const handleSave = () => {
-    onSave({
-      ...formData,
-      id: event?.id || `custom-${Date.now()}`,
-      date: formData.date
-    });
-    setIsEditing(false);
-  };
-
   const handleDelete = () => {
     if (event?.id) {
       onDelete(event.id);
@@ -142,14 +133,14 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {event ? getEventIcon(event.type) : <Calendar className="w-5 h-5" />}
-            {event ? (isEditing ? 'Edit Event' : 'Event Details') : 'Create New Event'}
+            {event ? (isEditing ? 'Editar Evento' : 'Detalles del Evento') : 'Crear Nuevo Evento'}
           </DialogTitle>
           <DialogDescription>
-            {event ? 
-              `${event.type.charAt(0).toUpperCase() + event.type.slice(1)} event on ${formatDate(event.date)}` :
-              'Create a new custom event or reminder'
-            }
-          </DialogDescription>
+              {event ? 
+                `${event.type === 'sale' ? 'Venta' : event.type === 'installment' ? 'Cuota' : event.type === 'reminder' ? 'Recordatorio' : 'Evento'} - ${formatDate(event.date)}` : 
+                'Crear un nuevo evento personalizado o recordatorio'
+              }
+            </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
@@ -191,19 +182,19 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
                       <DollarSign className="w-4 h-4" />
-                      Financial Details
+                      Detalles Financieros
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {event.amount && (
                       <div className="flex justify-between">
-                        <span>Amount:</span>
+                        <span>Monto:</span>
                         <span className="font-medium">{formatCurrency(event.amount)}</span>
                       </div>
                     )}
                     {event.balance && event.balance > 0 && (
                       <div className="flex justify-between">
-                        <span>Outstanding Balance:</span>
+                        <span>Saldo Pendiente:</span>
                         <span className="font-medium text-red-600">{formatCurrency(event.balance)}</span>
                       </div>
                     )}
@@ -217,7 +208,7 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
                 </Card>
               )}
 
-              {/* Customer Information */}
+              {/* Información del Cliente */}
               {event.customerName && (
                 <Card>
                   <CardHeader>
@@ -232,7 +223,7 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
                       <span className="font-medium">{event.customerName}</span>
                     </div>
                     
-                    {/* Customer Actions */}
+                    {/* Acciones del Cliente */}
                     <div className="flex gap-2 pt-2">
                       <Button size="sm" variant="outline">
                         <Phone className="w-4 h-4 mr-1" />
@@ -251,7 +242,7 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
                 </Card>
               )}
 
-              {/* Additional Notes */}
+              {/* Notas Adicionales */}
               {event.notes && (
                 <Card>
                   <CardHeader>
@@ -286,7 +277,7 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
                     disabled={!!(event && (event.type === 'sale' || event.type === 'installment'))}
                   >
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue placeholder="Seleccionar tipo" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="custom">Evento Personalizado</SelectItem>
@@ -298,7 +289,7 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
                 </div>
               </div>
 
-              {/* Date and Time - always show for editable events */}
+              {/* Fecha y Hora - siempre mostrar para eventos editables */}
               <div className="space-y-2">
                 <Label htmlFor="date">Fecha y Hora</Label>
                 <Input
@@ -358,19 +349,8 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
         </div>
 
         <DialogFooter>
-          <div className="flex items-center justify-between w-full">
-            <div className="flex gap-2">
-              {event && canDelete && !isEditing && (
-                <Button
-                  variant="destructive"
-                  onClick={handleDelete}
-                  size="sm"
-                >
-                  <Trash2 className="w-4 h-4 mr-1" />
-                  Eliminar
-                </Button>
-              )}
-            </div>
+          <div className="flex items-center justify-end w-full">
+
             
             <div className="flex gap-2">
               <Button
@@ -383,21 +363,8 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
                   }
                 }}
               >
-                Cancelar
+                Cerrar
               </Button>
-              
-              {event && !isEditing && canEdit && (
-                <Button onClick={() => setIsEditing(true)}>
-                  <Edit className="w-4 h-4 mr-1" />
-                  Editar
-                </Button>
-              )}
-              
-              {(isEditing || !event) && (
-                <Button onClick={handleSave} disabled={!formData.title.trim()}>
-                  {event ? 'Guardar Cambios' : 'Crear Evento'}
-                </Button>
-              )}
             </div>
           </div>
         </DialogFooter>

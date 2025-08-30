@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Calendar,
   DollarSign,
@@ -22,9 +23,18 @@ import { getEventTypeColor, getEventStatusColor, formatEventTime } from '@/lib/c
 interface EventListProps {
   events: CalendarEvent[];
   onEventClick: (event: CalendarEvent) => void;
+  bulkActionMode?: boolean;
+  selectedEvents?: string[];
+  onSelectEvent?: (eventId: string) => void;
 }
 
-export function EventList({ events, onEventClick }: EventListProps) {
+export function EventList({ 
+  events, 
+  onEventClick, 
+  bulkActionMode = false, 
+  selectedEvents = [], 
+  onSelectEvent 
+}: EventListProps) {
   // Sort events by date by default
   const [sortConfig, setSortConfig] = useState<{ key: keyof CalendarEvent; direction: 'asc' | 'desc' }>({
     key: 'date',
@@ -101,7 +111,7 @@ export function EventList({ events, onEventClick }: EventListProps) {
     return (
       <div className="text-center py-8 text-muted-foreground">
         <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
-        <p className="text-sm">No events on this date</p>
+        <p className="text-sm">No hay eventos en esta fecha</p>
       </div>
     );
   };
@@ -117,7 +127,7 @@ export function EventList({ events, onEventClick }: EventListProps) {
           className={cn(sortConfig.key === 'date' && 'bg-muted')}
         >
           <ArrowUpDown className="w-3 h-3 mr-1" />
-          Date
+          Fecha
         </Button>
         <Button
           variant="outline"
@@ -126,7 +136,7 @@ export function EventList({ events, onEventClick }: EventListProps) {
           className={cn(sortConfig.key === 'title' && 'bg-muted')}
         >
           <ArrowUpDown className="w-3 h-3 mr-1" />
-          Title
+          Título
         </Button>
         <Button
           variant="outline"
@@ -135,7 +145,7 @@ export function EventList({ events, onEventClick }: EventListProps) {
           className={cn(sortConfig.key === 'type' && 'bg-muted')}
         >
           <ArrowUpDown className="w-3 h-3 mr-1" />
-          Type
+          Tipo
         </Button>
         <Button
           variant="outline"
@@ -144,63 +154,100 @@ export function EventList({ events, onEventClick }: EventListProps) {
           className={cn(sortConfig.key === 'status' && 'bg-muted')}
         >
           <ArrowUpDown className="w-3 h-3 mr-1" />
-          Status
+          Estado
         </Button>
       </div>
 
-      {sortedEvents.map((event) => (
-        <Card
-          key={event.id}
-          className={cn(
-            'cursor-pointer transition-all hover:shadow-md border-l-4',
-            event.type === 'sale' && 'border-l-green-500',
-            event.type === 'installment' && 'border-l-blue-500',
-            event.type === 'reminder' && 'border-l-yellow-500',
-            event.status === 'overdue' && 'border-l-red-500'
-          )}
-          onClick={() => onEventClick(event)}
-        >
-          <CardContent className="p-4">
-            <div className="space-y-3">
-              {/* Event Header */}
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2">
-                  {getEventIcon(event.type)}
-                  <div>
-                    <h4 className="font-medium text-sm">{event.title}</h4>
-                    <p className="text-xs text-muted-foreground">
-                      {formatEventTime(event.date)}
-                    </p>
+      {sortedEvents.map((event) => {
+        const isSelected = selectedEvents.includes(event.id);
+        
+        return (
+          <Card
+            key={event.id}
+            className={cn(
+              'cursor-pointer transition-all hover:shadow-md border-l-4',
+              event.type === 'sale' && 'border-l-green-500',
+              event.type === 'installment' && 'border-l-blue-500',
+              event.type === 'reminder' && 'border-l-yellow-500',
+              event.status === 'overdue' && 'border-l-red-500',
+              bulkActionMode && isSelected && 'ring-2 ring-primary bg-primary/5'
+            )}
+            onClick={(e) => {
+              if (bulkActionMode && onSelectEvent) {
+                e.preventDefault();
+                onSelectEvent(event.id);
+              } else {
+                onEventClick(event);
+              }
+            }}
+            role={bulkActionMode ? "checkbox" : "button"}
+            aria-checked={bulkActionMode ? isSelected : undefined}
+            aria-label={bulkActionMode 
+              ? `${isSelected ? 'Deseleccionar' : 'Seleccionar'} evento: ${event.title}` 
+              : `Ver detalles del evento: ${event.title}`
+            }
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (bulkActionMode && onSelectEvent) {
+                  onSelectEvent(event.id);
+                } else {
+                  onEventClick(event);
+                }
+              }
+            }}
+          >
+            <CardContent className="p-4">
+              <div className="space-y-3">
+                {/* Event Header */}
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2">
+                    {bulkActionMode && onSelectEvent && (
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => onSelectEvent(event.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label={`${isSelected ? 'Deseleccionar' : 'Seleccionar'} evento: ${event.title}`}
+                      />
+                    )}
+                    <span aria-hidden="true">{getEventIcon(event.type)}</span>
+                    <div>
+                      <h4 className="font-medium text-sm" id={`event-title-${event.id}`}>{event.title}</h4>
+                      <p className="text-xs text-muted-foreground">
+                        {formatEventTime(event.date)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span aria-hidden="true">{getStatusIcon(event.status)}</span>
+                    <Badge
+                      variant="outline"
+                      className={cn('text-xs', getEventStatusColor(event.status))}
+                      aria-label={`Estado del evento: ${event.status === 'completed' ? 'Completado' : event.status === 'pending' ? 'Pendiente' : event.status === 'overdue' ? 'Vencido' : event.status}`}
+                    >
+                      {event.status === 'completed' ? 'Completado' : event.status === 'pending' ? 'Pendiente' : event.status === 'overdue' ? 'Vencido' : event.status}
+                    </Badge>
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  {getStatusIcon(event.status)}
-                  <Badge
-                    variant="outline"
-                    className={cn('text-xs', getEventStatusColor(event.status))}
-                  >
-                    {event.status}
-                  </Badge>
-                </div>
-              </div>
 
               {/* Event Details */}
               {event.description && (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground" aria-describedby={`event-title-${event.id}`}>
                   {event.description}
                 </p>
               )}
 
               {/* Financial Information */}
               {event.amount && (
-                <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center justify-between text-xs" role="region" aria-labelledby={`financial-info-${event.id}`}>
                   <div className="flex items-center gap-1">
                     <DollarSign className="w-3 h-3" />
-                    <span className="font-medium">{formatCurrency(event.amount)}</span>
+                    <span className="font-medium" id={`financial-info-${event.id}`} aria-label={`Monto: ${formatCurrency(event.amount)}`}>{formatCurrency(event.amount)}</span>
                   </div>
                   {event.balance && event.balance > 0 && (
-                    <div className="text-red-600">
-                      Balance: {formatCurrency(event.balance)}
+                    <div className="text-red-600" aria-label={`Saldo pendiente: ${formatCurrency(event.balance)}`}>
+                      Saldo: {formatCurrency(event.balance)}
                     </div>
                   )}
                 </div>
@@ -210,15 +257,15 @@ export function EventList({ events, onEventClick }: EventListProps) {
               {event.type === 'installment' && event.installmentNumber && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <CreditCard className="w-3 h-3" />
-                  <span>Installment #{event.installmentNumber}</span>
+                  <span>Cuota #{event.installmentNumber}</span>
                 </div>
               )}
 
               {/* Customer Information */}
               {event.customerName && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <User className="w-3 h-3" />
-                  <span>{event.customerName}</span>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground" role="region" aria-labelledby={`customer-info-${event.id}`}>
+                  <User className="w-3 h-3" aria-hidden="true" />
+                  <span id={`customer-info-${event.id}`} aria-label={`Cliente: ${event.customerName}`}>{event.customerName}</span>
                 </div>
               )}
 
@@ -227,14 +274,16 @@ export function EventList({ events, onEventClick }: EventListProps) {
                 <Badge
                   variant="outline"
                   className={cn('text-xs', getEventTypeColor(event.type))}
+                  aria-label={`Tipo de evento: ${event.type === 'sale' ? 'Venta' : event.type === 'installment' ? 'Cuota' : event.type === 'reminder' ? 'Recordatorio' : event.type.charAt(0).toUpperCase() + event.type.slice(1)}`}
                 >
-                  {event.type.charAt(0).toUpperCase() + event.type.slice(1)}
+                  {event.type === 'sale' ? 'Venta' : event.type === 'installment' ? 'Cuota' : event.type === 'reminder' ? 'Recordatorio' : event.type.charAt(0).toUpperCase() + event.type.slice(1)}
                 </Badge>
               </div>
             </div>
           </CardContent>
         </Card>
-      ))}
+        );
+      })}
     </div>
   );
 }

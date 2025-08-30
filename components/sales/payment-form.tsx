@@ -36,7 +36,7 @@ export function PaymentForm({ installment, open, onOpenChange, onSave }: Payment
   useEffect(() => {
     if (installment) {
       setFormData({
-        amount: installment.balance,
+        amount: Math.round(installment.balance),
         paymentMethod: 'cash',
         reference: '',
         notes: ''
@@ -71,7 +71,7 @@ export function PaymentForm({ installment, open, onOpenChange, onSave }: Payment
     setIsSubmitting(true);
     try {
       await onSave({
-        amount: formData.amount,
+        amount: Math.round(formData.amount),
         paymentMethod: formData.paymentMethod,
         reference: formData.reference || undefined,
         notes: formData.notes || undefined
@@ -167,11 +167,11 @@ export function PaymentForm({ installment, open, onOpenChange, onSave }: Payment
                 <Input
                   id="amount"
                   type="number"
-                  step="0.01"
+                  step="1"
                   min="0"
                   max={installment.balance}
                   value={formData.amount}
-                  onChange={(e) => handleInputChange('amount', parseFloat(e.target.value) || 0)}
+                  onChange={(e) => handleInputChange('amount', Math.round(parseFloat(e.target.value) || 0))}
                   className={`pl-10 ${errors.amount ? 'border-red-500' : ''}`}
                 />
               </div>
@@ -186,7 +186,7 @@ export function PaymentForm({ installment, open, onOpenChange, onSave }: Payment
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => handleInputChange('amount', installment.balance)}
+                  onClick={() => handleInputChange('amount', Math.round(installment.balance))}
                 >
                   Pago Completo
                 </Button>
@@ -194,7 +194,7 @@ export function PaymentForm({ installment, open, onOpenChange, onSave }: Payment
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => handleInputChange('amount', installment.balance / 2)}
+                  onClick={() => handleInputChange('amount', Math.round(installment.balance / 2))}
                 >
                   50%
                 </Button>

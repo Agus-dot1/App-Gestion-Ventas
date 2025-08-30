@@ -53,8 +53,8 @@ export function InstallmentSummaryCard({
   };
 
   const getPaymentProgress = () => {
-    const totalAmount = customer.installments.reduce((sum, inst) => sum + inst.amount, 0);
-    const paidAmount = customer.installments.reduce((sum, inst) => sum + inst.paid_amount, 0);
+    const totalAmount = Math.round(customer.installments.reduce((sum, inst) => sum + inst.amount, 0));
+    const paidAmount = Math.round(customer.installments.reduce((sum, inst) => sum + inst.paid_amount, 0));
     return totalAmount > 0 ? (paidAmount / totalAmount) * 100 : 0;
   };
 

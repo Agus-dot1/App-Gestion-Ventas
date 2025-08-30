@@ -34,24 +34,24 @@ export async function GET() {
     
     const statsComparison = {
       sales: {
-        current: salesComparison.currentMonth.sales,
-        previous: salesComparison.previousMonth.sales,
-        percentage: calculatePercentage(salesComparison.currentMonth.sales, salesComparison.previousMonth.sales)
+        current: salesComparison.current,
+        previous: salesComparison.previous,
+        percentage: calculatePercentage(salesComparison.current, salesComparison.previous)
       },
       revenue: {
-        current: salesComparison.currentMonth.revenue,
-        previous: salesComparison.previousMonth.revenue,
-        percentage: calculatePercentage(salesComparison.currentMonth.revenue, salesComparison.previousMonth.revenue)
+        current: salesComparison.current,
+        previous: salesComparison.previous,
+        percentage: calculatePercentage(salesComparison.current, salesComparison.previous)
       },
       customers: {
-        current: customersComparison.currentMonth,
-        previous: customersComparison.previousMonth,
-        percentage: calculatePercentage(customersComparison.currentMonth, customersComparison.previousMonth)
+        current: customersComparison.current,
+        previous: customersComparison.previous,
+        percentage: calculatePercentage(customersComparison.current, customersComparison.previous)
       },
       products: {
-        current: productsComparison.currentMonth,
-        previous: productsComparison.previousMonth,
-        percentage: calculatePercentage(productsComparison.currentMonth, productsComparison.previousMonth)
+        current: productsComparison.current,
+        previous: productsComparison.previous,
+        percentage: calculatePercentage(productsComparison.current, productsComparison.previous)
       }
     };
     

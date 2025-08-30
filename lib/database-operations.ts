@@ -187,6 +187,8 @@ declare global {
           recordPayment: (installmentId: number, amount: number, paymentMethod: string, reference?: string) => Promise<void>;
           revertPayment: (installmentId: number, transactionId: number) => Promise<void>;
           applyLateFee: (installmentId: number, fee: number) => Promise<void>;
+          markAsPaid: (id: number) => Promise<void>;
+          delete: (id: number) => Promise<void>;
         };
         payments: {
           getBySale: (saleId: number) => Promise<PaymentTransaction[]>;
@@ -759,7 +761,7 @@ export const saleOperations = {
     `);
     
     const installmentAmount = saleData.payment_type === 'installments' && saleData.number_of_installments
-      ? totalAmount / saleData.number_of_installments
+      ? Math.round(totalAmount / saleData.number_of_installments)
       : null;
     
     const saleResult = saleStmt.run(
@@ -810,7 +812,7 @@ export const saleOperations = {
     
     // Create installments if needed
     if (saleData.payment_type === 'installments' && saleData.number_of_installments) {
-      const monthlyAmount = totalAmount / saleData.number_of_installments;
+      const monthlyAmount = Math.round(totalAmount / saleData.number_of_installments);
       const advanceInstallments = saleData.advance_installments || 0;
       
       const installmentStmt = db.prepare(`
@@ -1157,12 +1159,53 @@ export const installmentOperations = {
       throw new Error(`Installment with id ${id} not found`);
     }
     
+    // Calculate the remaining amount to be paid
+    const remainingAmount = installment.amount - installment.paid_amount;
+    
+    // Update installment to mark as paid
     const stmt = db.prepare(`
       UPDATE installments
       SET paid_amount = amount, balance = 0, status = 'paid', paid_date = ?
       WHERE id = ?
     `);
     stmt.run(new Date().toISOString(), id);
+    
+    // Create a payment transaction record for the remaining amount
+    if (remainingAmount > 0) {
+      const paymentStmt = db.prepare(`
+        INSERT INTO payment_transactions (
+          sale_id, installment_id, amount, payment_method, payment_reference,
+          transaction_date, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      paymentStmt.run(
+        installment.sale_id,
+        id,
+        remainingAmount,
+        'cash',
+        'Marcado como pagado',
+        new Date().toISOString(),
+        'completed'
+      );
+    }
+  },
+
+  delete: (id: number): void => {
+    const db = getDatabase();
+    
+    // First check if installment exists
+    const installment = db.prepare('SELECT * FROM installments WHERE id = ?').get(id) as Installment;
+    if (!installment) {
+      throw new Error(`Installment with id ${id} not found`);
+    }
+    
+    // Delete related payment transactions first
+    const deletePaymentsStmt = db.prepare('DELETE FROM payment_transactions WHERE installment_id = ?');
+    deletePaymentsStmt.run(id);
+    
+    // Delete the installment
+    const stmt = db.prepare('DELETE FROM installments WHERE id = ?');
+    stmt.run(id);
   }
 };
 

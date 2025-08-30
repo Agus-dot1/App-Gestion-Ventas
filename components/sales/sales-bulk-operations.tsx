@@ -126,7 +126,7 @@ export function SalesBulkOperations({
                      sale.payment_type === 'credit' ? 'Crédito' : 'Mixto',
       'Estado de Pago': getPaymentStatusBadge(sale.payment_status).label,
       'Cuotas': sale.number_of_installments || '',
-      'Monto Cuota': sale.installment_amount || '',
+      'Monto Cuota': sale.installment_amount ? Math.round(sale.installment_amount) : '',
       'Cuotas Adelantadas': sale.advance_installments,
       'Estado': sale.status === 'pending' ? 'Pendiente' :
                sale.status === 'completed' ? 'Completada' :

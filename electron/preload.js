@@ -46,12 +46,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     installments: {
       getBySale: (saleId) => ipcRenderer.invoke('db:installments:getBySale', saleId),
       getOverdue: () => ipcRenderer.invoke('db:installments:getOverdue'),
+      create: (installment) => ipcRenderer.invoke('db:installments:create', installment),
+      markAsPaid: (id) => ipcRenderer.invoke('db:installments:markAsPaid', id),
       recordPayment: (installmentId, amount, paymentMethod, reference) =>
         ipcRenderer.invoke('db:installments:recordPayment', installmentId, amount, paymentMethod, reference),
       applyLateFee: (installmentId, fee) =>
         ipcRenderer.invoke('db:installments:applyLateFee', installmentId, fee),
       revertPayment: (installmentId, transactionId) =>
-        ipcRenderer.invoke('db:installments:revertPayment', installmentId, transactionId)
+        ipcRenderer.invoke('db:installments:revertPayment', installmentId, transactionId),
+      delete: (id) => ipcRenderer.invoke('db:installments:delete', id)
     },
     payments: {
       getBySale: (saleId) => ipcRenderer.invoke('db:payments:getBySale', saleId),

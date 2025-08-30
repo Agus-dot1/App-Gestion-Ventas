@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DashboardLayout } from '@/components/dashboard-layout';
 import { SaleForm } from '@/components/sales/sale-form';
 import { SalesTable } from '@/components/sales/sales-table';
-import { InstallmentDashboard } from '@/components/sales/installments-dashboard/installment-dashboard';
+import { InstallmentDashboard, InstallmentDashboardRef } from '@/components/sales/installments-dashboard/installment-dashboard';
 import { SalesSkeleton } from '@/components/skeletons/sales-skeleton';
 import { SalesFiltersComponent, applySalesFilters, type SalesFilters } from '@/components/sales/sales-filters';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -18,6 +18,7 @@ import { useDataCache, usePrefetch } from '@/hooks/use-data-cache';
 export default function SalesPage() {
   const searchParams = useSearchParams();
   const highlightId = searchParams.get('highlight');
+  const installmentDashboardRef = useRef<InstallmentDashboardRef>(null);
   const tabParam = searchParams.get('tab');
   const [sales, setSales] = useState<Sale[]>([]);
   const [overdueSales, setOverdueSales] = useState<Sale[]>([]);
@@ -40,6 +41,7 @@ export default function SalesPage() {
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [paginationInfo, setPaginationInfo] = useState<{ total: number; totalPages: number; currentPage: number; pageSize: number } | undefined>(undefined);
+  const [refreshCounter, setRefreshCounter] = useState(0);
   const pageSize = 25;
 
   // Initial data load
@@ -206,6 +208,11 @@ export default function SalesPage() {
       await loadSales(true);
       await loadOverdueSales();
       
+      // Refresh installment dashboard if it exists
+       if (installmentDashboardRef.current) {
+         installmentDashboardRef.current.refreshData();
+       }
+      
       // Close form and reset editing state after successful save and reload
       setEditingSale(undefined);
       setIsFormOpen(false);
@@ -227,6 +234,21 @@ export default function SalesPage() {
       dataCache.invalidateCache('sales');
       await loadSales();
       await loadOverdueSales();
+      
+      // Refresh installment dashboard if it exists
+      if (installmentDashboardRef.current) {
+        installmentDashboardRef.current.refreshData();
+      }
+      
+      // Refresh installment dashboard if it exists
+      if (installmentDashboardRef.current) {
+        installmentDashboardRef.current.refreshData();
+      }
+      
+      // Refresh installment dashboard if it exists
+      if (installmentDashboardRef.current) {
+        installmentDashboardRef.current.refreshData();
+      }
     } catch (error) {
       console.error('Error eliminando venta:', error);
     }
@@ -306,7 +328,16 @@ export default function SalesPage() {
     <DashboardLayout>
       <div className="p-8">
         {/* Main Content Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <Tabs value={activeTab} onValueChange={(value) => {
+          setActiveTab(value);
+          // Refresh sales data when switching back to sales tab
+          if (value === 'sales') {
+            dataCache.invalidateCache('sales');
+            loadSales();
+            loadOverdueSales();
+            setRefreshCounter(prev => prev + 1);
+          }
+        }} className="space-y-6">
           <TabsList>
             <TabsTrigger value="sales">Todas las ventas</TabsTrigger>
             <TabsTrigger value="installments">Cuotas</TabsTrigger>
@@ -404,6 +435,7 @@ export default function SalesPage() {
               sales={sales}
             />
             <SalesTable
+              key={refreshCounter}
               sales={filteredSales}
               highlightId={highlightId}
               onEdit={handleEditSale}
@@ -423,8 +455,14 @@ export default function SalesPage() {
           <TabsContent value="installments" className="-m-8">
             <div className="px-8">
               <InstallmentDashboard 
+                ref={installmentDashboardRef}
                 highlightId={highlightId}
-                onRefresh={() => { loadSales(); loadOverdueSales(); }} 
+                onRefresh={() => { 
+                  dataCache.invalidateCache('sales');
+                  loadSales(); 
+                  loadOverdueSales(); 
+                  setRefreshCounter(prev => prev + 1);
+                }} 
               />
             </div>
           </TabsContent>

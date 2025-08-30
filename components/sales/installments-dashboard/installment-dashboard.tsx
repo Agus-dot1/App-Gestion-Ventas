@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useImperativeHandle, forwardRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -51,10 +51,14 @@ interface InstallmentDashboardProps {
   onRefresh?: () => void;
 }
 
+export interface InstallmentDashboardRef {
+  refreshData: () => Promise<void>;
+}
+
 type StatusFilter = 'all' | 'pending' | 'paid' | 'overdue' | 'partial';
 type SortBy = 'customer' | 'amount' | 'dueDate' | 'status';
 
-export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDashboardProps) {
+export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, InstallmentDashboardProps>(({ highlightId, onRefresh }, ref) => {
   const [customers, setCustomers] = useState<CustomerWithInstallments[]>([]);
   const [expandedCustomers, setExpandedCustomers] = useState<Set<number>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
@@ -67,8 +71,14 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
   const [isInstallmentFormOpen, setIsInstallmentFormOpen] = useState(false);
   const [isPaymentFormOpen, setIsPaymentFormOpen] = useState(false);
   const [deleteInstallment, setDeleteInstallment] = useState<Installment | null>(null);
+  const [deleteCustomer, setDeleteCustomer] = useState<CustomerWithInstallments | null>(null);
   
   const [isElectron] = useState(() => typeof window !== 'undefined' && !!window.electronAPI);
+
+  // Expose refresh method to parent component
+  useImperativeHandle(ref, () => ({
+    refreshData: loadInstallmentData
+  }), []);
 
   useEffect(() => {
     if (isElectron) {
@@ -156,8 +166,43 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
 
   const handleMarkAsPaid = async (installment: Installment) => {
     try {
-      await window.electronAPI.database.installments.recordPayment(installment.id!, installment.balance, 'full_payment', 'Marked as paid');
-      await loadInstallmentData();
+      await window.electronAPI.database.installments.markAsPaid(installment.id!);
+      
+      // Update the local state directly instead of reloading all data
+      setCustomers(prevCustomers => 
+        prevCustomers.map(customer => {
+          if (customer.installments.some(inst => inst.id === installment.id)) {
+            const updatedInstallments = customer.installments.map(inst => 
+              inst.id === installment.id 
+                ? { ...inst, status: 'paid' as const, balance: 0, paid_amount: inst.amount }
+                : inst
+            );
+            
+            // Recalculate totals for this customer
+            const totalOwed = updatedInstallments
+              .filter(inst => inst.status !== 'paid')
+              .reduce((sum, inst) => sum + inst.balance, 0);
+            
+            const overdueAmount = updatedInstallments
+              .filter(inst => inst.status === 'overdue' || (inst.status === 'pending' && new Date(inst.due_date) < new Date()))
+              .reduce((sum, inst) => sum + inst.balance, 0);
+            
+            const nextPayment = updatedInstallments
+              .filter(inst => inst.status === 'pending')
+              .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
+            
+            return {
+              ...customer,
+              installments: updatedInstallments,
+              totalOwed,
+              overdueAmount,
+              nextPaymentDate: nextPayment?.due_date || null
+            };
+          }
+          return customer;
+        })
+      );
+      
       onRefresh?.();
     } catch (error) {
       console.error('Error marking installment as paid:', error);
@@ -169,23 +214,161 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
     setIsPaymentFormOpen(true);
   };
 
-  const handleEditInstallment = (installment: Installment) => {
-    setSelectedInstallment(installment);
-    setIsInstallmentFormOpen(true);
+  const handleRevertPayment = async (installment: Installment) => {
+    try {
+      // Get the payment transactions for this installment to find the most recent completed one to revert
+      const payments = await window.electronAPI.database.payments.getBySale(installment.sale_id);
+      const installmentPayments = payments.filter(p => p.installment_id === installment.id && p.status === 'completed');
+      
+      if (installmentPayments.length === 0) {
+        console.error('No completed payments found for this installment');
+        return;
+      }
+      
+      // Get the most recent completed payment transaction to revert
+      const latestPayment = installmentPayments.sort((a, b) => 
+        new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime()
+      )[0];
+      
+      // Use the proper revertPayment method with transaction ID
+      await window.electronAPI.database.installments.revertPayment(
+        installment.id!,
+        latestPayment.id!
+      );
+      
+      // Update the local state directly instead of reloading all data
+      setCustomers(prevCustomers => 
+        prevCustomers.map(customer => {
+          if (customer.installments.some(inst => inst.id === installment.id)) {
+            const updatedInstallments = customer.installments.map(inst => {
+              if (inst.id === installment.id) {
+                // Calculate the new status and balance after reverting the payment
+                const newPaidAmount = inst.paid_amount - latestPayment.amount;
+                const newBalance = inst.amount - newPaidAmount;
+                let newStatus: 'pending' | 'partial' | 'paid' = 'pending';
+                
+                if (newPaidAmount > 0 && newBalance > 0) {
+                  newStatus = 'partial';
+                } else if (newBalance <= 0) {
+                  newStatus = 'paid';
+                }
+                
+                return {
+                  ...inst,
+                  status: newStatus,
+                  balance: newBalance,
+                  paid_amount: newPaidAmount
+                };
+              }
+              return inst;
+            });
+            
+            // Recalculate totals for this customer
+            const totalOwed = updatedInstallments
+              .filter(inst => inst.status !== 'paid')
+              .reduce((sum, inst) => sum + inst.balance, 0);
+            
+            const overdueAmount = updatedInstallments
+              .filter(inst => inst.status === 'overdue' || (inst.status === 'pending' && new Date(inst.due_date) < new Date()))
+              .reduce((sum, inst) => sum + inst.balance, 0);
+            
+            const nextPayment = updatedInstallments
+              .filter(inst => inst.status === 'pending')
+              .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
+            
+            return {
+              ...customer,
+              installments: updatedInstallments,
+              totalOwed,
+              overdueAmount,
+              nextPaymentDate: nextPayment?.due_date || null
+            };
+          }
+          return customer;
+        })
+      );
+      
+      onRefresh?.();
+    } catch (error) {
+      console.error('Error reverting payment:', error);
+    }
   };
 
-  const handleDeleteInstallment = (installment: Installment) => {
-    setDeleteInstallment(installment);
+  const handleDeleteCustomer = (customer: CustomerWithInstallments) => {
+    setDeleteCustomer(customer);
+  };
+
+  const confirmDeleteCustomer = async () => {
+    if (!deleteCustomer?.id) return;
+    
+    try {
+      // Delete all installments for this customer first
+      for (const installment of deleteCustomer.installments) {
+        if (installment.id) {
+          await window.electronAPI.database.installments.delete(installment.id);
+        }
+      }
+      
+      // Delete all sales for this customer
+      for (const sale of deleteCustomer.sales) {
+        if (sale.id) {
+          await window.electronAPI.database.sales.delete(sale.id);
+        }
+      }
+      
+      // Finally delete the customer
+      await window.electronAPI.database.customers.delete(deleteCustomer.id);
+      
+      // Update local state by removing the deleted customer
+      setCustomers(prevCustomers => 
+        prevCustomers.filter(customer => customer.id !== deleteCustomer.id)
+      );
+      
+      onRefresh?.();
+    } catch (error) {
+      console.error('Error deleting customer:', error);
+    } finally {
+      setDeleteCustomer(null);
+    }
   };
 
   const confirmDelete = async () => {
     if (!deleteInstallment?.id) return;
     
     try {
-      // Note: This would need to be implemented in the database operations
-      // await window.electronAPI.database.installments.delete(deleteInstallment.id);
-      console.log('Delete installment:', deleteInstallment.id);
-      await loadInstallmentData();
+      await window.electronAPI.database.installments.delete(deleteInstallment.id);
+      
+      // Update the local state directly instead of reloading all data
+      setCustomers(prevCustomers => 
+        prevCustomers.map(customer => {
+          if (customer.installments.some(inst => inst.id === deleteInstallment.id)) {
+            const updatedInstallments = customer.installments.filter(inst => inst.id !== deleteInstallment.id);
+            
+            // Recalculate totals for this customer
+            const totalOwed = updatedInstallments
+              .filter(inst => inst.status !== 'paid')
+              .reduce((sum, inst) => sum + inst.balance, 0);
+            
+            const overdueAmount = updatedInstallments
+              .filter(inst => inst.status === 'overdue' || (inst.status === 'pending' && new Date(inst.due_date) < new Date()))
+              .reduce((sum, inst) => sum + inst.balance, 0);
+            
+            const nextPayment = updatedInstallments
+              .filter(inst => inst.status === 'pending')
+              .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
+            
+            return {
+              ...customer,
+              installments: updatedInstallments,
+              totalOwed,
+              overdueAmount,
+              nextPaymentDate: nextPayment?.due_date || null
+            };
+          }
+          return customer;
+        }).filter(customer => customer.installments.length > 0) // Remove customers with no installments
+      );
+      
       onRefresh?.();
     } catch (error) {
       console.error('Error deleting installment:', error);
@@ -202,7 +385,58 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
         paymentData.paymentMethod,
         paymentData.reference
       );
-      await loadInstallmentData();
+      
+      // Update the local state directly instead of reloading all data
+      setCustomers(prevCustomers => 
+        prevCustomers.map(customer => {
+          if (customer.installments.some(inst => inst.id === selectedInstallment!.id)) {
+            const updatedInstallments = customer.installments.map(inst => {
+              if (inst.id === selectedInstallment!.id) {
+                const newPaidAmount = inst.paid_amount + paymentData.amount;
+                const newBalance = inst.amount - newPaidAmount;
+                let newStatus: 'pending' | 'partial' | 'paid' = 'pending';
+                
+                if (newBalance <= 0) {
+                  newStatus = 'paid';
+                } else if (newPaidAmount > 0) {
+                  newStatus = 'partial';
+                }
+                
+                return {
+                  ...inst,
+                  status: newStatus,
+                  balance: Math.max(0, newBalance),
+                  paid_amount: newPaidAmount
+                };
+              }
+              return inst;
+            });
+            
+            // Recalculate totals for this customer
+            const totalOwed = updatedInstallments
+              .filter(inst => inst.status !== 'paid')
+              .reduce((sum, inst) => sum + inst.balance, 0);
+            
+            const overdueAmount = updatedInstallments
+              .filter(inst => inst.status === 'overdue' || (inst.status === 'pending' && new Date(inst.due_date) < new Date()))
+              .reduce((sum, inst) => sum + inst.balance, 0);
+            
+            const nextPayment = updatedInstallments
+              .filter(inst => inst.status === 'pending')
+              .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
+            
+            return {
+              ...customer,
+              installments: updatedInstallments,
+              totalOwed,
+              overdueAmount,
+              nextPaymentDate: nextPayment?.due_date || null
+            };
+          }
+          return customer;
+        })
+      );
+      
       onRefresh?.();
       setIsPaymentFormOpen(false);
       setSelectedInstallment(null);
@@ -551,7 +785,9 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
                           <div className="flex items-center gap-6 text-right">
                             <div>
                               <div className="text-sm font-medium">Total Adeudado</div>
-                              <div className="text-lg font-bold">{formatCurrency(customer.totalOwed)}</div>
+                              <div className="flex items-center gap-2">
+                                <div className="text-lg font-bold">{formatCurrency(customer.totalOwed)}</div>
+                              </div>
                             </div>
                             {customer.nextPaymentDate && (
                               <div>
@@ -562,6 +798,14 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
                             <div className="text-sm text-muted-foreground">
                               {customer.installments.length} cuotas
                             </div>
+                              <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => handleDeleteCustomer(customer)}
+                                                className="h-12 w-12 p-0 text-red-600 hover:text-red-700"
+                                              >
+                                                <Trash2 className="h-4 w-4" />
+                                              </Button>
                           </div>
                         </div>
                       </CardHeader>
@@ -636,7 +880,7 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
                                       </TableCell>
                                       <TableCell>
                                         <div className="flex items-center gap-1">
-                                          {installment.status !== 'paid' && (
+                                          {installment.status !== 'paid' ? (
                                             <>
                                               <Button
                                                 size="sm"
@@ -657,23 +901,19 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
                                                 Pago
                                               </Button>
                                             </>
+                                          ) : (
+                                            <>
+                                              <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => handleRevertPayment(installment)}
+                                                className="h-7 px-2 text-xs text-orange-600 hover:text-orange-700 border-orange-200 hover:border-orange-300"
+                                              >
+                                                <X className="h-3 w-3 mr-1" />
+                                                Revertir
+                                              </Button>
+                                            </>
                                           )}
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            onClick={() => handleEditInstallment(installment)}
-                                            className="h-7 w-7 p-0"
-                                          >
-                                            <Edit className="h-3 w-3" />
-                                          </Button>
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            onClick={() => handleDeleteInstallment(installment)}
-                                            className="h-7 w-7 p-0 text-red-600 hover:text-red-700"
-                                          >
-                                            <Trash2 className="h-3 w-3" />
-                                          </Button>
                                         </div>
                                       </TableCell>
                                     </TableRow>
@@ -719,7 +959,7 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
         onSave={handlePaymentSave}
       />
 
-      {/* Delete Confirmation */}
+      {/* Delete Installment Confirmation */}
       <AlertDialog open={!!deleteInstallment} onOpenChange={() => setDeleteInstallment(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -732,11 +972,42 @@ export function InstallmentDashboard({ highlightId, onRefresh }: InstallmentDash
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-700">
-              Eliminar
+               Eliminar Cuota
+             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Customer Confirmation */}
+      <AlertDialog open={!!deleteCustomer} onOpenChange={() => setDeleteCustomer(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar Cliente</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de que deseas eliminar al cliente "{deleteCustomer?.name}" y todas sus ventas e instalments?
+            </AlertDialogDescription>
+            <div className="mt-2">
+              <p className="text-sm text-muted-foreground mb-2">Esta acción eliminará:</p>
+              <ul className="list-disc list-inside space-y-1 text-sm">
+                <li>{deleteCustomer?.sales.length} venta(s)</li>
+                <li>{deleteCustomer?.installments.length} cuota(s)</li>
+              </ul>
+            </div>
+            <AlertDialogDescription className="sr-only">
+              Confirmación de eliminación de cliente
+              Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteCustomer} className="bg-red-600 hover:bg-red-700">
+              Eliminar Cliente
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>
   );
-}
+});
+
+InstallmentDashboard.displayName = 'InstallmentDashboard';

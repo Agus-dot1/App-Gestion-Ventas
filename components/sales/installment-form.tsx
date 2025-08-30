@@ -81,7 +81,7 @@ export function InstallmentForm({ installment, open, onOpenChange, onSave }: Ins
     
     const selectedSale = sales.find(sale => sale.id === saleId);
     if (selectedSale && !installment) {
-      const installmentAmount = selectedSale.installment_amount || 0;
+      const installmentAmount = Math.round(selectedSale.installment_amount || 0);
       setFormData(prev => ({ ...prev, amount: installmentAmount }));
     }
   };
@@ -112,13 +112,14 @@ export function InstallmentForm({ installment, open, onOpenChange, onSave }: Ins
 
     setIsSubmitting(true);
     try {
+      const roundedAmount = Math.round(formData.amount);
       const installmentData = {
         sale_id: formData.sale_id,
         installment_number: formData.installment_number,
         due_date: formData.due_date.toISOString().split('T')[0],
-        amount: formData.amount,
+        amount: roundedAmount,
         paid_amount: 0,
-        balance: formData.amount,
+        balance: roundedAmount,
         status: 'pending' as const,
         days_overdue: 0,
         late_fee: 0,
@@ -249,10 +250,10 @@ export function InstallmentForm({ installment, open, onOpenChange, onSave }: Ins
                   <Input
                     id="amount"
                     type="number"
-                    step="0.01"
+                    step="1"
                     min="0"
                     value={formData.amount}
-                    onChange={(e) => handleInputChange('amount', parseFloat(e.target.value) || 0)}
+                    onChange={(e) => handleInputChange('amount', Math.round(parseFloat(e.target.value) || 0))}
                     className={`pl-10 ${errors.amount ? 'border-red-500' : ''}`}
                   />
                 </div>

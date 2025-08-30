@@ -177,58 +177,6 @@ export function ProductsTable({
     doc.save(`productos_seleccionados_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
-  const exportAllProducts = () => {
-    const doc = new jsPDF();
-    
-    // Add title
-    doc.setFontSize(20);
-    const title = hasActiveFilters ? 'Productos Filtrados' : 'Todos los Productos';
-    doc.text(title, 14, 22);
-    
-    // Add date and summary
-    doc.setFontSize(12);
-    doc.text(`Fecha: ${new Date().toLocaleDateString()}`, 14, 32);
-    doc.text(`Total de productos: ${filteredProducts.length}`, 14, 40);
-    
-    if (hasActiveFilters) {
-      let filterText = 'Filtros aplicados: ';
-      if (statusFilter !== 'all') {
-        filterText += `Estado: ${statusFilter === 'active' ? 'Activos' : 'Inactivos'} `;
-      }
-      if (priceFilter !== 'all') {
-        const priceLabels = {
-          low: 'Menos de $50,000',
-          medium: '$50,000 - $150,000',
-          high: 'Más de $150,000'
-        };
-        filterText += `Precio: ${priceLabels[priceFilter as keyof typeof priceLabels]} `;
-      }
-      if (searchTerm) {
-        filterText += `Búsqueda: "${searchTerm}"`;
-      }
-      doc.text(filterText, 14, 48);
-    }
-    
-    // Prepare data for table
-    const tableData = filteredProducts.map(product => [
-      product.name,
-      product.category,
-      `$${product.price.toFixed(2)}`,
-      product.stock?.toString() ?? '0',
-      product.description || '-'
-    ]);
-    
-    // Add table
-    autoTable(doc, {
-      head: [['Nombre', 'Categoría', 'Precio', 'Stock', 'Descripción']],
-      body: tableData,
-      startY: 60,
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [41, 128, 185] }
-    });
-    
-    doc.save(`productos_${hasActiveFilters ? 'filtrados_' : ''}${new Date().toISOString().split('T')[0]}.pdf`);
-  };
 
   const clearFilters = () => {
     setSearchTerm('');
@@ -314,15 +262,6 @@ export function ProductsTable({
                        Limpiar
                      </Button>
                    )}
-                   <Button
-                     variant="outline"
-                     size="sm"
-                     onClick={exportAllProducts}
-                     className="h-10 transition-all duration-200 hover:bg-primary/10"
-                   >
-                     <FileText className="h-4 w-4 mr-1" />
-                     Exportar {hasActiveFilters ? 'Filtrados' : 'Todos'}
-                   </Button>
                  </div>
               </div>
           </div>

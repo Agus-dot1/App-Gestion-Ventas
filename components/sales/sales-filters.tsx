@@ -169,16 +169,6 @@ export function SalesFiltersComponent({
             <SelectItem value="payment_status">Estado de pago</SelectItem>
           </SelectContent>
         </Select>
-
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => updateFilters({ sortOrder: filters.sortOrder === 'asc' ? 'desc' : 'asc' })}
-        >
-          {filters.sortOrder === 'asc' ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />}
-        </Button>
-      </div>
-
       {/* Advanced Filters */}
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
@@ -186,7 +176,7 @@ export function SalesFiltersComponent({
             <Filter className="h-4 w-4 mr-2" />
             Filtros
             {activeFiltersCount > 0 && (
-              <Badge variant="secondary" className="ml-2 h-5 w-5 p-0 text-xs">
+              <Badge variant="secondary" className="ml-2 h-6 w-6 p-3 text-xs flex align-center justify-center">
                 {activeFiltersCount}
               </Badge>
             )}
@@ -344,6 +334,17 @@ export function SalesFiltersComponent({
           </div>
         </PopoverContent>
       </Popover>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => updateFilters({ sortOrder: filters.sortOrder === 'asc' ? 'desc' : 'asc' })}
+        >
+          {filters.sortOrder === 'asc' ? <SortAsc className="h- w-5" /> : <SortDesc className="h-5 w-5" />}
+        </Button>
+        
+      </div>
+
+      
 
       {/* Active Filters Display */}
       {activeFiltersCount > 0 && (

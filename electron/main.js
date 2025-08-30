@@ -214,7 +214,7 @@ const databaseOperations = {
         `);
         
         const installmentAmount = saleData.payment_type === 'installments' && saleData.number_of_installments 
-          ? (totalAmount - (saleData.down_payment || 0)) / saleData.number_of_installments 
+          ? Math.round((totalAmount - (saleData.down_payment || 0)) / saleData.number_of_installments) 
           : null;
         
         const saleResult = saleStmt.run(
