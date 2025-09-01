@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,6 +27,27 @@ import {
 import { cn } from '@/lib/utils';
 import type { Customer, Sale, Product } from '@/lib/database-operations';
 
+// Translation functions
+const translatePaymentType = (type: string) => {
+  const translations: Record<string, string> = {
+    'cash': 'Efectivo',
+    'installments': 'Cuotas',
+    'credit': 'Crédito',
+    'mixed': 'Mixto'
+  };
+  return translations[type] || type;
+};
+
+const translatePaymentStatus = (status: string) => {
+  const translations: Record<string, string> = {
+    'paid': 'Pagado',
+    'unpaid': 'Sin pagar',
+    'partial': 'Parcial',
+    'overdue': 'Vencido'
+  };
+  return translations[status] || status;
+};
+
 interface SearchResult {
   id: string;
   type: 'customer' | 'sale' | 'product' | 'installment';
@@ -45,25 +66,48 @@ interface SearchDialogProps {
 export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
   const router = useRouter();
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isElectron, setIsElectron] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('es-ES', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+
   
   // Data states
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
 
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(query);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [query]);
+
   useEffect(() => {
     setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
-    if (open && typeof window !== 'undefined' && window.electronAPI) {
+    if (open && typeof window !== 'undefined' && window.electronAPI && !dataLoaded) {
       loadData();
     }
-  }, [open]);
+  }, [open, dataLoaded]);
 
   useEffect(() => {
     if (open) {
       setQuery('');
+      setDebouncedQuery('');
       setSelectedIndex(0);
     }
   }, [open]);
@@ -75,7 +119,9 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
     }).format(amount);
   };
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    if (dataLoaded) return;
+    
     setLoading(true);
     try {
       const [customersData, salesData, productsData] = await Promise.all([
@@ -87,18 +133,19 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
       setCustomers(customersData);
       setSales(salesData);
       setProducts(productsData);
+      setDataLoaded(true);
     } catch (error) {
       console.error('Error loading search data:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [dataLoaded]);
 
   const searchResults = useMemo(() => {
-    if (!query.trim()) return [];
+    if (!debouncedQuery.trim()) return [];
 
     const results: SearchResult[] = [];
-    const searchTerm = query.toLowerCase();
+    const searchTerm = debouncedQuery.toLowerCase();
 
     // Search customers
     customers.forEach(customer => {
@@ -115,7 +162,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
           type: 'customer',
           title: customer.name,
           subtitle: `${customerSales.length} ventas • $${totalSpent.toLocaleString()}`,
-          description: customer.contact_info || 'No contact information',
+          description: customer.contact_info || 'Sin información de contacto',
           metadata: {
             customer,
             salesCount: customerSales.length,
@@ -135,7 +182,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
             type: 'sale',
             title: `Venta ${sale.sale_number}`,
             subtitle: `${customer.name} • ${formatCurrency(sale.total_amount)}`,
-            description: `${sale.payment_type} • ${sale.payment_status}`,
+            description: `${translatePaymentType(sale.payment_type)} • ${translatePaymentStatus(sale.payment_status)}`,
             metadata: { sale, customer },
             action: () => {
               router.push(`/sales?highlight=${sale.id}`);
@@ -160,7 +207,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
             type: 'sale',
             title: `Venta ${sale.sale_number}`,
             subtitle: `${sale.customer_name} • ${formatCurrency(sale.total_amount)}`,
-            description: `${formatDate(sale.date)} • ${sale.payment_status}`,
+            description: `${formatDate(sale.date)} • ${translatePaymentStatus(sale.payment_status)}`,
             metadata: { sale },
             action: () => {
               router.push(`/sales?highlight=${sale.id}`);
@@ -186,7 +233,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
           type: 'product',
           title: product.name,
           subtitle: `${formatCurrency(product.price)} • ${productSales.length} ventas`,
-          description: product.description || 'No description',
+          description: product.description || 'Sin descripción',
           metadata: { product, salesCount: productSales.length },
           action: () => {
             router.push(`/products?highlight=${product.id}`);
@@ -197,7 +244,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
     });
 
     // Search installments for overdue payments
-    if (searchTerm.includes('overdue') || searchTerm.includes('payment')) {
+    if (searchTerm.includes('vencido') || searchTerm.includes('pago') || searchTerm.includes('overdue') || searchTerm.includes('payment')) {
       const overdueSales = sales.filter(sale => sale.payment_status === 'overdue');
       overdueSales.forEach(sale => {
         if (!results.find(r => r.id === `overdue-${sale.id}`)) {
@@ -218,7 +265,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
     }
 
     return results.slice(0, 20); // Limit results
-  }, [query, customers, sales, products, router, onOpenChange]);
+  }, [debouncedQuery, customers, sales, products, router, onOpenChange]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
@@ -238,14 +285,6 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
   };
 
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
   const getResultIcon = (type: SearchResult['type']) => {
     switch (type) {
       case 'customer':
@@ -264,15 +303,15 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
   const getResultTypeColor = (type: SearchResult['type']) => {
     switch (type) {
       case 'customer':
-        return 'bg-blue-100 text-blue-800';
+        return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
       case 'sale':
-        return 'bg-green-100 text-green-800';
+        return 'bg-green-500/10 text-green-400 border-green-500/20';
       case 'product':
-        return 'bg-purple-100 text-purple-800';
+        return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
       case 'installment':
-        return 'bg-red-100 text-red-800';
+        return 'bg-red-500/10 text-red-400 border-red-500/20';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-muted/50 text-muted-foreground border-border';
     }
   };
 
@@ -312,7 +351,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
             <Search className="w-5 h-5" />
 Buscar Todo
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription id="search-instructions">
 Buscar clientes, ventas, productos y pagos. Usa ↑↓ para navegar, Enter para seleccionar.
           </DialogDescription>
         </DialogHeader>
@@ -329,6 +368,12 @@ Buscar clientes, ventas, productos y pagos. Usa ↑↓ para navegar, Enter para 
               }}
               onKeyDown={handleKeyDown}
               className="pl-10"
+              aria-label="Campo de búsqueda"
+              aria-describedby="search-instructions"
+              role="combobox"
+              aria-expanded={searchResults.length > 0}
+              aria-activedescendant={searchResults[selectedIndex]?.id}
+              autoComplete="off"
             />
           </div>
         </div>
@@ -346,10 +391,10 @@ Buscar clientes, ventas, productos y pagos. Usa ↑↓ para navegar, Enter para 
               <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-semibold mb-2">Electron Requerido</h3>
               <p className="text-muted-foreground">
-La funcionalidad de búsqueda solo está disponible en la aplicación de escritorio Electron.
+                La funcionalidad de búsqueda solo está disponible en la aplicación de escritorio Electron.
               </p>
             </div>
-          ) : query.trim() === '' ? (
+          ) : debouncedQuery.trim() === '' ? (
             <div className="space-y-4">
               <div className="text-center py-8">
                 <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -424,7 +469,7 @@ La funcionalidad de búsqueda solo está disponible en la aplicación de escrito
                     <User className="w-4 h-4" />
                     Clientes ({groupedResults.customers.length})
                   </h4>
-                  <div className="space-y-1">
+                  <div className="space-y-1" role="listbox" aria-label="Resultados de clientes">
                     {groupedResults.customers.map((result, index) => (
                       <SearchResultItem
                         key={result.id}
@@ -485,7 +530,7 @@ La funcionalidad de búsqueda solo está disponible en la aplicación de escrito
                   {(groupedResults.customers.length > 0 || groupedResults.sales.length > 0 || groupedResults.products.length > 0) && <Separator />}
                   <h4 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4" />
-                    Overdue Payments ({groupedResults.installments.length})
+                    Pagos Vencidos ({groupedResults.installments.length})
                   </h4>
                   <div className="space-y-1">
                     {groupedResults.installments.map((result, index) => (
@@ -568,6 +613,10 @@ function SearchResultItem({ result, isSelected, onClick }: SearchResultItemProps
         result.type === 'installment' && 'border-l-red-500'
       )}
       onClick={onClick}
+      role="option"
+      aria-selected={isSelected}
+      id={result.id}
+      tabIndex={isSelected ? 0 : -1}
     >
       <CardContent className="p-3">
         <div className="flex items-start justify-between">
@@ -605,9 +654,9 @@ function SearchResultItem({ result, isSelected, onClick }: SearchResultItemProps
                     </div>
                   )}
                   {result.metadata.overdueCount > 0 && (
-                    <div className="flex items-center gap-1 text-red-600">
+                    <div className="flex items-center gap-1 text-red-400">
                       <AlertTriangle className="w-3 h-3" />
-                      <span>{result.metadata.overdueCount} overdue</span>
+                      <span>{result.metadata.overdueCount} vencidos</span>
                     </div>
                   )}
                 </div>
@@ -624,12 +673,12 @@ function SearchResultItem({ result, isSelected, onClick }: SearchResultItemProps
                     variant="outline" 
                     className={cn(
                       'text-xs',
-                      result.metadata.sale.payment_status === 'paid' && 'bg-green-100 text-green-800',
-                      result.metadata.sale.payment_status === 'overdue' && 'bg-red-100 text-red-800',
-                      result.metadata.sale.payment_status === 'partial' && 'bg-yellow-100 text-yellow-800'
+                      result.metadata.sale.payment_status === 'paid' && 'bg-green-500/10 text-green-400 border-green-500/20',
+                      result.metadata.sale.payment_status === 'overdue' && 'bg-red-500/10 text-red-400 border-red-500/20',
+                      result.metadata.sale.payment_status === 'partial' && 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
                     )}
                   >
-                    {result.metadata.sale.payment_status}
+                    {translatePaymentStatus(result.metadata.sale.payment_status)}
                   </Badge>
                 </div>
               )}

@@ -199,6 +199,17 @@ declare global {
           create: (saleItem: Omit<SaleItem, 'id'>) => Promise<number>;
         };
       };
+      backup: {
+        save: (data: any) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+        load: () => Promise<{ success: boolean; data?: any; error?: string }>;
+        importCustomers: (customers: Customer[]) => Promise<{ success: boolean; error?: string }>;
+        importProducts: (products: Product[]) => Promise<{ success: boolean; error?: string }>;
+        importSales: (sales: Sale[]) => Promise<{ success: boolean; error?: string }>;
+      };
+      cache: {
+        getSize: () => Promise<string>;
+        clear: () => Promise<{ success: boolean; error?: string; message?: string }>;
+      };
     };
   }
 }
@@ -941,12 +952,12 @@ export const saleOperations = {
     const db = getDatabase();
     const stmt = db.prepare(`
       SELECT 
-        strftime('%Y-%m', date) as date,
+        strftime('%Y-%m-%d', date) as date,
         COUNT(*) as sales,
         COALESCE(SUM(total_amount), 0) as revenue
       FROM sales 
       WHERE status != 'cancelled' AND date >= date('now', '-' || ? || ' days')
-      GROUP BY strftime('%Y-%m', date)
+      GROUP BY strftime('%Y-%m-%d', date)
       ORDER BY date
     `);
     return stmt.all(days) as Array<{ date: string; sales: number; revenue: number }>;

@@ -20,12 +20,14 @@ export default function ProductsPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>();
   const [isElectron, setIsElectron] = useState(false);
+    const dataCache = useDataCache();
+  const { prefetchCustomers, prefetchSales } = usePrefetch();
 
   // Check for Electron after component mounts to avoid hydration mismatch
   useEffect(() => {
     setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
   }, []);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false); // Start with false for optimistic navigation
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [paginationInfo, setPaginationInfo] = useState({
@@ -36,12 +38,35 @@ export default function ProductsPage() {
   });
   const pageSize = 25; // Load 25 products per page for better performance
 
-  // Initial data load
+  // Initial data load - optimistic approach
   useEffect(() => {
     if (isElectron) {
       loadProducts();
     }
   }, [isElectron]);
+  
+  // Optimistic data loading on mount
+  useEffect(() => {
+    if (isElectron && dataCache) {
+      // Check if we have cached data first
+      const cachedData = dataCache.getCachedProducts(currentPage, pageSize, searchTerm);
+      if (cachedData) {
+        // Show cached data immediately
+        setProducts(cachedData.items);
+        setPaginationInfo({
+          total: cachedData.total,
+          totalPages: cachedData.totalPages,
+          currentPage: cachedData.currentPage,
+          pageSize: cachedData.pageSize
+        });
+      } else {
+        // No cache, show loading only if no data exists
+        if (products.length === 0) {
+          setIsLoading(true);
+        }
+      }
+    }
+  }, [isElectron, dataCache]);
 
   // Reload products when search term or page changes
   useEffect(() => {
@@ -74,8 +99,7 @@ export default function ProductsPage() {
       }, 100);
     }
   }, [highlightedProduct]);
-  const dataCache = useDataCache();
-  const { prefetchCustomers, prefetchSales } = usePrefetch();
+
 
   const loadProducts = async (forceRefresh = false) => {
     try {
@@ -105,8 +129,10 @@ export default function ProductsPage() {
         }
         // If expired, continue to refresh in background
       } else {
-        // No cache or forcing refresh, show loading
-        setIsLoading(true);
+        // No cache or forcing refresh, show loading only if no data exists
+        if (products.length === 0) {
+          setIsLoading(true);
+        }
       }
       
       const result = await window.electronAPI.database.products.getPaginated(

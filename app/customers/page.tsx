@@ -21,7 +21,7 @@ export default function CustomersPage() {
   const [editingCustomer, setEditingCustomer] = useState<Customer | undefined>();
   const [viewingCustomer, setViewingCustomer] = useState<Customer | undefined>();
   const [isElectron] = useState(() => typeof window !== 'undefined' && !!window.electronAPI);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false); // Start with false for optimistic navigation
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [allCustomerIds, setAllCustomerIds] = useState<number[]>([]);
@@ -32,6 +32,8 @@ export default function CustomersPage() {
     pageSize: 10
   });
   const pageSize = 10; // Load 10 customers per page to match table pagination
+    const dataCache = useDataCache();
+  const { prefetchProducts, prefetchSales } = usePrefetch();
 
   useEffect(() => {
     if (isElectron) {
@@ -40,12 +42,35 @@ export default function CustomersPage() {
     }
   }, []);
 
-  // Initial data load
+  // Initial data load - optimistic approach
   useEffect(() => {
     if (isElectron) {
       loadCustomers();
     }
   }, [isElectron]);
+  
+  // Optimistic data loading on mount
+  useEffect(() => {
+    if (isElectron && dataCache) {
+      // Check if we have cached data first
+      const cachedData = dataCache.getCachedCustomers(currentPage, pageSize, searchTerm);
+      if (cachedData) {
+        // Show cached data immediately
+        setCustomers(cachedData.items);
+        setPaginationInfo({
+          total: cachedData.total,
+          totalPages: cachedData.totalPages,
+          currentPage: cachedData.currentPage,
+          pageSize: cachedData.pageSize
+        });
+      } else {
+        // No cache, show loading only if no data exists
+        if (customers.length === 0) {
+          setIsLoading(true);
+        }
+      }
+    }
+  }, [isElectron, dataCache]);
 
   // Reload customers when search term or page changes
   useEffect(() => {
@@ -78,8 +103,7 @@ export default function CustomersPage() {
       }, 100);
     }
   }, [highlightedCustomer]);
-  const dataCache = useDataCache();
-  const { prefetchProducts, prefetchSales } = usePrefetch();
+
 
   // Load all customer IDs for global selection
   const loadAllCustomerIds = async () => {

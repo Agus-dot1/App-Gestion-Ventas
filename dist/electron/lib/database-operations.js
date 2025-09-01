@@ -558,12 +558,12 @@ exports.saleOperations = {
         const db = (0, database_1.getDatabase)();
         const stmt = db.prepare(`
       SELECT 
-        strftime('%Y-%m', date) as date,
+        strftime('%Y-%m-%d', date) as date,
         COUNT(*) as sales,
         COALESCE(SUM(total_amount), 0) as revenue
       FROM sales 
       WHERE status != 'cancelled' AND date >= date('now', '-' || ? || ' days')
-      GROUP BY strftime('%Y-%m', date)
+      GROUP BY strftime('%Y-%m-%d', date)
       ORDER BY date
     `);
         return stmt.all(days);

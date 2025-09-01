@@ -1,20 +1,25 @@
 {
-  "appId": "com.yourcompany.yourapp",
-  "productName": "Your Electron App",
+  "appId": "com.electro.gestion",
+  "productName": "Electro Gestión",
   "directories": {
-    "output": "dist"
+    "output": "build"
   },
   "files": [
     "out/**/*",
-    "electron/**/*",
-    "node_modules/**/*"
+    "dist/electron/**/*",
+    "electron/preload.js",
+    "node_modules/**/*",
+    "package.json"
   ],
+  "asar": false,
   "mac": {
     "category": "public.app-category.productivity",
     "target": "dmg"
   },
   "win": {
-    "target": "nsis"
+    "target": "dir",
+    "sign": false,
+    "verifyUpdateCodeSignature": false
   },
   "linux": {
     "target": "AppImage"

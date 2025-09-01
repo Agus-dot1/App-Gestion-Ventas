@@ -26,7 +26,7 @@ export default function SalesPage() {
   const [editingSale, setEditingSale] = useState<Sale | undefined>();
   const [isElectron] = useState(() => typeof window !== 'undefined' && !!window.electronAPI);
   const [activeTab, setActiveTab] = useState(tabParam || 'sales');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false); // Start with false for optimistic navigation
   const [searchTerm, setSearchTerm] = useState('');
   const [salesFilters, setSalesFilters] = useState<SalesFilters>({
     search: '',
@@ -44,9 +44,26 @@ export default function SalesPage() {
   const [refreshCounter, setRefreshCounter] = useState(0);
   const pageSize = 25;
 
-  // Initial data load
+  // Initial data load - optimistic approach
   useEffect(() => {
     if (isElectron) {
+      // Check if we have cached data first
+      const cachedData = dataCache.getCachedSales(currentPage, pageSize, searchTerm);
+      if (cachedData) {
+        // Show cached data immediately
+        setSales(cachedData.items);
+        setPaginationInfo({
+          total: cachedData.total,
+          totalPages: cachedData.totalPages,
+          currentPage: cachedData.currentPage,
+          pageSize: cachedData.pageSize
+        });
+      } else {
+        // No cache, show loading
+        setIsLoading(true);
+      }
+      
+      // Load data in background
       loadSales();
       loadOverdueSales();
     }
@@ -140,8 +157,10 @@ export default function SalesPage() {
         }
         // If expired, continue to refresh in background
       } else {
-        // No cache or forcing refresh, show loading
-        setIsLoading(true);
+        // No cache or forcing refresh, show loading only if no data exists
+        if (sales.length === 0) {
+          setIsLoading(true);
+        }
       }
       
       const result = await window.electronAPI.database.sales.getPaginated(currentPage, pageSize, searchTerm);
@@ -304,6 +323,191 @@ export default function SalesPage() {
     }
   };
 
+  const addMockSales = async () => {
+    try {
+      // First, get existing customers and products
+      const customers = await window.electronAPI.database.customers.getAll();
+      const products = await window.electronAPI.database.products.getAll();
+      
+      if (customers.length === 0) {
+        console.error('No customers found. Please add customers first.');
+        return;
+      }
+      
+      if (products.length === 0) {
+        console.error('No products found. Please add products first.');
+        return;
+      }
+
+      const mockSales: SaleFormData[] = [
+        {
+          customer_id: customers[0]?.id || 1,
+          items: [
+            {
+              product_id: products[0]?.id || 1,
+              quantity: 2,
+              unit_price: products[0]?.price || 159990,
+              discount_per_item: 0
+            },
+            {
+              product_id: products[1]?.id || 2,
+              quantity: 1,
+              unit_price: products[1]?.price || 49990,
+              discount_per_item: 5000
+            }
+          ],
+          payment_type: 'cash',
+          tax_amount: 0,
+          discount_amount: 0,
+          notes: 'Venta de prueba - Cliente frecuente'
+        },
+        {
+          customer_id: customers[1]?.id || 2,
+          items: [
+            {
+              product_id: products[2]?.id || 3,
+              quantity: 3,
+              unit_price: products[2]?.price || 25990,
+              discount_per_item: 0
+            }
+          ],
+          payment_type: 'installments',
+          number_of_installments: 6,
+          advance_installments: 1,
+          tax_amount: 15000,
+          discount_amount: 0,
+          notes: 'Venta en cuotas - 6 meses'
+        },
+        {
+          customer_id: customers[2]?.id || 3,
+          items: [
+            {
+              product_id: products[3]?.id || 4,
+              quantity: 1,
+              unit_price: products[3]?.price || 91990,
+              discount_per_item: 0
+            },
+            {
+              product_id: products[4]?.id || 5,
+              quantity: 2,
+              unit_price: products[4]?.price || 59990,
+              discount_per_item: 10000
+            }
+          ],
+          payment_type: 'credit',
+          tax_amount: 0,
+          discount_amount: 20000,
+          notes: 'Venta a crédito - Descuento por volumen'
+        },
+        {
+          customer_id: customers[3]?.id || 4,
+          items: [
+            {
+              product_id: products[5]?.id || 6,
+              quantity: 1,
+              unit_price: products[5]?.price || 179990,
+              discount_per_item: 0
+            }
+          ],
+          payment_type: 'installments',
+          number_of_installments: 12,
+          advance_installments: 2,
+          tax_amount: 32000,
+          discount_amount: 0,
+          notes: 'Plan de cuotas extendido - 12 meses'
+        },
+        {
+          customer_id: customers[4]?.id || 5,
+          items: [
+            {
+              product_id: products[0]?.id || 1,
+              quantity: 1,
+              unit_price: products[0]?.price || 159990,
+              discount_per_item: 0
+            },
+            {
+              product_id: products[6]?.id || 7,
+              quantity: 3,
+              unit_price: products[6]?.price || 19990,
+              discount_per_item: 0
+            }
+          ],
+          payment_type: 'mixed',
+          tax_amount: 0,
+          discount_amount: 15000,
+          notes: 'Pago mixto - Efectivo y tarjeta'
+        },
+        {
+          customer_id: customers[5]?.id || 6,
+          items: [
+            {
+              product_id: products[1]?.id || 2,
+              quantity: 5,
+              unit_price: products[1]?.price || 49990,
+              discount_per_item: 5000
+            }
+          ],
+          payment_type: 'cash',
+          tax_amount: 0,
+          discount_amount: 0,
+          notes: 'Compra al por mayor - Descuento por cantidad'
+        },
+        {
+          customer_id: customers[6]?.id || 7,
+          items: [
+            {
+              product_id: products[2]?.id || 3,
+              quantity: 2,
+              unit_price: products[2]?.price || 25990,
+              discount_per_item: 0
+            },
+            {
+              product_id: products[3]?.id || 4,
+              quantity: 1,
+              unit_price: products[3]?.price || 91990,
+              discount_per_item: 0
+            }
+          ],
+          payment_type: 'installments',
+          number_of_installments: 3,
+          advance_installments: 0,
+          tax_amount: 25000,
+          discount_amount: 10000,
+          notes: 'Plan de cuotas corto - 3 meses'
+        },
+        {
+          customer_id: customers[7]?.id || 8,
+          items: [
+            {
+              product_id: products[4]?.id || 5,
+              quantity: 1,
+              unit_price: products[4]?.price || 59990,
+              discount_per_item: 0
+            }
+          ],
+          payment_type: 'cash',
+          tax_amount: 0,
+          discount_amount: 5000,
+          notes: 'Venta rápida - Descuento por pronto pago'
+        }
+      ];
+
+      // Create each mock sale
+      for (const saleData of mockSales) {
+        await window.electronAPI.database.sales.create(saleData);
+      }
+      
+      // Clear cache and reload data
+      dataCache.invalidateCache('sales');
+      await loadSales(true);
+      await loadOverdueSales();
+      
+      console.log('Mock sales added successfully');
+    } catch (error) {
+      console.error('Error adding mock sales:', error);
+    }
+  };
+
   // Calculate statistics
   const stats = {
     totalSales: sales.length,
@@ -356,6 +560,14 @@ export default function SalesPage() {
               <Button onClick={handleAddSale}>
                 <Plus className="mr-2 h-4 w-4" />
                 Nueva venta
+              </Button>
+              <Button 
+                onClick={addMockSales} 
+                variant="outline" 
+                className="gap-2"
+              >
+                <Database className="h-4 w-4" />
+                Cargar Datos de Prueba
               </Button>
             </div>
           </div>

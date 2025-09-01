@@ -100,7 +100,6 @@ export function SalesFiltersComponent({
     { value: 'cash', label: 'Efectivo' },
     { value: 'installments', label: 'Cuotas' },
     { value: 'credit', label: 'Crédito' },
-    { value: 'mixed', label: 'Mixto' }
   ];
 
   return (

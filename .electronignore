@@ -1,0 +1,37 @@
+# Electron packaging ignore file
+# This overrides .gitignore for electron-packager
+
+# Exclude development files
+node_modules/
+.git/
+.vscode/
+src/
+# .next/ - commented out to allow _next/ static assets
+# .next/
+build/
+build-new/
+build-final/
+build-fixed/
+dist-app/
+release/
+
+# Exclude config files not needed in production
+.eslintrc.json
+.gitignore
+.gitattributes
+tailwind.config.ts
+tsconfig.json
+tsconfig.electron.json
+tsconfig.tsbuildinfo
+next-env.d.ts
+postcss.config.js
+components.json
+electron-builder.json
+next.config.js
+
+# Include necessary files and directories
+!package.json
+!lib/
+!out/
+!dist/electron/
+!electron/preload.js

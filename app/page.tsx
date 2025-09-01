@@ -218,7 +218,7 @@ export default function Home() {
 
         {/* Stats Cards */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8 animate-in fade-in-50 duration-500">
-          <Card className="hover:shadow-lg hover:scale-105 transition-all duration-300 ease-in-out">
+          <Card >
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium">Ganancia total</CardTitle>
@@ -243,25 +243,13 @@ export default function Home() {
                       <ArrowUpRight className="h-3 w-3 mr-1 text-green-500" />
                       Ganancias totales de todas las ventas
                     </div>
-                    {statsComparison && (
-                      <div className={`flex items-center text-xs font-medium ${
-                        statsComparison.revenue.percentage >= 0 ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {statsComparison.revenue.percentage >= 0 ? (
-                          <ArrowUpRight className="h-3 w-3 mr-1" />
-                        ) : (
-                          <ArrowDownRight className="h-3 w-3 mr-1" />
-                        )}
-                        {Math.abs(statsComparison.revenue.percentage)}%
-                      </div>
-                    )}
                   </div>
                 </>
               )}
             </CardContent>
           </Card>
 
-          <Card className="hover:shadow-lg hover:scale-105 transition-all duration-300 ease-in-out">
+          <Card >
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium">Clientes</CardTitle>
@@ -284,25 +272,13 @@ export default function Home() {
                       <Users className="h-3 w-3 mr-1 text-blue-500" />
                       Total de clientes registrados
                     </div>
-                    {statsComparison && (
-                      <div className={`flex items-center text-xs font-medium ${
-                        statsComparison.customers.percentage >= 0 ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {statsComparison.customers.percentage >= 0 ? (
-                          <ArrowUpRight className="h-3 w-3 mr-1" />
-                        ) : (
-                          <ArrowDownRight className="h-3 w-3 mr-1" />
-                        )}
-                        {Math.abs(statsComparison.customers.percentage)}%
-                      </div>
-                    )}
                   </div>
                 </>
               )}
             </CardContent>
           </Card>
 
-          <Card className="hover:shadow-lg hover:scale-105 transition-all duration-300 ease-in-out">
+          <Card>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium">Ventas</CardTitle>
@@ -325,25 +301,13 @@ export default function Home() {
                       <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
                       Total de ventas realizadas
                     </div>
-                    {statsComparison && (
-                      <div className={`flex items-center text-xs font-medium ${
-                        statsComparison.sales.percentage >= 0 ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {statsComparison.sales.percentage >= 0 ? (
-                          <ArrowUpRight className="h-3 w-3 mr-1" />
-                        ) : (
-                          <ArrowDownRight className="h-3 w-3 mr-1" />
-                        )}
-                        {Math.abs(statsComparison.sales.percentage)}%
-                      </div>
-                    )}
                   </div>
                 </>
               )}
             </CardContent>
           </Card>
 
-          <Card className="hover:shadow-lg hover:scale-105 transition-all duration-300 ease-in-out">
+          <Card >
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium">Productos</CardTitle>
@@ -366,18 +330,6 @@ export default function Home() {
                       <Package className="h-3 w-3 mr-1 text-purple-500" />
                       Total de productos en inventario
                     </div>
-                    {statsComparison && (
-                      <div className={`flex items-center text-xs font-medium ${
-                        statsComparison.products.percentage >= 0 ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {statsComparison.products.percentage >= 0 ? (
-                          <ArrowUpRight className="h-3 w-3 mr-1" />
-                        ) : (
-                          <ArrowDownRight className="h-3 w-3 mr-1" />
-                        )}
-                        {Math.abs(statsComparison.products.percentage)}%
-                      </div>
-                    )}
                   </div>
                 </>
               )}
@@ -385,93 +337,7 @@ export default function Home() {
           </Card>
         </div>
 
-        {/* Sales Chart */}
-        <div className="grid gap-4 animate-in slide-in-from-bottom-4 duration-700">
-          <Card className="hover:shadow-lg transition-shadow duration-300">
-            <CardHeader>
-              <CardTitle>Tendencia de Ventas</CardTitle>
-              <CardDescription>
-                Ventas y ingresos de los últimos 30 días
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="h-[300px] flex items-center justify-center">
-                  <div className="space-y-4 w-full">
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="h-[250px] w-full" />
-                  </div>
-                </div>
-              ) : chartData.length > 0 ? (
-                <ChartContainer
-                  config={{
-                    sales: {
-                      label: "Ventas",
-                      color: "hsl(var(--chart-1))",
-                    },
-                    revenue: {
-                      label: "Ingresos",
-                      color: "hsl(var(--chart-2))",
-                    },
-                  }}
-                  className="h-[300px]"
-                >
-                  <AreaChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="date" 
-                      tickFormatter={(value) => {
-                        const date = new Date(value);
-                        return date.toLocaleDateString('es-ES', { month: 'short', day: 'numeric' });
-                      }}
-                    />
-                    <YAxis yAxisId="left" />
-                    <YAxis yAxisId="right" orientation="right" />
-                    <ChartTooltip 
-                      content={<ChartTooltipContent />}
-                      labelFormatter={(value) => {
-                        const date = new Date(value);
-                        return date.toLocaleDateString('es-ES', { 
-                          weekday: 'long', 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        });
-                      }}
-                    />
-                    <Area
-                      yAxisId="left"
-                      type="monotone"
-                      dataKey="sales"
-                      stackId="1"
-                      stroke="var(--color-sales)"
-                      fill="var(--color-sales)"
-                      fillOpacity={0.6}
-                    />
-                    <Area
-                      yAxisId="right"
-                      type="monotone"
-                      dataKey="revenue"
-                      stackId="2"
-                      stroke="var(--color-revenue)"
-                      fill="var(--color-revenue)"
-                      fillOpacity={0.6}
-                    />
-                  </AreaChart>
-                </ChartContainer>
-              ) : (
-                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                  <div className="text-center">
-                    <TrendingUp className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>No hay datos de ventas disponibles</p>
-                    <p className="text-sm">Las ventas aparecerán aquí una vez que se registren</p>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
+      
         {/* Recent Activity */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7 animate-in slide-in-from-left-4 duration-700">
           <Card className="col-span-full lg:col-span-4 hover:shadow-lg transition-shadow duration-300">
@@ -500,7 +366,7 @@ export default function Home() {
                     recentSales.slice(0, 3).map((sale, index) => (
                       <div 
                         key={sale.id} 
-                        className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted/50 transition-all duration-200 hover:scale-[1.02] animate-in fade-in-50 slide-in-from-left-4"
+                        className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted/50 transition-all duration-200 hover:scale-[1.01] animate-in fade-in-50 slide-in-from-left-4"
                         style={{ animationDelay: `${index * 100}ms` }}
                       >
                         <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></div>
@@ -533,7 +399,7 @@ export default function Home() {
                     recentCustomers.slice(0, 2).map((customer, index) => (
                       <div 
                         key={customer.id || `customer-${index}`} 
-                        className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted/50 transition-all duration-200 hover:scale-[1.02] animate-in fade-in-50 slide-in-from-left-4"
+                        className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted/50 transition-all duration-200 hover:scale-[1.01] animate-in fade-in-50 slide-in-from-left-4"
                         style={{ animationDelay: `${(index + 3) * 100}ms` }}
                       >
                         <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
@@ -568,7 +434,7 @@ export default function Home() {
                 <Button 
                   onClick={() => handleQuickAction('add-customer')}
                   variant="outline" 
-                  className="w-full justify-start gap-3 h-auto p-4 hover:scale-105 hover:shadow-md transition-all duration-200 ease-in-out"
+                  className="w-full justify-start gap-3 h-auto p-4  hover:shadow-md transition-all duration-200 ease-in-out"
                 >
                   <div className="p-2 bg-blue-100 rounded-lg">
                     <UserPlus className="h-4 w-4 text-blue-600" />
@@ -582,7 +448,7 @@ export default function Home() {
                 <Button 
                   onClick={() => handleQuickAction('create-sale')}
                   variant="outline" 
-                  className="w-full justify-start gap-3 h-auto p-4 hover:scale-105 hover:shadow-md transition-all duration-200 ease-in-out"
+                  className="w-full justify-start gap-3 h-auto p-4  hover:shadow-md transition-all duration-200 ease-in-out"
                 >
                   <div className="p-2 bg-green-100 rounded-lg">
                     <ShoppingCart className="h-4 w-4 text-green-600" />
@@ -596,7 +462,7 @@ export default function Home() {
                 <Button 
                   onClick={() => handleQuickAction('add-product')}
                   variant="outline" 
-                  className="w-full justify-start gap-3 h-auto p-4 hover:scale-105 hover:shadow-md transition-all duration-200 ease-in-out"
+                  className="w-full justify-start gap-3 h-auto p-4  hover:shadow-md transition-all duration-200 ease-in-out"
                 >
                   <div className="p-2 bg-purple-100 rounded-lg">
                     <Package className="h-4 w-4 text-purple-600" />
@@ -610,7 +476,7 @@ export default function Home() {
                 <Button 
                   onClick={() => handleQuickAction('calendar')}
                   variant="outline" 
-                  className="w-full justify-start gap-3 h-auto p-4 hover:scale-105 hover:shadow-md transition-all duration-200 ease-in-out"
+                  className="w-full justify-start gap-3 h-auto p-4  hover:shadow-md transition-all duration-200 ease-in-out"
                 >
                   <div className="p-2 bg-orange-100 rounded-lg">
                     <Calendar className="h-4 w-4 text-orange-600" />

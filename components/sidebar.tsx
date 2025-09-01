@@ -167,14 +167,15 @@ export function Sidebar({ className }: SidebarProps) {
           {/* Settings */}
           <div className="space-y-2">
             <Link
-              href="/settings"
+              href="/ajustes"
               className="block"
             >
               <Button
-                variant="ghost"
+                variant={pathname === '/ajustes' ? 'secondary' : 'ghost'}
                 className={cn(
                   'w-full justify-start gap-3 h-10 transition-colors',
-                  collapsed && 'justify-center px-2'
+                  collapsed && 'justify-center px-2',
+                  pathname === '/ajustes' && 'bg-secondary text-secondary-foreground font-medium'
                 )}
               >
                 <Settings className="h-4 w-4 flex-shrink-0" />

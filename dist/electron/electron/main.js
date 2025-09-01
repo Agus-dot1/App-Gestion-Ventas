@@ -25,6 +25,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const electron_1 = require("electron");
 const path = __importStar(require("path"));
+const fs = __importStar(require("fs"));
 const database_1 = require("../lib/database");
 const database_operations_1 = require("../lib/database-operations");
 const isDev = process.env.NODE_ENV === 'development';
@@ -39,7 +40,7 @@ function createWindow() {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
-            preload: path.join(__dirname, '../../../electron/preload.js')
+            preload: path.join(__dirname, '../../electron/preload.js')
         },
         titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
         show: false
@@ -51,7 +52,7 @@ function createWindow() {
         mainWindow.webContents.openDevTools();
     }
     else {
-        mainWindow.loadFile(path.join(__dirname, '../out/index.html'));
+        mainWindow.loadFile(path.join(__dirname, '../../../out/index.html'));
     }
     // Show window when ready to prevent visual flash
     mainWindow.once('ready-to-show', () => {
@@ -127,6 +128,172 @@ function setupIpcHandlers() {
     electron_1.ipcMain.handle('db:payments:getBySale', (_, saleId) => database_operations_1.paymentOperations.getBySale(saleId));
     electron_1.ipcMain.handle('db:payments:getOverdue', () => database_operations_1.paymentOperations.getOverdue());
     electron_1.ipcMain.handle('db:payments:create', (_, payment) => database_operations_1.paymentOperations.create(payment));
+    // Backup and restore operations
+    electron_1.ipcMain.handle('backup:save', async (_, backupData) => {
+        try {
+            const result = await electron_1.dialog.showSaveDialog(mainWindow, {
+                title: 'Guardar Respaldo',
+                defaultPath: `respaldo-${new Date().toISOString().split('T')[0]}.json`,
+                filters: [
+                    { name: 'Archivos de Respaldo', extensions: ['json'] },
+                    { name: 'Todos los Archivos', extensions: ['*'] }
+                ]
+            });
+            if (!result.canceled && result.filePath) {
+                await fs.promises.writeFile(result.filePath, JSON.stringify(backupData, null, 2), 'utf8');
+                return { success: true, filePath: result.filePath };
+            }
+            return { success: false, error: 'Operación cancelada' };
+        }
+        catch (error) {
+            console.error('Error saving backup:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Error desconocido' };
+        }
+    });
+    electron_1.ipcMain.handle('backup:load', async () => {
+        try {
+            const result = await electron_1.dialog.showOpenDialog(mainWindow, {
+                title: 'Cargar Respaldo',
+                filters: [
+                    { name: 'Archivos de Respaldo', extensions: ['json'] },
+                    { name: 'Todos los Archivos', extensions: ['*'] }
+                ],
+                properties: ['openFile']
+            });
+            if (!result.canceled && result.filePaths.length > 0) {
+                const filePath = result.filePaths[0];
+                const fileContent = await fs.promises.readFile(filePath, 'utf8');
+                const backupData = JSON.parse(fileContent);
+                return { success: true, data: backupData };
+            }
+            return { success: false, error: 'Operación cancelada' };
+        }
+        catch (error) {
+            console.error('Error loading backup:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Error al cargar archivo' };
+        }
+    });
+    // Import operations for backup restore
+    electron_1.ipcMain.handle('backup:importCustomers', async (_, customers) => {
+        try {
+            // Clear existing customers
+            const existingCustomers = await database_operations_1.customerOperations.getAll();
+            for (const customer of existingCustomers) {
+                if (customer.id) {
+                    await database_operations_1.customerOperations.delete(customer.id);
+                }
+            }
+            // Import new customers
+            for (const customer of customers) {
+                const { id, ...customerData } = customer;
+                await database_operations_1.customerOperations.create(customerData);
+            }
+            return { success: true };
+        }
+        catch (error) {
+            console.error('Error importing customers:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Error desconocido' };
+        }
+    });
+    electron_1.ipcMain.handle('backup:importProducts', async (_, products) => {
+        try {
+            // Clear existing products
+            const existingProducts = await database_operations_1.productOperations.getAll();
+            for (const product of existingProducts) {
+                if (product.id) {
+                    await database_operations_1.productOperations.delete(product.id);
+                }
+            }
+            // Import new products
+            for (const product of products) {
+                const { id, ...productData } = product;
+                await database_operations_1.productOperations.create(productData);
+            }
+            return { success: true };
+        }
+        catch (error) {
+            console.error('Error importing products:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Error desconocido' };
+        }
+    });
+    electron_1.ipcMain.handle('backup:importSales', async (_, sales) => {
+        try {
+            // Clear existing sales
+            const existingSales = await database_operations_1.saleOperations.getAll();
+            for (const sale of existingSales) {
+                if (sale.id) {
+                    await database_operations_1.saleOperations.delete(sale.id);
+                }
+            }
+            // Import new sales
+            for (const sale of sales) {
+                const { id, ...saleData } = sale;
+                await database_operations_1.saleOperations.create(saleData);
+            }
+            return { success: true };
+        }
+        catch (error) {
+            console.error('Error importing sales:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Error desconocido' };
+        }
+    });
+    // Cache management
+    electron_1.ipcMain.handle('cache:getSize', async () => {
+        try {
+            // Calculate approximate cache size
+            const userDataPath = electron_1.app.getPath('userData');
+            const cacheDir = path.join(userDataPath, 'cache');
+            if (fs.existsSync(cacheDir)) {
+                const stats = await fs.promises.stat(cacheDir);
+                const sizeInMB = (stats.size / (1024 * 1024)).toFixed(2);
+                return `${sizeInMB} MB`;
+            }
+            return '0 MB';
+        }
+        catch (error) {
+            console.error('Error getting cache size:', error);
+            return '0 MB';
+        }
+    });
+    electron_1.ipcMain.handle('cache:clear', async () => {
+        try {
+            // Clear session cache first (this is safer)
+            if (mainWindow && mainWindow.webContents.session) {
+                await mainWindow.webContents.session.clearCache();
+                await mainWindow.webContents.session.clearStorageData();
+            }
+            // Try to clear file system cache directories
+            const userDataPath = electron_1.app.getPath('userData');
+            const cacheDirectories = [
+                path.join(userDataPath, 'cache'),
+                path.join(userDataPath, 'Cache'),
+                path.join(userDataPath, 'GPUCache'),
+                path.join(userDataPath, 'Code Cache')
+            ];
+            const errors = [];
+            for (const cacheDir of cacheDirectories) {
+                try {
+                    if (fs.existsSync(cacheDir)) {
+                        await fs.promises.rm(cacheDir, { recursive: true, force: true });
+                    }
+                }
+                catch (dirError) {
+                    // Log individual directory errors but don't fail the entire operation
+                    console.warn(`Could not clear cache directory ${cacheDir}:`, dirError);
+                    errors.push(`${path.basename(cacheDir)}: ${dirError instanceof Error ? dirError.message : 'Unknown error'}`);
+                }
+            }
+            // Return success even if some directories couldn't be cleared
+            const message = errors.length > 0
+                ? `Cache cleared with some warnings: ${errors.join(', ')}`
+                : 'Cache cleared successfully';
+            return { success: true, message };
+        }
+        catch (error) {
+            console.error('Error clearing cache:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Error desconocido' };
+        }
+    });
 }
 // This method will be called when Electron has finished initialization
 electron_1.app.whenReady().then(() => {

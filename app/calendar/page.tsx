@@ -49,7 +49,7 @@ export default function CalendarPage() {
   const [isEventDialogOpen, setIsEventDialogOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [isElectron, setIsElectron] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Start with false for optimistic navigation
   const [filterType, setFilterType] = useState<EventType | 'all'>('all');
   const [filterStatus, setFilterStatus] = useState<EventStatus | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,7 +59,6 @@ export default function CalendarPage() {
   });
   const [lastRefresh, setLastRefresh] = useState<number>(0);
   const [selectedEvents, setSelectedEvents] = useState<string[]>([]);
-  const [bulkActionMode, setBulkActionMode] = useState(false);
   
   // Use data cache for performance
   const dataCache = useDataCache();
@@ -78,7 +77,7 @@ export default function CalendarPage() {
     try {
       // Check if we have cached sales data to avoid unnecessary loading states
       const cachedSales = dataCache.getCachedSales(1, 1000, '');
-      const shouldShowLoading = !cachedSales || forceRefresh;
+      const shouldShowLoading = (!cachedSales || forceRefresh) && events.length === 0;
       
       if (shouldShowLoading) {
         setLoading(true);
@@ -280,11 +279,6 @@ export default function CalendarPage() {
     setIsEventDialogOpen(true);
   };
 
-  const handleAddEvent = () => {
-    setSelectedEvent(null);
-    setIsEventDialogOpen(true);
-  };
-
   // Bulk operation handlers
   const handleSelectEvent = (eventId: string) => {
     setSelectedEvents(prev => 
@@ -301,59 +295,6 @@ export default function CalendarPage() {
       setSelectedEvents(filteredEvents.map(event => event.id));
     }
   };
-
-  // Keyboard navigation handlers
-  const handleKeyDown = useCallback((event: KeyboardEvent) => {
-    if (event.target && (event.target as HTMLElement).tagName === 'INPUT') {
-      return; // Don't interfere with input fields
-    }
-
-    switch (event.key) {
-      case 'n':
-      case 'N':
-        if (event.ctrlKey || event.metaKey) {
-          event.preventDefault();
-          handleAddEvent();
-        }
-        break;
-      case 'r':
-      case 'R':
-        if (event.ctrlKey || event.metaKey) {
-          event.preventDefault();
-          loadCalendarEvents(true);
-        }
-        break;
-      case 'f':
-      case 'F':
-        if (event.ctrlKey || event.metaKey) {
-          event.preventDefault();
-          const searchInput = document.querySelector('input[placeholder*="Search"]') as HTMLInputElement;
-          if (searchInput) {
-            searchInput.focus();
-          }
-        }
-        break;
-      case 'Escape':
-        if (bulkActionMode) {
-          setBulkActionMode(false);
-          setSelectedEvents([]);
-        }
-        break;
-      case 'a':
-      case 'A':
-        if ((event.ctrlKey || event.metaKey) && bulkActionMode) {
-          event.preventDefault();
-          handleSelectAll();
-        }
-        break;
-    }
-  }, [bulkActionMode, handleSelectAll, loadCalendarEvents]);
-
-  // Add keyboard event listeners
-  useEffect(() => {
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown]);
 
   const handleEventSave = async (eventData: Partial<CalendarEvent>) => {
     // For custom events, we'll store them in local state
@@ -389,33 +330,6 @@ export default function CalendarPage() {
     dataCache.invalidateCache('sales');
     await loadCalendarEvents(true);
     setIsEventDialogOpen(false);
-  };
-
-  const handleBulkStatusUpdate = async (newStatus: EventStatus) => {
-    console.log(`Updating ${selectedEvents.length} events to status: ${newStatus}`);
-    // In a real app, this would update the database
-    // For now, we'll just log the action
-    
-    // Clear selection after bulk action
-    setSelectedEvents([]);
-    setBulkActionMode(false);
-    
-    // Reload events to reflect changes
-    await loadCalendarEvents(true);
-  };
-
-  const handleBulkDelete = async () => {
-    if (window.confirm(`Are you sure you want to delete ${selectedEvents.length} selected events?`)) {
-      console.log(`Deleting ${selectedEvents.length} events:`, selectedEvents);
-      // In a real app, this would delete from the database
-      
-      // Clear selection after bulk action
-      setSelectedEvents([]);
-      setBulkActionMode(false);
-      
-      // Reload events to reflect changes
-      await loadCalendarEvents(true);
-    }
   };
 
   const handleBulkExport = () => {
@@ -505,80 +419,6 @@ export default function CalendarPage() {
               <p className="text-muted-foreground text-sm md:text-base" aria-describedby="calendar-title">
                 Rastrea ventas, pagos de cuotas y fechas importantes del negocio
               </p>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap" role="toolbar" aria-label="Calendar actions">
-              {!bulkActionMode ? (
-                <>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => loadCalendarEvents(true)}
-                    disabled={loading}
-                    className="min-w-[100px]"
-                    aria-label="Refresh calendar events"
-                  >
-                    {loading ? (
-                      <>
-                        <div className="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
-                        Loading
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="w-4 h-4 mr-2" />
-                         Actualizar
-                      </>
-                    )}
-                  </Button>
-                  <Button onClick={handleAddEvent} aria-label="Agregar nuevo evento del calendario">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Agregar Evento
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <div className="text-sm text-muted-foreground mr-2">
-                    {selectedEvents.length} seleccionados
-                  </div>
-                  <Button
-                    onClick={handleSelectAll}
-                    variant="outline"
-                    size="sm"
-                  >
-                    {selectedEvents.length === filteredEvents.length ? 'Deseleccionar Todo' : 'Seleccionar Todo'}
-                  </Button>
-                  {selectedEvents.length > 0 && (
-                    <>
-                      <Button
-                        onClick={() => handleBulkStatusUpdate('completed')}
-                        variant="outline"
-                        size="sm"
-                        className="text-green-600 hover:text-green-700"
-                      >
-                        <CheckCircle className="w-4 h-4 mr-1" />
-                        Completar
-                      </Button>
-                      <Button
-                        onClick={handleBulkDelete}
-                        variant="outline"
-                        size="sm"
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        <AlertTriangle className="w-4 h-4 mr-1" />
-                        Eliminar
-                      </Button>
-                    </>
-                  )}
-                  <Button
-                    onClick={() => {
-                      setBulkActionMode(false);
-                      setSelectedEvents([]);
-                    }}
-                    variant="ghost"
-                    size="sm"
-                  >
-                    Cancelar
-                  </Button>
-                </>
-              )}
             </div>
           </div>
         </div>
@@ -721,6 +561,12 @@ export default function CalendarPage() {
                       Vencido
                     </div>
                   </SelectItem>
+                  <SelectItem value="cancelled">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-gray-600"></div>
+                      Cancelado
+                    </div>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -741,15 +587,6 @@ export default function CalendarPage() {
                       <Badge variant="outline" className="text-xs">
                         {filteredEvents.length} eventos
                       </Badge>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleAddEvent}
-                        className="text-xs"
-                      >
-                        <Plus className="h-3 w-3 mr-1" />
-                        Agregar Evento
-                      </Button>
                     </div>
                   </div>
                 </CardHeader>
@@ -777,7 +614,6 @@ export default function CalendarPage() {
                   <EventList
                     events={selectedDateEvents}
                     onEventClick={handleEventClick}
-                    bulkActionMode={bulkActionMode}
                     selectedEvents={selectedEvents}
                     onSelectEvent={handleSelectEvent}
                   />
