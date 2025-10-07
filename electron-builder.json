@@ -7,21 +7,31 @@
   "files": [
     "out/**/*",
     "dist/electron/**/*",
-    "electron/preload.js",
+    "dist/preload.js",
     "node_modules/**/*",
     "package.json"
   ],
   "asar": false,
-  "mac": {
-    "category": "public.app-category.productivity",
-    "target": "dmg"
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true
   },
   "win": {
-    "target": "dir",
+    "target": {
+      "target": "dir",
+      "arch": ["x64"]
+    },
     "sign": false,
-    "verifyUpdateCodeSignature": false
+    "verifyUpdateCodeSignature": false,
+    "certificateFile": null,
+    "certificatePassword": null
   },
   "linux": {
     "target": "AppImage"
-  }
+  },
+  "buildDependenciesFromSource": false,
+  "nodeGypRebuild": false,
+  "npmRebuild": false,
+  "forceCodeSigning": false,
+  "afterSign": null
 }

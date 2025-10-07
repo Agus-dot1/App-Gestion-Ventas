@@ -24,7 +24,9 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, '../../electron/preload.js')
+      preload: isDev 
+        ? path.join(__dirname, '../preload.js')
+        : path.join(__dirname, '../preload.js')
     },
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     show: false
@@ -316,6 +318,162 @@ app.whenReady().then(() => {
 
   // Set up IPC handlers
   setupIpcHandlers();
+
+  // Register protocol handler globally before creating windows
+  const { session } = require('electron');
+  session.defaultSession.protocol.interceptBufferProtocol('file', (request, callback) => {
+    const url = request.url;
+    
+    // Check if this is an RSC payload request
+    if (url.includes('index.txt') && url.includes('_rsc=')) {
+      console.log('Intercepted RSC request:', url);
+      
+      // Map RSC requests to the correct path within the app directory
+       let rscPath = url.replace('file:///', '');
+       rscPath = decodeURIComponent(rscPath);
+       
+       // Remove query parameters for file path
+       const [pathOnly] = rscPath.split('?');
+       
+       // Remove drive letter and colon (e.g., "D:/index.txt" -> "/index.txt")
+       const relativePath = pathOnly.replace(/^[A-Za-z]:/, '');
+       
+       // Map to the correct location in the out directory
+       const appPath = path.join(__dirname, '..', 'out');
+       const fullPath = path.join(appPath, relativePath.replace(/\//g, path.sep));
+      
+      console.log('Mapped RSC path:', fullPath);
+      
+      // Check if the RSC file exists, if not return empty response
+      if (fs.existsSync(fullPath)) {
+        try {
+          const rscContent = fs.readFileSync(fullPath);
+          callback({
+            statusCode: 200,
+            headers: {
+              'Content-Type': 'text/plain',
+              'Access-Control-Allow-Origin': '*'
+            },
+            data: rscContent
+          });
+          return;
+        } catch (error) {
+          console.log('Error reading RSC file:', error);
+        }
+      }
+      
+      // Return empty response for RSC requests if file doesn't exist
+      callback({
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'text/plain',
+          'Access-Control-Allow-Origin': '*'
+        },
+        data: Buffer.from('')
+      });
+      return;
+    }
+    
+    // Convert file:// URL to local path
+    let filePath = url.replace('file:///', '');
+    // Handle URL encoding
+    filePath = decodeURIComponent(filePath);
+    
+    // Check if this is a navigation request (trying to access a route directory)
+    // If the path doesn't have a file extension and doesn't exist as a file,
+    // redirect to index.html to let Next.js handle routing
+    const hasExtension = path.extname(filePath) !== '';
+    const isDirectoryPath = filePath.endsWith('/') || !hasExtension;
+    
+    if (isDirectoryPath || (!hasExtension && !fs.existsSync(filePath))) {
+      // This is likely a Next.js route, serve the main index.html
+      const indexPath = path.join(__dirname, '..', 'out', 'index.html');
+      console.log('Navigation request detected, serving index.html for:', url);
+      
+      try {
+        if (fs.existsSync(indexPath)) {
+          const indexContent = fs.readFileSync(indexPath);
+          callback({
+            mimeType: 'text/html',
+            data: indexContent
+          });
+          return;
+        }
+      } catch (error) {
+        console.error('Error serving index.html:', error);
+      }
+    }
+    
+    // For static file requests, read from filesystem
+    // Convert forward slashes to backslashes on Windows
+    filePath = filePath.replace(/\//g, path.sep);
+    
+    console.log('Loading static file:', filePath);
+    
+    try {
+      // Check if file exists
+      if (!fs.existsSync(filePath)) {
+        callback({ error: -6 }); // net::ERR_FILE_NOT_FOUND
+        return;
+      }
+      
+      // Read file content
+      const fileContent = fs.readFileSync(filePath);
+      
+      // Determine MIME type based on file extension
+      const ext = path.extname(filePath).toLowerCase();
+      let mimeType = 'application/octet-stream';
+      
+      switch (ext) {
+        case '.html':
+          mimeType = 'text/html';
+          break;
+        case '.css':
+          mimeType = 'text/css';
+          break;
+        case '.js':
+          mimeType = 'application/javascript';
+          break;
+        case '.json':
+          mimeType = 'application/json';
+          break;
+        case '.png':
+          mimeType = 'image/png';
+          break;
+        case '.jpg':
+        case '.jpeg':
+          mimeType = 'image/jpeg';
+          break;
+        case '.gif':
+          mimeType = 'image/gif';
+          break;
+        case '.svg':
+          mimeType = 'image/svg+xml';
+          break;
+        case '.ico':
+          mimeType = 'image/x-icon';
+          break;
+        case '.woff':
+        case '.woff2':
+          mimeType = 'font/woff2';
+          break;
+        case '.ttf':
+          mimeType = 'font/ttf';
+          break;
+        case '.eot':
+          mimeType = 'application/vnd.ms-fontobject';
+          break;
+      }
+      
+      callback({
+        mimeType: mimeType,
+        data: fileContent
+      });
+    } catch (error) {
+      console.error('Error reading file:', filePath, error);
+      callback({ error: -2 }); // net::ERR_FAILED
+    }
+  });
 
   createWindow();
 

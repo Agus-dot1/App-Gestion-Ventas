@@ -6,9 +6,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { DashboardLayout } from '@/components/dashboard-layout';
-import { CalendarComponent } from '../../components/calendar/calendar-component';
-import { EventDialog } from '../../components/calendar/event-dialog';
-import { EventList } from '../../components/calendar/event-list';
+import { CalendarComponent } from '@/components/calendar/calendar-component';
+import { EventDialog } from '@/components/calendar/event-dialog';
+import { EventList } from '@/components/calendar/event-list';
 import { CalendarSkeleton } from '@/components/skeletons/calendar-skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -30,7 +30,7 @@ import {
   Search,
   X
 } from 'lucide-react';
-import type { CalendarEvent, EventType, EventStatus } from '../../lib/calendar-types';
+import type { CalendarEvent, EventType, EventStatus } from '@/lib/calendar-types';
 import type { Sale } from '@/lib/database-operations';
 
 export default function CalendarPage() {
