@@ -737,7 +737,7 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                 >
                   <Card className={cn(
                     "transition-all duration-200 hover:shadow-md",
-                    customer.overdueAmount > 0 && "border-l-4 border-l-red-500",
+                    customer.overdueAmount > 0 && "border-l-4 border-l-red-800",
                     highlightId === customer.id?.toString() && "ring-2 ring-primary"
                   )}>
                     <CollapsibleTrigger asChild>
@@ -838,7 +838,7 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                                     <TableRow 
                                       key={installment.id}
                                       className={cn(
-                                        isOverdue && "bg-red-50",
+                                        isOverdue && "bg-red-950", 
                                         installment.status === 'paid' && "bg-white/5"
                                       )}
                                     >
@@ -907,7 +907,7 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                                                 size="sm"
                                                 variant="outline"
                                                 onClick={() => handleRevertPayment(installment)}
-                                                className="h-7 px-2 text-xs text-orange-600 hover:text-orange-700 border-orange-200 hover:border-orange-300"
+                                                className="h-7 px-2 text-xs text-white/80 hover:text-white border-white hover:border-white"
                                               >
                                                 <X className="h-3 w-3 mr-1" />
                                                 Revertir

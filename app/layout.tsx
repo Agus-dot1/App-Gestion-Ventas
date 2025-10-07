@@ -1,8 +1,16 @@
-'use client';
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+import { Toaster } from "@/components/ui/toaster";
+import { DataCacheProvider } from "@/hooks/use-data-cache";
+import { Suspense } from "react";
 
-import './globals.css';
-import { Suspense } from 'react';
-import { DataCacheProvider } from '@/hooks/use-data-cache';
+const inter = Inter({ subsets: ["latin"] });
+
+export const metadata: Metadata = {
+  title: "Electro Gestión - Sistema de Gestión de Ventas",
+  description: "Sistema completo de gestión de ventas, clientes y productos",
+};
 
 export default function RootLayout({
   children,
@@ -11,12 +19,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
-      <body className="antialiased dark">
+      <body className={inter.className}>
         <DataCacheProvider>
           <Suspense fallback={<div>Loading...</div>}>
             {children}
           </Suspense>
         </DataCacheProvider>
+        <Toaster />
       </body>
     </html>
   );
