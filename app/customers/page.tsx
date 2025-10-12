@@ -12,6 +12,8 @@ import { CustomersSkeleton } from '@/components/skeletons/customers-skeleton';
 import { Plus, Users, TrendingUp, Calendar, Database } from 'lucide-react';
 import type { Customer } from '@/lib/database-operations';
 import { useDataCache, usePrefetch } from '@/hooks/use-data-cache';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { CustomerQuickViewDrawer } from '@/components/customers/customer-quick-view-drawer';
 
 export default function CustomersPage() {
   const searchParams = useSearchParams();
@@ -20,6 +22,7 @@ export default function CustomersPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | undefined>();
   const [viewingCustomer, setViewingCustomer] = useState<Customer | undefined>();
+  const isMobile = useIsMobile();
   const [isElectron] = useState(() => typeof window !== 'undefined' && !!window.electronAPI);
   const [isLoading, setIsLoading] = useState(false); // Start with false for optimistic navigation
   const [searchTerm, setSearchTerm] = useState('');
@@ -213,140 +216,56 @@ export default function CustomersPage() {
   const addMockCustomers = async () => {
     const mockCustomers = [
       {
-        name: 'John Smith',
-        email: 'john.smith@email.com',
-        phone: '(555) 123-4567',
-        address: '123 Main St, Anytown, ST 12345',
-        notes: 'Preferred contact method: Email'
+        name: 'Agustin de Olveira',
+        dni: '45686722',
+        email: 'agustin.olveira@email.com',
+        phone: '+54 11 32170664',
+        address: 'El resero 4141, Gregorio de Laferrere',
+        notes: 'Referido: juan'
       },
       {
-        name: 'Sarah Johnson',
-        email: 'sarah.j@email.com',
-        phone: '(555) 987-6543',
-        address: '456 Oak Avenue, Springfield, ST 67890'
+        name: 'Matias Ezequiel Reynoso',
+        dni: '23456789',
+        email: 'matias.reynoso@email.com',
+        phone: '+54 11 23456789',
+        address: 'Puerta de hierro'
       },
       {
-        name: 'Michael Brown',
-        phone: '(555) 456-7890',
-        address: '789 Pine Street, Riverside, ST 54321',
-        notes: 'Best time to call: Evenings'
+        name: 'Facundo Cruz',
+        dni: '34567890',
+        phone: '+54 11 45678901',
+        address: 'San pedro',
+        notes: 'Referencia: Hincha del rojo'
       },
       {
-        name: 'Emily Davis',
-        email: 'emily.davis@email.com',
-        phone: '(555) 234-5678',
-        address: '321 Elm Drive, Lakeside, ST 98765'
+        name: 'Cain Elian Silva Pais',
+        dni: '45678901',
+        email: 'cain.silva@email.com',
+        phone: '+54 11 45678901',
+        address: 'Suarez 980, La Boca'
       },
       {
-        name: 'David Wilson',
-        email: 'd.wilson@email.com',
-        phone: '(555) 345-6789',
-        address: '654 Maple Drive, Hilltown, ST 13579',
-        company: 'Wilson Enterprises'
+        name: 'Mauro Julian López',
+        dni: '56789012',
+        email: 'Mauro.López@email.com',
+        phone: '+54 11 56789012',
+        address: 'Da vinci 400, Gregorio de Laferrere',
+        company: 'Referencia: Mago'
       },
       {
-        name: 'Lisa Anderson',
-        email: 'lisa.anderson@email.com',
-        phone: '(555) 567-8901',
-        address: '987 Cedar Lane, Brookfield, ST 24680'
+        name: 'Leandro Gluckszack',
+        dni: '67890123',
+        email: 'leandro.gluckszack@email.com',
+        phone: '+54 11 56789012',
+        address: 'Laferrere'
       },
       {
-        name: 'Robert Taylor',
-        phone: '(555) 678-9012',
-        address: '147 Birch Road, Greenville, ST 35791',
-        notes: 'Preferred contact: Text messages'
+        name: 'Ulises Godoy',
+        dni: '78901234',
+        email: 'ulises.godoy@email.com',
+        phone: '+54 11 67890123',
+        notes: 'direccion: no proporcionada'
       },
-      {
-        name: 'Jennifer Martinez',
-        email: 'j.martinez@email.com',
-        phone: '(555) 789-0123',
-        address: '258 Willow Street, Fairview, ST 46802'
-      },
-      {
-        name: 'Christopher Lee',
-        email: 'chris.lee@email.com',
-        phone: '(555) 890-1234',
-        address: '369 Spruce Avenue, Riverside, ST 57913',
-        notes: 'Business owner'
-      },
-      {
-        name: 'Amanda Garcia',
-        email: 'amanda.garcia@email.com',
-        phone: '(555) 901-2345',
-        company: 'Garcia Solutions',
-        address: '741 Aspen Court, Mountain View, ST 68024'
-      },
-      {
-        name: 'Kevin Rodriguez',
-        email: 'kevin.r@email.com',
-        phone: '(555) 012-3456',
-        company: 'Rodriguez Tech',
-        address: '852 Redwood Drive, Valley City, ST 79135'
-      },
-      {
-        name: 'Michelle Thompson',
-        email: 'michelle.thompson@email.com',
-        phone: '(555) 123-4567',
-        company: 'Thompson Consulting',
-        address: '963 Sequoia Lane, Forest Hills, ST 80246'
-      },
-      {
-        name: 'Daniel White',
-        email: 'daniel.white@email.com',
-        phone: '(555) 234-5678',
-        company: 'White Industries',
-        address: '159 Cypress Street, Oceanview, ST 91357'
-      },
-      {
-        name: 'Jessica Harris',
-        email: 'jessica.harris@email.com',
-        phone: '(555) 345-6789',
-        company: 'Harris Marketing',
-        address: '357 Magnolia Avenue, Sunset City, ST 02468'
-      },
-      {
-        name: 'Ryan Clark',
-        email: 'ryan.clark@email.com',
-        phone: '(555) 456-7890',
-        company: 'Clark Enterprises',
-        address: '468 Dogwood Road, Riverside Park, ST 13579'
-      },
-      {
-        name: 'Nicole Lewis',
-        email: 'nicole.lewis@email.com',
-        phone: '(555) 567-8901',
-        company: 'Lewis Design Studio',
-        address: '579 Hickory Drive, Garden City, ST 24680'
-      },
-      {
-        name: 'Brandon Walker',
-        email: 'brandon.walker@email.com',
-        phone: '(555) 678-9012',
-        company: 'Walker Construction',
-        address: '680 Walnut Street, Hillside, ST 35791'
-      },
-      {
-        name: 'Amanda White',
-        email: 'amanda.white@email.com',
-        phone: '(555) 901-2345',
-        address: '741 Poplar Court, Westfield, ST 68024',
-        notes: 'Frequent customer since 2020'
-      },
-      {
-        name: 'Carlos Mendez',
-        email: 'carlos.mendez@email.com',
-        phone: '(555) 111-2222',
-        company: 'Mendez Imports',
-        address: '123 Commerce Street, Trade City, ST 11111',
-        tags: 'VIP,Wholesale'
-      },
-      {
-        name: 'Sofia Ramirez',
-        email: 'sofia.ramirez@email.com',
-        phone: '(555) 333-4444',
-        address: '456 Residential Ave, Hometown, ST 22222',
-        tags: 'Regular,Local'
-      }
     ];
 
     try {
@@ -384,9 +303,6 @@ export default function CustomersPage() {
   };
 
   const handleSelectAll = (selectAll: boolean) => {
-    // This function is called when the user clicks "select all"
-    // The actual selection state is managed by the table component
-    // We just need to ensure all customer IDs are available
     if (selectAll && allCustomerIds.length === 0) {
       loadAllCustomerIds();
     }
@@ -447,7 +363,7 @@ export default function CustomersPage() {
                 disabled={!isElectron}
               >
                 <Database className="mr-2 h-4 w-4" />
-                Add Mock Data
+                Añadir clientes de prueba
               </Button>
               <Button onClick={handleAddCustomer} disabled={!isElectron}>
                 <Plus className="mr-2 h-4 w-4" />
@@ -500,17 +416,32 @@ export default function CustomersPage() {
           onSave={handleSaveCustomer}
         />
 
-        {/* Customer Profile Modal */}
+        {/* Customer Profile Modal or Drawer */}
         {viewingCustomer && (
-          <CustomerProfile
-            customer={viewingCustomer}
-            onEdit={(customer) => {
-              setViewingCustomer(undefined);
-              setEditingCustomer(customer);
-              setIsFormOpen(true);
-            }}
-            onClose={() => setViewingCustomer(undefined)}
-          />
+          <>
+            {!isMobile ? (
+              <CustomerProfile
+                customer={viewingCustomer}
+                onEdit={(customer) => {
+                  setViewingCustomer(undefined);
+                  setEditingCustomer(customer);
+                  setIsFormOpen(true);
+                }}
+                onClose={() => setViewingCustomer(undefined)}
+              />
+            ) : (
+              <CustomerQuickViewDrawer
+                open={!!viewingCustomer}
+                customer={viewingCustomer}
+                onEdit={(customer) => {
+                  setViewingCustomer(undefined);
+                  setEditingCustomer(customer);
+                  setIsFormOpen(true);
+                }}
+                onClose={() => setViewingCustomer(undefined)}
+              />
+            )}
+          </>
         )}
       </div>
     </DashboardLayout>

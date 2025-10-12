@@ -12,6 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { AlertCircle, Plus, Trash2, ShoppingCart, User, CreditCard, Calculator, DollarSign } from 'lucide-react';
 import type { Sale, Customer, Product, SaleFormData } from '@/lib/database-operations';
+import { SelectLabel } from '@radix-ui/react-select';
 
 interface SaleFormProps {
   sale?: Sale;
@@ -34,7 +35,9 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [formData, setFormData] = useState({
     customer_id: 0,
-    payment_type: 'cash' as 'cash' | 'installments' | 'credit' | 'mixed',
+    payment_type: 'cash' as 'cash' | 'installments' | 'credit',
+    payment_period: '1 to 10' as '1 to 10' | '20 to 30',
+    period_type: 'monthly' as 'monthly' | 'weekly' | 'biweekly',
     number_of_installments: 6,
     advance_installments: 0,
     tax_amount: 0,
@@ -57,10 +60,12 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
       setFormData({
         customer_id: sale.customer_id,
         payment_type: sale.payment_type,
+        payment_period: sale.payment_period || '1 to 10',
+        period_type: sale.period_type || 'monthly',
         number_of_installments: sale.number_of_installments || 6,
         advance_installments: sale.advance_installments || 0,
-        tax_amount: sale.tax_amount,
-        discount_amount: sale.discount_amount,
+        tax_amount: sale.tax_amount || 0,
+        discount_amount: sale.discount_amount || 0,
         notes: sale.notes || ''
       });
       // Load sale items when editing
@@ -70,6 +75,8 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
       setFormData({
         customer_id: 0,
         payment_type: 'cash',
+        payment_period: '1 to 10',
+        period_type: 'monthly',
         number_of_installments: 6,
         advance_installments: 0,
         tax_amount: 0,
@@ -197,6 +204,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
 
     setIsSubmitting(true);
     try {
+      const payment_type = formData.payment_type;
       const saleData: SaleFormData = {
         customer_id: formData.customer_id,
         items: items.map(item => ({
@@ -205,9 +213,9 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
           unit_price: item.unit_price,
           discount_per_item: item.discount_per_item
         })),
-        payment_type: formData.payment_type,
-        number_of_installments: formData.payment_type === 'installments' ? formData.number_of_installments : undefined,
-        advance_installments: formData.payment_type === 'installments' ? formData.advance_installments : undefined,
+        payment_type,
+        number_of_installments: payment_type === 'installments' ? formData.number_of_installments : undefined,
+        advance_installments: payment_type === 'installments' ? formData.advance_installments : undefined,
         tax_amount: formData.tax_amount,
         discount_amount: formData.discount_amount,
         notes: formData.notes
@@ -219,6 +227,8 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
       setFormData({
         customer_id: 0,
         payment_type: 'cash',
+        payment_period: '1 to 10',
+        period_type: 'monthly',
         number_of_installments: 6,
         advance_installments: 0,
         tax_amount: 0,
@@ -415,8 +425,12 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="cash">Efectivo</SelectItem>
-                      <SelectItem value="installments">Cuotas</SelectItem>
+                      <SelectItem value="cash">Al contado</SelectItem>
+                      <SelectItem value="installments">
+                        <div className="flex items-center gap-2">
+                          Cuotas
+                        </div>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -457,7 +471,52 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                     onChange={(e) => setFormData(prev => ({ ...prev, discount_amount: parseFloat(e.target.value) || 0 }))}
                   />
                 </div>
+                 <div>
+                 {formData.payment_type === 'installments' && formData.number_of_installments > 0 && (
+                  <>
+                    <Label>Periodo de pago</Label>
+                    <Select
+                      value={formData.payment_period}
+                      onValueChange={(value: any) => setFormData(prev => ({ ...prev, payment_period: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1 to 10">1 al 10</SelectItem>
+                        <SelectItem value="20 to 30">20 al 30</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </>
+                )}
               </div>
+              </div>
+
+
+                              {formData.payment_type === 'installments' && formData.number_of_installments > 0 && (
+                  <>
+                    <Separator />
+                    <div>
+                      <Label>Cuotas pagadas por adelantado</Label>
+                      <Select
+                        value={formData.advance_installments.toString()}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, advance_installments: parseInt(value) }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: formData.number_of_installments + 1 }, (_, i) => (
+                            <SelectItem key={i} value={i.toString()}>
+                              {i === 0 ? 'Ninguna' : `${i} cuota${i > 1 ? 's' : ''}`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                  </>
+                )}
             </CardContent>
           </Card>
 
@@ -494,26 +553,6 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                         <span>${Math.round(total / formData.number_of_installments)}</span>
                       </div>
                     </div>
-
-                    <div>
-                      <Label>Cuotas pagadas por adelantado</Label>
-                      <Select
-                        value={formData.advance_installments.toString()}
-                        onValueChange={(value) => setFormData(prev => ({ ...prev, advance_installments: parseInt(value) }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Array.from({ length: formData.number_of_installments + 1 }, (_, i) => (
-                            <SelectItem key={i} value={i.toString()}>
-                              {i === 0 ? 'Ninguna' : `${i} cuota${i > 1 ? 's' : ''}`}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
                   </>
                 )}
               </div>

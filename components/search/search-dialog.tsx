@@ -147,27 +147,66 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
     const results: SearchResult[] = [];
     const searchTerm = debouncedQuery.toLowerCase();
 
+    // Check if search term looks like a DNI (7-8 digits)
+    const isDNISearch = /^\d{7,8}$/.test(searchTerm);
+
     // Search customers
     customers.forEach(customer => {
-      if (
-        customer.name.toLowerCase().includes(searchTerm) ||
-        customer.contact_info?.toLowerCase().includes(searchTerm)
-      ) {
+      let matchScore = 0;
+      let matchReason = '';
+
+      // DNI search gets highest priority
+      if (customer.dni?.toLowerCase().includes(searchTerm)) {
+        matchScore = isDNISearch ? 100 : 80; // Exact DNI match gets highest score
+        matchReason = customer.dni === searchTerm ? 'DNI exacto' : 'DNI parcial';
+      }
+      // Name search
+      else if (customer.name.toLowerCase().includes(searchTerm)) {
+        matchScore = customer.name.toLowerCase().startsWith(searchTerm) ? 70 : 50;
+        matchReason = 'Nombre';
+      }
+      // Email search
+      else if (customer.email?.toLowerCase().includes(searchTerm)) {
+        matchScore = 40;
+        matchReason = 'Email';
+      }
+      // Company search
+      else if (customer.company?.toLowerCase().includes(searchTerm)) {
+        matchScore = 30;
+        matchReason = 'Empresa';
+      }
+      // Contact info search
+      else if (customer.contact_info?.toLowerCase().includes(searchTerm)) {
+        matchScore = 20;
+        matchReason = 'Contacto';
+      }
+
+      if (matchScore > 0) {
         const customerSales = sales.filter(sale => sale.customer_id === customer.id);
         const totalSpent = customerSales.reduce((sum, sale) => sum + sale.total_amount, 0);
         const overdueSales = customerSales.filter(sale => sale.payment_status === 'overdue');
+
+        // Enhanced subtitle to show DNI when available and relevant
+        let subtitle = `${customerSales.length} ventas • $${totalSpent.toLocaleString()}`;
+        if (customer.dni && (isDNISearch || matchReason.includes('DNI'))) {
+          subtitle = `DNI: ${customer.dni} • ${subtitle}`;
+        }
 
         results.push({
           id: `customer-${customer.id}`,
           type: 'customer',
           title: customer.name,
-          subtitle: `${customerSales.length} ventas • $${totalSpent.toLocaleString()}`,
-          description: customer.contact_info || 'Sin información de contacto',
+          subtitle,
+          description: matchReason === 'DNI exacto' ? `✓ DNI encontrado: ${customer.dni}` : 
+                      matchReason === 'DNI parcial' ? `DNI: ${customer.dni}` :
+                      customer.contact_info || 'Sin información de contacto',
           metadata: {
             customer,
             salesCount: customerSales.length,
             totalSpent,
-            overdueCount: overdueSales.length
+            overdueCount: overdueSales.length,
+            matchScore,
+            matchReason
           },
           action: () => {
             router.push(`/customers?highlight=${customer.id}`);
@@ -264,6 +303,20 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
       });
     }
 
+    // Sort results by match score (highest first) and then by type priority
+    results.sort((a, b) => {
+      const scoreA = a.metadata?.matchScore || 0;
+      const scoreB = b.metadata?.matchScore || 0;
+      
+      if (scoreA !== scoreB) {
+        return scoreB - scoreA; // Higher score first
+      }
+      
+      // If scores are equal, prioritize by type
+      const typePriority = { customer: 4, sale: 3, product: 2, installment: 1 };
+      return (typePriority[b.type] || 0) - (typePriority[a.type] || 0);
+    });
+
     return results.slice(0, 20); // Limit results
   }, [debouncedQuery, customers, sales, products, router, onOpenChange]);
 
@@ -352,7 +405,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
 Buscar Todo
           </DialogTitle>
           <DialogDescription id="search-instructions">
-Buscar clientes, ventas, productos y pagos. Usa ↑↓ para navegar, Enter para seleccionar.
+Buscar clientes por DNI, nombre, email, ventas, productos y pagos. Usa ↑↓ para navegar, Enter para seleccionar.
           </DialogDescription>
         </DialogHeader>
 
@@ -360,7 +413,7 @@ Buscar clientes, ventas, productos y pagos. Usa ↑↓ para navegar, Enter para 
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Buscar clientes, ventas, productos..."
+              placeholder="Buscar por DNI, nombre, email, productos..."
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
@@ -400,7 +453,7 @@ Buscar clientes, ventas, productos y pagos. Usa ↑↓ para navegar, Enter para 
                 <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="text-lg font-semibold mb-2">Comenzar Búsqueda</h3>
                 <p className="text-muted-foreground">
-                  Escribe para buscar clientes, ventas, productos y pagos
+                  Escribe para buscar clientes por DNI, nombre, email, ventas, productos y pagos
                 </p>
               </div>
               
@@ -457,7 +510,7 @@ Buscar clientes, ventas, productos y pagos. Usa ↑↓ para navegar, Enter para 
               <Search className="h-8 w-8 text-muted-foreground mx-auto mb-4" />
               <h3 className="font-semibold mb-2">No se encontraron resultados</h3>
               <p className="text-muted-foreground text-sm">
-                Intenta buscar nombres de clientes, números de venta o nombres de productos
+                Intenta buscar DNI, nombres de clientes, números de venta o nombres de productos
               </p>
             </div>
           ) : (

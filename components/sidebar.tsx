@@ -65,12 +65,12 @@ export function Sidebar({ className }: SidebarProps) {
       href: '/sales',
       prefetch: prefetchSales
     },
-    {
-      title: 'Calendario',
-      icon: Calendar,
-      href: '/calendar',
-      prefetch: prefetchCalendar
-    },
+    //{
+    //  title: 'Calendario',
+    //  icon: Calendar,
+    //  href: '/calendar',
+    //  prefetch: prefetchCalendar
+    //},
     // {
     //   title: 'Analytics',
     //   icon: BarChart3,
@@ -121,10 +121,11 @@ export function Sidebar({ className }: SidebarProps) {
           </Button>
         </div>
 
-        {/* Search Bar */}
+        {/* Search Bar 
         <div className="px-3 py-4 border-b">
           <SearchTrigger onOpenSearch={handleOpenSearch} collapsed={collapsed} />
         </div>
+        */}
 
         {/* Navigation */}
         <ScrollArea className="flex-1 px-3 py-4">

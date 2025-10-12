@@ -15,17 +15,18 @@ import { Plus, CreditCard, TrendingUp, DollarSign, Calendar, Database, AlertTria
 import type { Sale, Product, SaleFormData } from '@/lib/database-operations';
 import { useDataCache, usePrefetch } from '@/hooks/use-data-cache';
 
+
 export default function SalesPage() {
   const searchParams = useSearchParams();
   const highlightId = searchParams.get('highlight');
   const installmentDashboardRef = useRef<InstallmentDashboardRef>(null);
   const tabParam = searchParams.get('tab');
   const [sales, setSales] = useState<Sale[]>([]);
-  const [overdueSales, setOverdueSales] = useState<Sale[]>([]);
+  const [overdueSales, setOverdueSales] = useState<number>(0);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | undefined>();
   const [isElectron] = useState(() => typeof window !== 'undefined' && !!window.electronAPI);
-  const [activeTab, setActiveTab] = useState(tabParam || 'sales');
+  const [activeTab, setActiveTab] = useState(() => tabParam || 'sales');
   const [isLoading, setIsLoading] = useState(false); // Start with false for optimistic navigation
   const [searchTerm, setSearchTerm] = useState('');
   const [salesFilters, setSalesFilters] = useState<SalesFilters>({
@@ -62,7 +63,7 @@ export default function SalesPage() {
         // No cache, show loading
         setIsLoading(true);
       }
-      
+
       // Load data in background
       loadSales();
       loadOverdueSales();
@@ -118,10 +119,11 @@ export default function SalesPage() {
         const element = document.getElementById(`venta-${highlightedSale.id}`);
         if (element) {
           element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          element.classList.add('ring-2', 'ring-primary', 'ring-offset-2');
+          // Nuevo efecto: pulso suave del fondo
+          element.classList.add('bg-primary/10', 'animate-pulse');
           setTimeout(() => {
-            element.classList.remove('ring-2', 'ring-primary', 'ring-offset-2');
-          }, 3000);
+            element.classList.remove('bg-primary/10', 'animate-pulse');
+          }, 1500);
         }
       }, 100);
     }
@@ -134,7 +136,7 @@ export default function SalesPage() {
       // Check cache first and display immediately if available
       const cachedData = dataCache.getCachedSales(currentPage, pageSize, searchTerm);
       const isCacheExpired = dataCache.isSalesCacheExpired(currentPage, pageSize, searchTerm);
-      
+
       if (cachedData && !forceRefresh) {
         // Show cached data immediately
         setSales(cachedData.items);
@@ -145,7 +147,7 @@ export default function SalesPage() {
           pageSize: cachedData.pageSize
         });
         setIsLoading(false);
-        
+
         // If cache is not expired, we're done
         if (!isCacheExpired) {
           // Prefetch other pages in background
@@ -162,9 +164,9 @@ export default function SalesPage() {
           setIsLoading(true);
         }
       }
-      
+
       const result = await window.electronAPI.database.sales.getPaginated(currentPage, pageSize, searchTerm);
-      
+
       setSales(result.sales);
       setPaginationInfo({
         total: result.total,
@@ -172,7 +174,7 @@ export default function SalesPage() {
         currentPage: result.currentPage,
         pageSize: result.pageSize || pageSize
       });
-      
+
       // Cache the result
       dataCache.setCachedSales(currentPage, pageSize, searchTerm, {
         items: result.sales,
@@ -183,13 +185,13 @@ export default function SalesPage() {
         searchTerm,
         timestamp: Date.now()
       });
-      
+
       // Prefetch other pages in background
       setTimeout(() => {
         prefetchCustomers();
         prefetchProducts();
       }, 100);
-      
+
     } catch (error) {
       console.error('Error cargando ventas:', error);
     } finally {
@@ -199,10 +201,15 @@ export default function SalesPage() {
 
   const loadOverdueSales = async () => {
     try {
-      const overdue = await window.electronAPI.database.sales.getOverdueSales();
-      setOverdueSales(overdue);
+      if (!isElectron || !window.electronAPI?.database?.sales?.getOverdueSalesCount) {
+        setOverdueSales(0);
+        return;
+      }
+      const overdueCount = await window.electronAPI.database.sales.getOverdueSalesCount();
+      setOverdueSales(overdueCount ?? 0);
     } catch (error) {
       console.error('Error cargando pagos atrasados:', error);
+      setOverdueSales(0);
     }
   };
 
@@ -221,17 +228,17 @@ export default function SalesPage() {
         // Create new sale
         await window.electronAPI.database.sales.create(saleData);
       }
-      
+
       // Clear cache and force refresh to ensure fresh data is loaded
       dataCache.invalidateCache('sales');
       await loadSales(true);
       await loadOverdueSales();
-      
+
       // Refresh installment dashboard if it exists
-       if (installmentDashboardRef.current) {
-         installmentDashboardRef.current.refreshData();
-       }
-      
+      if (installmentDashboardRef.current) {
+        installmentDashboardRef.current.refreshData();
+      }
+
       // Close form and reset editing state after successful save and reload
       setEditingSale(undefined);
       setIsFormOpen(false);
@@ -253,17 +260,17 @@ export default function SalesPage() {
       dataCache.invalidateCache('sales');
       await loadSales();
       await loadOverdueSales();
-      
+
       // Refresh installment dashboard if it exists
       if (installmentDashboardRef.current) {
         installmentDashboardRef.current.refreshData();
       }
-      
+
       // Refresh installment dashboard if it exists
       if (installmentDashboardRef.current) {
         installmentDashboardRef.current.refreshData();
       }
-      
+
       // Refresh installment dashboard if it exists
       if (installmentDashboardRef.current) {
         installmentDashboardRef.current.refreshData();
@@ -328,12 +335,12 @@ export default function SalesPage() {
       // First, get existing customers and products
       const customers = await window.electronAPI.database.customers.getAll();
       const products = await window.electronAPI.database.products.getAll();
-      
+
       if (customers.length === 0) {
         console.error('No customers found. Please add customers first.');
         return;
       }
-      
+
       if (products.length === 0) {
         console.error('No products found. Please add products first.');
         return;
@@ -432,10 +439,9 @@ export default function SalesPage() {
               discount_per_item: 0
             }
           ],
-          payment_type: 'mixed',
+          payment_type: 'cash',
           tax_amount: 0,
           discount_amount: 15000,
-          notes: 'Pago mixto - Efectivo y tarjeta'
         },
         {
           customer_id: customers[5]?.id || 6,
@@ -496,12 +502,12 @@ export default function SalesPage() {
       for (const saleData of mockSales) {
         await window.electronAPI.database.sales.create(saleData);
       }
-      
+
       // Clear cache and reload data
       dataCache.invalidateCache('sales');
       await loadSales(true);
       await loadOverdueSales();
-      
+
       console.log('Mock sales added successfully');
     } catch (error) {
       console.error('Error adding mock sales:', error);
@@ -513,7 +519,7 @@ export default function SalesPage() {
     totalSales: sales.length,
     totalRevenue: sales.reduce((sum, sale) => sum + sale.total_amount, 0),
     installmentSales: sales.filter(sale => sale.payment_type === 'installments').length,
-    overdueSales: overdueSales.length,
+    overdueSales: overdueSales,
     paidSales: sales.filter(sale => sale.payment_status === 'paid').length,
     pendingSales: sales.filter(sale => sale.payment_status === 'unpaid' || sale.payment_status === 'partial').length
   };
@@ -544,103 +550,103 @@ export default function SalesPage() {
         }} className="space-y-6">
           <TabsList>
             <TabsTrigger value="sales">Todas las ventas</TabsTrigger>
-            <TabsTrigger value="installments">Cuotas</TabsTrigger>
+            <TabsTrigger className="text-muted-foreground" onClick={(e) => e.preventDefault()} value="proximamente">Proximamente</TabsTrigger>
           </TabsList>
 
           <TabsContent value="sales" className="space-y-4">
-                    <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">Ventas</h1>
-              <p className="text-muted-foreground">
-                Acá podes gestionar todas tus ventas, crear nuevas, editar o eliminar las existentes. Ademas de seguir el estado de los pagos y planes de cuotas.
-              </p>
+            <div className="mb-8">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-3xl font-bold tracking-tight">Ventas</h1>
+                  <p className="text-muted-foreground">
+                    Acá podes gestionar todas tus ventas, crear nuevas, editar o eliminar las existentes. Ademas de seguir el estado de los pagos y planes de cuotas.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={handleAddSale}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Nueva venta
+                  </Button>
+                  <Button
+                    onClick={addMockSales}
+                    variant="outline"
+                    className="gap-2"
+                  >
+                    <Database className="h-4 w-4" />
+                    Cargar Datos de Prueba
+                  </Button>
+                </div>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <Button onClick={handleAddSale}>
-                <Plus className="mr-2 h-4 w-4" />
-                Nueva venta
-              </Button>
-              <Button 
-                onClick={addMockSales} 
-                variant="outline" 
-                className="gap-2"
-              >
-                <Database className="h-4 w-4" />
-                Cargar Datos de Prueba
-              </Button>
+
+            {/* Statistics Cards */}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm font-medium">Ventas</CardTitle>
+                    <CreditCard className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{stats.totalSales}</div>
+                  <div className="flex items-center text-xs text-muted-foreground">
+                    <TrendingUp className="h-3 w-3 mr-1 text-blue-500" />
+                    Total de ventas registradas
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm font-medium">Ganancias totales</CardTitle>
+                    <DollarSign className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    ${stats.totalRevenue.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+                  </div>
+                  <div className="flex items-center text-xs text-muted-foreground">
+                    <DollarSign className="h-3 w-3 mr-1 text-green-500" />
+                    Ganancias totales de todas las ventas
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm font-medium">Ventas en cuotas</CardTitle>
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{stats.installmentSales}</div>
+                  <div className="flex items-center text-xs text-muted-foreground">
+                    <Calendar className="h-3 w-3 mr-1 text-purple-500" />
+                    Ventas con planes de cuotas activas
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm font-medium">Cuotas atrasadas</CardTitle>
+                    <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-red-600">{stats.overdueSales}</div>
+                  <div className="flex items-center text-xs text-muted-foreground">
+                    <AlertTriangle className="h-3 w-3 mr-1 text-red-500" />
+                    Cuotas con pagos atrasados, revisar planes de cuotas
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-          </div>
-        </div>
-            
-        {/* Statistics Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Ventas</CardTitle>
-                <CreditCard className="h-4 w-4 text-muted-foreground" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalSales}</div>
-              <div className="flex items-center text-xs text-muted-foreground">
-                <TrendingUp className="h-3 w-3 mr-1 text-blue-500" />
-                Total de ventas registradas
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Ganancias totales</CardTitle>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                ${stats.totalRevenue.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
-              </div>
-              <div className="flex items-center text-xs text-muted-foreground">
-                <DollarSign className="h-3 w-3 mr-1 text-green-500" />
-                Ganancias totales de todas las ventas
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Ventas en cuotas</CardTitle>
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.installmentSales}</div>
-              <div className="flex items-center text-xs text-muted-foreground">
-                <Calendar className="h-3 w-3 mr-1 text-purple-500" />
-                Ventas con planes de cuotas activas
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Cuotas atrasadas</CardTitle>
-                <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-600">{stats.overdueSales}</div>
-              <div className="flex items-center text-xs text-muted-foreground">
-                <AlertTriangle className="h-3 w-3 mr-1 text-red-500" />
-                Cuotas con pagos atrasados, revisar planes de cuotas
-              </div>
-            </CardContent>
-          </Card>
-        </div>
             <SalesFiltersComponent
               filters={salesFilters}
               onFiltersChange={setSalesFilters}
@@ -666,15 +672,15 @@ export default function SalesPage() {
 
           <TabsContent value="installments" className="-m-8">
             <div className="px-8">
-              <InstallmentDashboard 
+              <InstallmentDashboard
                 ref={installmentDashboardRef}
                 highlightId={highlightId}
-                onRefresh={() => { 
+                onRefresh={() => {
                   dataCache.invalidateCache('sales');
-                  loadSales(); 
-                  loadOverdueSales(); 
+                  loadSales();
+                  loadOverdueSales();
                   setRefreshCounter(prev => prev + 1);
-                }} 
+                }}
               />
             </div>
           </TabsContent>

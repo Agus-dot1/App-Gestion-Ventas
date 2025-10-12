@@ -7,13 +7,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
-import { Calendar } from '@/components/ui/calendar';
 import { Separator } from '@/components/ui/separator';
-import { Filter, X, Calendar as CalendarIcon, SortAsc, SortDesc, RotateCcw } from 'lucide-react';
+import { Filter, SortAsc, SortDesc, RotateCcw } from 'lucide-react';
 import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 import type { Customer } from '@/lib/database-operations';
-import { cn } from '@/lib/utils';
 import { AdvancedSearch, searchCustomersWithFuzzy } from './advanced-search';
 
 export interface CustomerFilters {
@@ -36,45 +33,13 @@ interface CustomerFiltersProps {
 }
 
 export function CustomerFiltersComponent({ filters, onFiltersChange, customers, onCustomerSelect }: CustomerFiltersProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
-  // Get unique tags from all customers
-  const availableTags = Array.from(
-    new Set(
-      customers
-        .flatMap(customer => customer.tags?.split(',').map(tag => tag.trim()) || [])
-        .filter(tag => tag.length > 0)
-    )
-  ).sort();
-
-  const updateFilters = (updates: Partial<CustomerFilters>) => {
-    onFiltersChange({ ...filters, ...updates });
+  const updateFilters = (updated: Partial<CustomerFilters>) => {
+    onFiltersChange({ ...filters, ...updated });
   };
 
-  const resetFilters = () => {
-    onFiltersChange({
-      search: '',
-      sortBy: 'name',
-      sortOrder: 'asc',
-      tags: [],
-      hasEmail: null,
-      hasPhone: null,
-      hasCompany: null,
-      createdAfter: null,
-      createdBefore: null
-    });
-    setDateRange({});
-  };
-
-  const toggleTag = (tag: string) => {
-    const newTags = filters.tags.includes(tag)
-      ? filters.tags.filter(t => t !== tag)
-      : [...filters.tags, tag];
-    updateFilters({ tags: newTags });
-  };
-
-  const activeFiltersCount = [
+  const selectedFiltersCount = [
     filters.search,
     filters.tags.length > 0,
     filters.hasEmail !== null,
@@ -149,6 +114,7 @@ export function CustomerFiltersComponent({ filters, onFiltersChange, customers, 
           </SelectContent>
         </Select>
 
+        {/* Sort Order Toggle */}
         <Button
           variant="outline"
           size="sm"
@@ -156,190 +122,123 @@ export function CustomerFiltersComponent({ filters, onFiltersChange, customers, 
         >
           {filters.sortOrder === 'asc' ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />}
         </Button>
-       </div>
 
-       {/* Advanced Filters */}
-      <Popover open={isOpen} onOpenChange={setIsOpen}>
-        <PopoverTrigger asChild>
-          <Button variant="outline" className="relative">
-            <Filter className="h-4 w-4 mr-2" />
-            Filtros
-            {activeFiltersCount > 0 && (
-              <Badge variant="secondary" className="ml-2 h-5 w-5 p-0 text-xs">
-                {activeFiltersCount}
-              </Badge>
-            )}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-[calc(100vw-2rem)] md:w-80" align="end">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="font-medium">Filtros avanzados</h4>
-              <Button variant="ghost" size="sm" onClick={resetFilters}>
-                <RotateCcw className="h-4 w-4 mr-1" />
-                Limpiar
-              </Button>
-            </div>
-
-            <Separator />
-
-            {/* Contact Info Filters */}
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">Información de contacto</Label>
+        {/* Filters Popover */}
+        <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="outline" className="gap-2">
+              <Filter className="h-4 w-4" />
+              Filtros
+              {selectedFiltersCount > 0 && (
+                <Badge variant="secondary" className="ml-2">{selectedFiltersCount}</Badge>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[min(90vw,640px)]">
+            <div className="space-y-4">
+              {/* Tags */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Tiene email</span>
-                  <Select
-                    value={filters.hasEmail === null ? 'all' : filters.hasEmail ? 'yes' : 'no'}
-                    onValueChange={(value) => 
-                      updateFilters({ 
-                        hasEmail: value === 'all' ? null : value === 'yes' 
-                      })
-                    }
-                  >
-                    <SelectTrigger className="w-20">
+                <Label>Etiquetas</Label>
+                <Input
+                  value={filters.tags.join(', ')}
+                  onChange={(e) => updateFilters({ tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean) })}
+                  placeholder="Etiquetas (separadas por coma)"
+                />
+              </div>
+
+              {/* Other filters */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Tiene email</Label>
+                  <Select value={String(filters.hasEmail)} onValueChange={(value) => updateFilters({ hasEmail: value === 'true' ? true : value === 'false' ? false : null })}>
+                    <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      <SelectItem value="yes">Sí</SelectItem>
-                      <SelectItem value="no">No</SelectItem>
+                      <SelectItem value="null">Cualquiera</SelectItem>
+                      <SelectItem value="true">Sí</SelectItem>
+                      <SelectItem value="false">No</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Tiene teléfono</span>
-                  <Select
-                    value={filters.hasPhone === null ? 'all' : filters.hasPhone ? 'yes' : 'no'}
-                    onValueChange={(value) => 
-                      updateFilters({ 
-                        hasPhone: value === 'all' ? null : value === 'yes' 
-                      })
-                    }
-                  >
-                    <SelectTrigger className="w-20">
+                <div>
+                  <Label>Tiene teléfono</Label>
+                  <Select value={String(filters.hasPhone)} onValueChange={(value) => updateFilters({ hasPhone: value === 'true' ? true : value === 'false' ? false : null })}>
+                    <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      <SelectItem value="yes">Sí</SelectItem>
-                      <SelectItem value="no">No</SelectItem>
+                      <SelectItem value="null">Cualquiera</SelectItem>
+                      <SelectItem value="true">Sí</SelectItem>
+                      <SelectItem value="false">No</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Tiene empresa</span>
-                  <Select
-                    value={filters.hasCompany === null ? 'all' : filters.hasCompany ? 'yes' : 'no'}
-                    onValueChange={(value) => 
-                      updateFilters({ 
-                        hasCompany: value === 'all' ? null : value === 'yes' 
-                      })
-                    }
-                  >
-                    <SelectTrigger className="w-20">
+                <div>
+                  <Label>Tiene empresa</Label>
+                  <Select value={String(filters.hasCompany)} onValueChange={(value) => updateFilters({ hasCompany: value === 'true' ? true : value === 'false' ? false : null })}>
+                    <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      <SelectItem value="yes">Sí</SelectItem>
-                      <SelectItem value="no">No</SelectItem>
+                      <SelectItem value="null">Cualquiera</SelectItem>
+                      <SelectItem value="true">Sí</SelectItem>
+                      <SelectItem value="false">No</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
-            </div>
 
-            <Separator />
-
-            {/* Tags Filter */}
-            {availableTags.length > 0 && (
-              <>
-                <div className="space-y-3">
-                  <Label className="text-sm font-medium">Etiquetas</Label>
-                  <div className="flex flex-wrap gap-1">
-                    {availableTags.map(tag => (
-                      <Badge
-                        key={tag}
-                        variant={filters.tags.includes(tag) ? 'default' : 'outline'}
-                        className="cursor-pointer"
-                        onClick={() => toggleTag(tag)}
-                      >
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
+              {/* Date range */}
+              <Separator />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Creado después de</Label>
+                  <Input
+                    type="date"
+                    value={filters.createdAfter ? format(filters.createdAfter, 'yyyy-MM-dd') : ''}
+                    onChange={(e) => updateFilters({ createdAfter: e.target.value ? new Date(e.target.value) : null })}
+                  />
                 </div>
-                <Separator />
-              </>
-            )}
+                <div>
+                  <Label>Creado antes de</Label>
+                  <Input
+                    type="date"
+                    value={filters.createdBefore ? format(filters.createdBefore, 'yyyy-MM-dd') : ''}
+                    onChange={(e) => updateFilters({ createdBefore: e.target.value ? new Date(e.target.value) : null })}
+                  />
+                </div>
+              </div>
 
-            {/* Date Range Filter */}
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">Fecha de creación</Label>
-              <div className="grid grid-cols-2 gap-2">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "justify-start text-left font-normal",
-                        !filters.createdAfter && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {filters.createdAfter ? (
-                        format(filters.createdAfter, "dd/MM/yyyy", { locale: es })
-                      ) : (
-                        "Desde"
-                      )}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={filters.createdAfter || undefined}
-                      onSelect={(date) => updateFilters({ createdAfter: date || null })}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "justify-start text-left font-normal",
-                        !filters.createdBefore && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {filters.createdBefore ? (
-                        format(filters.createdBefore, "dd/MM/yyyy", { locale: es })
-                      ) : (
-                        "Hasta"
-                      )}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={filters.createdBefore || undefined}
-                      onSelect={(date) => updateFilters({ createdBefore: date || null })}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
+              {/* Actions */}
+              <div className="flex justify-between items-center">
+                <Button variant="outline" className="gap-2" onClick={() => {
+                  updateFilters({
+                    search: '',
+                    sortBy: 'name',
+                    sortOrder: 'asc',
+                    tags: [],
+                    hasEmail: null,
+                    hasPhone: null,
+                    hasCompany: null,
+                    createdAfter: null,
+                    createdBefore: null,
+                  });
+                  setIsFilterOpen(false);
+                }}>
+                  <RotateCcw className="h-4 w-4" />
+                  Restablecer
+                </Button>
+                <Button onClick={() => setIsFilterOpen(false)}>Aplicar</Button>
               </div>
             </div>
-          </div>
-        </PopoverContent>
-      </Popover>
+          </PopoverContent>
+        </Popover>
+      </div>
     </div>
   );
 }
 
-// Helper function to apply filters to customers
 export function applyCustomerFilters(customers: Customer[], filters: CustomerFilters): Customer[] {
   let filtered = [...customers];
 
@@ -348,42 +247,42 @@ export function applyCustomerFilters(customers: Customer[], filters: CustomerFil
     filtered = searchCustomersWithFuzzy(filtered, filters.search);
   }
 
-  // Contact info filters
-  if (filters.hasEmail !== null) {
-    filtered = filtered.filter(customer => 
-      filters.hasEmail ? !!customer.email : !customer.email
-    );
-  }
-  if (filters.hasPhone !== null) {
-    filtered = filtered.filter(customer => 
-      filters.hasPhone ? !!customer.phone : !customer.phone
-    );
-  }
-  if (filters.hasCompany !== null) {
-    filtered = filtered.filter(customer => 
-      filters.hasCompany ? !!customer.company : !customer.company
-    );
-  }
-
   // Tags filter
   if (filters.tags.length > 0) {
-    filtered = filtered.filter(customer => {
-      const customerTags = customer.tags?.split(',').map(tag => tag.trim()) || [];
+    filtered = filtered.filter(c => {
+      const customerTags = c.tags?.split(',').map(t => t.trim()) || [];
       return filters.tags.some(tag => customerTags.includes(tag));
     });
   }
 
-  // Date range filter
+  // hasEmail filter
+  if (filters.hasEmail !== null) {
+    filtered = filtered.filter(c => (filters.hasEmail ? !!c.email : !c.email));
+  }
+
+  // hasPhone filter
+  if (filters.hasPhone !== null) {
+    filtered = filtered.filter(c => (filters.hasPhone ? !!c.phone : !c.phone));
+  }
+
+  // hasCompany filter
+  if (filters.hasCompany !== null) {
+    filtered = filtered.filter(c => (filters.hasCompany ? !!c.company : !c.company));
+  }
+
+  // date range
   if (filters.createdAfter) {
-    filtered = filtered.filter(customer => {
-      if (!customer.created_at) return false;
-      return new Date(customer.created_at) >= filters.createdAfter!;
+    filtered = filtered.filter(c => {
+      if (!c.created_at) return false;
+      const created = new Date(c.created_at);
+      return created >= filters.createdAfter!;
     });
   }
   if (filters.createdBefore) {
-    filtered = filtered.filter(customer => {
-      if (!customer.created_at) return false;
-      return new Date(customer.created_at) <= filters.createdBefore!;
+    filtered = filtered.filter(c => {
+      if (!c.created_at) return false;
+      const created = new Date(c.created_at);
+      return created <= filters.createdBefore!;
     });
   }
 

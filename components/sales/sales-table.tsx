@@ -50,7 +50,6 @@ export function SalesTable({
 }: SalesTableProps) {
   const [internalSearchTerm, setInternalSearchTerm] = useState('');
   const searchTerm = serverSidePagination ? (externalSearchTerm || '') : internalSearchTerm;
-  const setSearchTerm = serverSidePagination ? (onSearchChange || (() => {})) : setInternalSearchTerm;
   const [deleteSale, setDeleteSale] = useState<Sale | null>(null);
   const [selectedSales, setSelectedSales] = useState<Set<number>>(new Set());
   const [sortConfig, setSortConfig] = useState<{ key: keyof Sale; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
@@ -232,14 +231,12 @@ export function SalesTable({
       cash: 'bg-blue-100 text-blue-800',
       installments: 'bg-purple-100 text-purple-800',
       credit: 'bg-orange-100 text-orange-800',
-      mixed: 'bg-gray-100 text-gray-800'
     } as const;
 
     const typeLabels = {
       cash: 'Efectivo',
       installments: 'Cuotas',
       credit: 'Crédito',
-      mixed: 'Mixto'
     } as const;
 
     return (
@@ -528,7 +525,7 @@ export function SalesTable({
                       key={sale.id} 
                       id={`venta-${sale.id}`}
                       className={cn(
-                        highlightId === sale.id?.toString() && 'bg-muted/50'
+                        highlightId === sale.id?.toString() && 'bg-primary/5'
                       )}
                     >
                       {onBulkDelete && onBulkStatusUpdate && (

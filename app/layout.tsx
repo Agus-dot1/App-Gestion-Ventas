@@ -19,7 +19,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
-      <body className={inter.className}>
+      <body className="antialiased">
         <DataCacheProvider>
           <Suspense fallback={<div>Loading...</div>}>
             {children}

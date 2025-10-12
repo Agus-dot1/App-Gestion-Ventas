@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { DashboardSkeleton } from "@/components/skeletons/dashboard-skeleton";
 import { useRoutePrefetch } from "@/hooks/use-route-prefetch";
+import { Installment } from "@/lib/database-operations";
 import { 
   Activity, 
   CreditCard, 
@@ -25,9 +26,9 @@ import {
   ArrowUpRight,
   ArrowDownRight
 } from "lucide-react";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+
 import type { Sale as DatabaseSale } from "@/lib/database-operations";
+import Link from 'next/link';
 // Types for the dashboard data
 type Sale = DatabaseSale & {
   customer_name?: string;
@@ -57,6 +58,7 @@ export default function Home() {
   });
   const [recentSales, setRecentSales] = useState<Sale[]>([]);
   const [recentCustomers, setRecentCustomers] = useState<Customer[]>([]);
+  const [upcomingInstallments, setUpcomingInstallments] = useState<Array<Installment & { customer_name: string; sale_number: string; status: string }>>([]);
   const [chartData, setChartData] = useState<Array<{date: string, sales: number, revenue: number}>>([]);
   const [statsComparison, setStatsComparison] = useState<{
     sales: {current: number, previous: number, percentage: number},
@@ -69,6 +71,10 @@ export default function Home() {
   useEffect(() => {
     if (isElectron) {
       loadStats();
+      // Prefetch common lists early to make navigation instant
+      setTimeout(() => {
+        prefetchAllRoutes();
+      }, 200);
     }
   }, []);
 
@@ -77,13 +83,14 @@ export default function Home() {
     try {
       if (window.electronAPI) {
          // Use optimized count methods and get recent data
-         const [totalCustomers, totalProducts, totalSales, totalRevenue, recentSalesData, recentCustomersData, salesChartData, salesComparison, customersComparison, productsComparison] = await Promise.all([
+         const [totalCustomers, totalProducts, totalSales, totalRevenue, recentSalesData, recentCustomersData, upcomingInstallmentsData, salesChartData, salesComparison, customersComparison, productsComparison] = await Promise.all([
            window.electronAPI.database.customers.getCount(),
            window.electronAPI.database.products.getCount(),
            window.electronAPI.database.sales.getCount(),
            window.electronAPI.database.sales.getTotalRevenue(),
            window.electronAPI.database.sales.getRecent(5),
            window.electronAPI.database.customers.getRecent(5),
+           window.electronAPI.database.installments.getUpcoming(5),
            window.electronAPI.database.sales.getSalesChartData(30),
            window.electronAPI.database.sales.getStatsComparison(),
            window.electronAPI.database.customers.getMonthlyComparison(),
@@ -98,6 +105,7 @@ export default function Home() {
          });
          setRecentSales(recentSalesData);
          setRecentCustomers(recentCustomersData);
+         setUpcomingInstallments(upcomingInstallmentsData);
          setChartData(salesChartData);
          
          // Calculate percentage changes
@@ -161,23 +169,6 @@ export default function Home() {
     setIsRefreshing(true);
     await loadStats();
     setIsRefreshing(false);
-  };
-
-  const handleQuickAction = (action: string) => {
-    switch (action) {
-      case 'add-customer':
-        router.push('/customers');
-        break;
-      case 'create-sale':
-        router.push('/sales');
-        break;
-      case 'add-product':
-        router.push('/products');
-        break;
-      case 'calendar':
-        router.push('/calendar');
-        break;
-    }
   };
 
   if (isLoading) {
@@ -363,10 +354,11 @@ export default function Home() {
               ) : (
                 <div className="space-y-4">
                   {recentSales.length > 0 ? (
-                    recentSales.slice(0, 3).map((sale, index) => (
-                      <div 
+                    recentSales.slice(0, 4).map((sale, index) => (
+                      <Link 
+                        href={`/sales?highlight=${sale.id}`}
                         key={sale.id} 
-                        className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted/50 transition-all duration-200 hover:scale-[1.01] animate-in fade-in-50 slide-in-from-left-4"
+                        className="flex items-center gap-4 p-3 rounded-lg cursor-pointer hover:bg-muted/50 transition-all duration-200 hover:scale-[1.01] animate-in fade-in-50 slide-in-from-left-4"
                         style={{ animationDelay: `${index * 100}ms` }}
                       >
                         <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></div>
@@ -387,7 +379,7 @@ export default function Home() {
                         <p className="text-xs text-muted-foreground">
                           {new Date(sale.created_at || sale.date).toLocaleDateString('es-ES')}
                         </p>
-                      </div>
+                      </Link>
                     ))
                   ) : (
                     <div className="text-center py-4 text-muted-foreground">
@@ -421,74 +413,88 @@ export default function Home() {
               )}
             </CardContent>
           </Card>
-
+          {/*
           <Card className="col-span-full lg:col-span-3 hover:shadow-lg transition-shadow duration-300">
             <CardHeader>
-              <CardTitle>Acciones rápidas</CardTitle>
+              <CardTitle>Próximas cuotas</CardTitle>
               <CardDescription>
-                Accesos directos a las funciones más utilizadas.
+                Cuotas pendientes que vencen próximamente.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                <Button 
-                  onClick={() => handleQuickAction('add-customer')}
-                  variant="outline" 
-                  className="w-full justify-start gap-3 h-auto p-4  hover:shadow-md transition-all duration-200 ease-in-out"
-                >
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <UserPlus className="h-4 w-4 text-blue-600" />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-sm font-medium">Añadir cliente</p>
-                    <p className="text-xs text-muted-foreground">Registrar un nuevo cliente</p>
-                  </div>
-                </Button>
-                
-                <Button 
-                  onClick={() => handleQuickAction('create-sale')}
-                  variant="outline" 
-                  className="w-full justify-start gap-3 h-auto p-4  hover:shadow-md transition-all duration-200 ease-in-out"
-                >
-                  <div className="p-2 bg-green-100 rounded-lg">
-                    <ShoppingCart className="h-4 w-4 text-green-600" />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-sm font-medium">Crear una venta</p>
-                    <p className="text-xs text-muted-foreground">Registra una nueva venta</p>
-                  </div>
-                </Button>
-                
-                <Button 
-                  onClick={() => handleQuickAction('add-product')}
-                  variant="outline" 
-                  className="w-full justify-start gap-3 h-auto p-4  hover:shadow-md transition-all duration-200 ease-in-out"
-                >
-                  <div className="p-2 bg-purple-100 rounded-lg">
-                    <Package className="h-4 w-4 text-purple-600" />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-sm font-medium">Añadir producto</p>
-                    <p className="text-xs text-muted-foreground">Actualiza tu inventario</p>
-                  </div>
-                </Button>
-                
-                <Button 
-                  onClick={() => handleQuickAction('calendar')}
-                  variant="outline" 
-                  className="w-full justify-start gap-3 h-auto p-4  hover:shadow-md transition-all duration-200 ease-in-out"
-                >
-                  <div className="p-2 bg-orange-100 rounded-lg">
-                    <Calendar className="h-4 w-4 text-orange-600" />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-sm font-medium">Ver calendario</p>
-                    <p className="text-xs text-muted-foreground">Gestionar cuotas y eventos</p>
-                  </div>
-                </Button>
-              </div>
+              {isLoading ? (
+                <div className="space-y-4">
+                  {[...Array(3)].map((_, i) => (
+                    <div key={i} className="flex items-center gap-4">
+                      <Skeleton className="w-2 h-2 rounded-full" />
+                      <div className="flex-1 space-y-1">
+                        <Skeleton className="h-4 w-48" />
+                        <Skeleton className="h-3 w-32" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {upcomingInstallments.length > 0 ? (
+                    upcomingInstallments.map((installment, index) => (
+                      <div 
+                        key={installment.id} 
+                        className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted/50 transition-all duration-200 hover:scale-[1.01] animate-in fade-in-50 slide-in-from-left-4"
+                        style={{ animationDelay: `${index * 100}ms` }}
+                      >
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                          new Date(installment.due_date) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) 
+                            ? 'bg-orange-500' 
+                            : 'bg-blue-500'
+                        }`}></div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">
+                            {installment.customer_name} - Venta #{installment.sale_number}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs text-muted-foreground">
+                              ${installment.balance.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+                            </p>
+                            <Badge variant={
+                              new Date(installment.due_date) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) 
+                                ? 'destructive' 
+                                : 'secondary'
+                            } className="text-xs">
+                              {new Date(installment.due_date) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) 
+                                ? 'Vence pronto' 
+                                : 'Pendiente'}
+                            </Badge>
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(installment.due_date).toLocaleDateString('es-ES')}
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-4 text-muted-foreground">
+                      <CreditCard className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">No hay cuotas próximas</p>
+                    </div>
+                  )}
+                  {upcomingInstallments.length > 0 && (
+                    <div className="pt-2 border-t">
+                      <Button 
+                        onClick={() => router.push('/sales')}
+                        variant="ghost" 
+                        size="sm"
+                        className="w-full text-xs"
+                      >
+                        Ver todas las cuotas
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
+           */}
         </div>
       </div>
     </DashboardLayout>
