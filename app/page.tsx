@@ -358,7 +358,7 @@ export default function Home() {
                       <Link 
                         href={`/sales?highlight=${sale.id}`}
                         key={sale.id} 
-                        className="flex items-center gap-4 p-3 rounded-lg cursor-pointer hover:bg-muted/50 transition-all duration-200 hover:scale-[1.01] animate-in fade-in-50 slide-in-from-left-4"
+                        className="flex items-center gap-4 p-3 rounded-lg cursor-pointer hover:bg-muted/50 transition-all duration-200 animate-in fade-in-50 slide-in-from-left-4"
                         style={{ animationDelay: `${index * 100}ms` }}
                       >
                         <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></div>
@@ -391,7 +391,7 @@ export default function Home() {
                     recentCustomers.slice(0, 2).map((customer, index) => (
                       <div 
                         key={customer.id || `customer-${index}`} 
-                        className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted/50 transition-all duration-200 hover:scale-[1.01] animate-in fade-in-50 slide-in-from-left-4"
+                        className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted/50 transition-all duration-200 animate-in fade-in-50 slide-in-from-left-4"
                         style={{ animationDelay: `${(index + 3) * 100}ms` }}
                       >
                         <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
@@ -413,7 +413,6 @@ export default function Home() {
               )}
             </CardContent>
           </Card>
-          {/*
           <Card className="col-span-full lg:col-span-3 hover:shadow-lg transition-shadow duration-300">
             <CardHeader>
               <CardTitle>Próximas cuotas</CardTitle>
@@ -440,7 +439,7 @@ export default function Home() {
                     upcomingInstallments.map((installment, index) => (
                       <div 
                         key={installment.id} 
-                        className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted/50 transition-all duration-200 hover:scale-[1.01] animate-in fade-in-50 slide-in-from-left-4"
+                        className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted/50 transition-all duration-200 animate-in fade-in-50 slide-in-from-left-4"
                         style={{ animationDelay: `${index * 100}ms` }}
                       >
                         <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
@@ -494,7 +493,6 @@ export default function Home() {
               )}
             </CardContent>
           </Card>
-           */}
         </div>
       </div>
     </DashboardLayout>

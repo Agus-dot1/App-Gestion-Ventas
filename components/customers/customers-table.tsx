@@ -117,7 +117,6 @@ export function EnhancedCustomersTable({
 
   // Client-side filtering and sorting (only when not using server-side pagination)
   const filteredCustomers = serverSidePagination ? customers : customers.filter(customer =>
-    customer.dni?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -222,13 +221,12 @@ export function EnhancedCustomersTable({
       customer.name,
       customer.email || '-',
       customer.phone || '-',
-      customer.dni || 'Sin DNI',
       customer.address || '-'
     ]);
     
     // Add table
     autoTable(doc, {
-      head: [['Nombre', 'Email', 'Teléfono', 'DNI', 'Dirección']],
+      head: [['Nombre', 'Email', 'Teléfono', 'Dirección']],
       body: tableData,
       startY: 30,
       styles: { fontSize: 8 },
@@ -254,7 +252,6 @@ export function EnhancedCustomersTable({
       'Nombre': customer.name,
       'Email': customer.email || '',
       'Teléfono': customer.phone || '',
-      'DNI': customer.dni || '',
       'Dirección': customer.address || '',
       'Notas': customer.notes || '',
       'Etiquetas': customer.tags || ''
@@ -283,7 +280,7 @@ export function EnhancedCustomersTable({
             </div>
             <div className="flex items-center gap-2">
               {selectedCustomers.size > 0 && (
-                <div className="flex items-center gap-2 mr-4">
+                <div className="flex items-center gap-2 mr-4 animate-in slide-in-from-bottom-2 duration-300">
                   <Badge variant="secondary" className="bg-primary/10 text-primary">
                     {selectedCustomers.size} seleccionado{selectedCustomers.size !== 1 ? 's' : ''}
                   </Badge>
@@ -334,8 +331,6 @@ export function EnhancedCustomersTable({
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-
-
               <div className="rounded-md border">
               <Table>
                 <TableHeader>
@@ -360,14 +355,6 @@ export function EnhancedCustomersTable({
                       <Button variant="ghost" onClick={() => handleSort('email')} className="h-auto p-0 font-semibold" disabled={isLoading}>
                         Contacto
                         {sortConfig.key === 'email' && (
-                          sortConfig.direction === 'asc' ? <ChevronUp className="ml-1 h-4 w-4" /> : <ChevronDown className="ml-1 h-4 w-4" />
-                        )}
-                      </Button>
-                    </TableHead>
-                    <TableHead>
-                      <Button variant="ghost" onClick={() => handleSort('dni')} className="h-auto p-0 font-semibold" disabled={isLoading}>
-                        DNI
-                        {sortConfig.key === 'dni' && (
                           sortConfig.direction === 'asc' ? <ChevronUp className="ml-1 h-4 w-4" /> : <ChevronDown className="ml-1 h-4 w-4" />
                         )}
                       </Button>
@@ -437,7 +424,7 @@ export function EnhancedCustomersTable({
                             {customer.name}
                             {highlightId === customer.id?.toString() && (
                               <Badge variant="outline" className="bg-primary/10 text-primary">
-                                Found
+                                Coincidencia
                               </Badge>
                             )}
                           </div>
@@ -454,41 +441,13 @@ export function EnhancedCustomersTable({
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <FileText className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-sm">{customer.dni || 'Sin DNI'}</span>
-                          </div>
-                        </TableCell>
                         <TableCell>{customer.address || '-'}</TableCell>
                         <TableCell className="flex">
-                          <ButtonGroup >
-                            <Button variant="outline"  onClick={() => onView(customer)}>Ver detalles</Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="outline" size="icon" aria-label="More Options">
-                                <MoreHorizontalIcon />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuGroup>
-                                <DropdownMenuItem onClick={() => onEdit(customer)}>
-                                <Edit className="mr-2 h-4 w-4" />
-                                Editar
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem 
-                                onClick={() => setDeleteCustomer(customer)}
-                                className="text-red-600"
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Eliminar
-                              </DropdownMenuItem>
-                              </DropdownMenuGroup>
-                              
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </ButtonGroup>
+                          <ButtonGroup>
+                            <Button variant="outline" size="sm"  onClick={() => onView(customer)}>Ver detalles</Button>
+                            <Button variant="secondary" size="sm" onClick={() => onEdit(customer)}>Editar</Button>
+                            <Button variant="destructive" size="sm" onClick={() => setDeleteCustomer(customer)}>Eliminar</Button>
+                          </ButtonGroup>
                         </TableCell>
                       </TableRow>
                     ))

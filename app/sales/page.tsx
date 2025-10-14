@@ -164,8 +164,10 @@ export default function SalesPage() {
           setIsLoading(true);
         }
       }
-
+      console.time('loadSales_db');
       const result = await window.electronAPI.database.sales.getPaginated(currentPage, pageSize, searchTerm);
+      console.timeEnd('loadSales_db');
+
 
       setSales(result.sales);
       setPaginationInfo({
@@ -550,7 +552,7 @@ export default function SalesPage() {
         }} className="space-y-6">
           <TabsList>
             <TabsTrigger value="sales">Todas las ventas</TabsTrigger>
-            <TabsTrigger className="text-muted-foreground" onClick={(e) => e.preventDefault()} value="proximamente">Proximamente</TabsTrigger>
+            <TabsTrigger value="installments">Cuotas</TabsTrigger>
           </TabsList>
 
           <TabsContent value="sales" className="space-y-4">

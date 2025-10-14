@@ -7,13 +7,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { DashboardLayout } from '@/components/dashboard-layout';
 import { CustomerForm } from '@/components/customers/customer-form';
 import { CustomerProfile } from '@/components/customers/customer-profile';
-import { EnhancedCustomersTable } from '@/components/customers/enhanced-customers-table';
+import { EnhancedCustomersTable } from '@/components/customers/customers-table';
 import { CustomersSkeleton } from '@/components/skeletons/customers-skeleton';
 import { Plus, Users, TrendingUp, Calendar, Database } from 'lucide-react';
 import type { Customer } from '@/lib/database-operations';
 import { useDataCache, usePrefetch } from '@/hooks/use-data-cache';
-import { useIsMobile } from '@/hooks/use-mobile';
-import { CustomerQuickViewDrawer } from '@/components/customers/customer-quick-view-drawer';
 
 export default function CustomersPage() {
   const searchParams = useSearchParams();
@@ -22,7 +20,6 @@ export default function CustomersPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | undefined>();
   const [viewingCustomer, setViewingCustomer] = useState<Customer | undefined>();
-  const isMobile = useIsMobile();
   const [isElectron] = useState(() => typeof window !== 'undefined' && !!window.electronAPI);
   const [isLoading, setIsLoading] = useState(false); // Start with false for optimistic navigation
   const [searchTerm, setSearchTerm] = useState('');
@@ -35,7 +32,7 @@ export default function CustomersPage() {
     pageSize: 10
   });
   const pageSize = 10; // Load 10 customers per page to match table pagination
-    const dataCache = useDataCache();
+  const dataCache = useDataCache();
   const { prefetchProducts, prefetchSales } = usePrefetch();
 
   useEffect(() => {
@@ -416,32 +413,16 @@ export default function CustomersPage() {
           onSave={handleSaveCustomer}
         />
 
-        {/* Customer Profile Modal or Drawer */}
+        {/* Customer Profile Modal */}
         {viewingCustomer && (
-          <>
-            {!isMobile ? (
-              <CustomerProfile
-                customer={viewingCustomer}
-                onEdit={(customer) => {
-                  setViewingCustomer(undefined);
-                  setEditingCustomer(customer);
-                  setIsFormOpen(true);
-                }}
-                onClose={() => setViewingCustomer(undefined)}
-              />
-            ) : (
-              <CustomerQuickViewDrawer
-                open={!!viewingCustomer}
-                customer={viewingCustomer}
-                onEdit={(customer) => {
-                  setViewingCustomer(undefined);
-                  setEditingCustomer(customer);
-                  setIsFormOpen(true);
-                }}
-                onClose={() => setViewingCustomer(undefined)}
-              />
-            )}
-          </>
+          <CustomerProfile
+            customer={viewingCustomer}
+            onEdit={(customer) => {
+              setEditingCustomer(customer);
+              setIsFormOpen(true);
+            }}
+            onClose={() => setViewingCustomer(undefined)}
+          />
         )}
       </div>
     </DashboardLayout>

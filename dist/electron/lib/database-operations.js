@@ -10,7 +10,6 @@ exports.customerOperations = {
         const stmt = db.prepare('SELECT * FROM customers ORDER BY name');
         return stmt.all();
     },
-    // Optimized pagination function
     getPaginated: (page = 1, pageSize = 10, searchTerm = '') => {
         const db = (0, database_1.getDatabase)();
         const offset = (page - 1) * pageSize;
@@ -27,10 +26,8 @@ exports.customerOperations = {
             const searchPattern = `%${searchTerm.trim()}%`;
             params = [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern];
         }
-        // Get total count for pagination
         const countStmt = db.prepare(`SELECT COUNT(*) as total FROM customers ${whereClause}`);
         const { total } = countStmt.get(...params);
-        // Get paginated results with optimized query
         const stmt = db.prepare(`
       SELECT * FROM customers 
       ${whereClause}
@@ -349,6 +346,8 @@ exports.saleOperations = {
         return stmt.all();
     },
     getPaginated: (page = 1, pageSize = 10, searchTerm = '') => {
+        console.log('getPaginated ejecutándose en el proceso', process.type);
+        console.time('sales_query_total');
         const db = (0, database_1.getDatabase)();
         const offset = (page - 1) * pageSize;
         let whereClause = '';
@@ -376,6 +375,7 @@ exports.saleOperations = {
       LIMIT ? OFFSET ?
     `);
         const sales = stmt.all(...params, pageSize, offset);
+        console.timeEnd('sales_query_total');
         return {
             sales,
             total,
@@ -453,7 +453,7 @@ exports.saleOperations = {
     `);
         const todayCount = todayCountStmt.get(todayStart).count + 1;
         const sequentialNumber = String(todayCount).padStart(3, '0');
-        const saleNumber = `VENTA-${year}${month}${day}-${sequentialNumber}`;
+        const saleNumber = `VENTA-${sequentialNumber}-${year}${month}${day}`;
         // Insert sale
         const saleStmt = db.prepare(`
       INSERT INTO sales (

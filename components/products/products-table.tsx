@@ -17,6 +17,8 @@ import type { Product } from '@/lib/database-operations';
 import { cn } from '@/lib/utils';
 import { DropdownMenuSeparator } from '@radix-ui/react-dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ButtonGroup } from '../ui/button-group';
+import { Toggle } from '../ui/toggle';
 
 interface ProductsTableProps {
   products: Product[];
@@ -316,7 +318,6 @@ export function ProductsTable({
                     <TableHead>Precio</TableHead>
                     <TableHead>Stock</TableHead>
                     <TableHead>Descripción</TableHead>
-                    <TableHead>Estado</TableHead>
                     <TableHead className="w-[70px]">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -378,7 +379,6 @@ export function ProductsTable({
                     <TableHead>Precio</TableHead>
                     <TableHead>Stock</TableHead>
                     <TableHead>Descripción</TableHead>
-                    <TableHead>Estado</TableHead>
                     <TableHead className="w-[70px]">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -444,68 +444,33 @@ export function ProductsTable({
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge 
-                          variant={product.is_active ? 'default' : 'secondary'}
-                          className={cn(
-                            "transition-all duration-200",
-                            product.is_active 
-                              ? 'bg-green-200 text-green-900 hover:bg-green-200 border-green-300' 
-                              : 'bg-gray-100 text-gray-800 hover:bg-gray-200 border-gray-300'
-                          )}
-                        >
-                          {product.is_active ? 'Activo' : 'Inactivo'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button 
-                              variant="ghost" 
-                              className="h-8 w-8 p-0 transition-all duration-200 hover:bg-muted hover:scale-105"
+                          <ButtonGroup>
+                            <Toggle
+                              variant="outline"
+                              size="sm"
+                              pressed={product.is_active}
+                              onPressedChange={(pressed) => onToggleStatus(product.id!, pressed)}
+                              aria-label={product.is_active ? 'Desactivar producto' : 'Activar producto'}
+                              className="w-[120px]"
                             >
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuItem 
-                              onClick={() => onEdit(product)}
-                              className="transition-colors duration-200 hover:bg-blue-50 hover:text-blue-700"
-                            >
-                              <Edit className="mr-2 h-4 w-4" />
-                              Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onClick={() => onToggleStatus(product.id!, !product.is_active)}
-                              className={cn(
-                                "transition-colors duration-200",
-                                product.is_active 
-                                  ? "hover:bg-orange-50 hover:text-orange-700" 
-                                  : "hover:bg-green-50 hover:text-green-700"
-                              )}
-                            >
-                              {product.is_active ? (
-                                <>
-                                  <EyeOff className="mr-2 h-4 w-4" />
-                                  Desactivar
-                                </>
-                              ) : (
-                                <>
-                                  <Eye className="mr-2 h-4 w-4" />
-                                  Activar
-                                </>
-                              )}
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem 
-                              onClick={() => setDeleteProduct(product)}
-                              className="text-red-600 transition-colors duration-200 hover:bg-red-50 hover:text-red-700"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Eliminar
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
+                              <span className="flex items-center gap-1">
+                                {product.is_active ? (
+                                  <>
+                                    <EyeOff className="h-4 w-4" />
+                                    <span>Desactivar</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Eye className="h-4 w-4" />
+                                    <span>Activar</span>
+                                  </>
+                                )}
+                              </span>
+                            </Toggle>
+                            <Button variant="secondary" size="sm" onClick={() => onEdit(product)}>Editar</Button>
+                            <Button variant="destructive" size="sm" onClick={() => setDeleteProduct(product)}>Eliminar</Button>
+                          </ButtonGroup>
+                        </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

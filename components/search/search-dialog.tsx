@@ -17,12 +17,7 @@ import {
   Calendar,
   ArrowRight,
   Clock,
-  DollarSign,
   AlertTriangle,
-  CheckCircle,
-  Phone,
-  Mail,
-  MapPin
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Customer, Sale, Product } from '@/lib/database-operations';

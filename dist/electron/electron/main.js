@@ -49,7 +49,8 @@ function createWindow() {
     });
     // Load the app
     if (isDev) {
-        mainWindow.loadURL('http://localhost:3001');
+        const devUrl = process.env.ELECTRON_DEV_URL || 'http://localhost:3001';
+        mainWindow.loadURL(devUrl);
         // Open DevTools in development
         mainWindow.webContents.openDevTools();
     }
@@ -340,7 +341,7 @@ electron_1.app.whenReady().then(() => {
             // Remove drive letter and colon (e.g., "D:/index.txt" -> "/index.txt")
             const relativePath = pathOnly.replace(/^[A-Za-z]:/, '');
             // Map to the correct location in the out directory
-            const appPath = path.join(__dirname, '..', 'out');
+            const appPath = path.join(__dirname, '../../../', 'out');
             const fullPath = path.join(appPath, relativePath.replace(/\//g, path.sep));
             console.log('Mapped RSC path:', fullPath);
             // Check if the RSC file exists, if not return empty response
@@ -376,6 +377,14 @@ electron_1.app.whenReady().then(() => {
         let filePath = url.replace('file:///', '');
         // Handle URL encoding
         filePath = decodeURIComponent(filePath);
+        // Map absolute-root asset paths to the export folder.
+        // In Windows, root-relative URLs resolve like "D:/_next/static/...".
+        // Strip any drive letter before testing.
+        const rootPathCandidate = filePath.replace(/^[A-Za-z]:/, '');
+        if (rootPathCandidate.startsWith('/_next') || rootPathCandidate.startsWith('/static')) {
+            const assetRelative = rootPathCandidate.replace(/^\//, '');
+            filePath = path.join(__dirname, '../../../', 'out', assetRelative.replace(/\//g, path.sep));
+        }
         // Check if this is a navigation request (trying to access a route directory)
         // If the path doesn't have a file extension and doesn't exist as a file,
         // redirect to index.html to let Next.js handle routing
@@ -383,7 +392,7 @@ electron_1.app.whenReady().then(() => {
         const isDirectoryPath = filePath.endsWith('/') || !hasExtension;
         if (isDirectoryPath || (!hasExtension && !fs.existsSync(filePath))) {
             // This is likely a Next.js route, serve the main index.html
-            const indexPath = path.join(__dirname, '..', 'out', 'index.html');
+            const indexPath = path.join(__dirname, '../../../', 'out', 'index.html');
             console.log('Navigation request detected, serving index.html for:', url);
             try {
                 if (fs.existsSync(indexPath)) {

@@ -306,13 +306,22 @@ export default function ProductsPage() {
   };
 
   const handleToggleStatus = async (productId: number, isActive: boolean) => {
+    // Optimistic UI update: reflect change immediately
+    setProducts(prev => prev.map(p => (
+      p.id === productId ? { ...p, is_active: isActive } : p
+    )));
+
     try {
       await window.electronAPI.database.products.update(productId, { is_active: isActive });
       // Clear cache to ensure fresh data is loaded
       dataCache.invalidateCache('products');
-      await loadProducts();
+      await loadProducts(true);
     } catch (error) {
       console.error('Error actualizando producto:', error);
+      // Revert change on failure
+      setProducts(prev => prev.map(p => (
+        p.id === productId ? { ...p, is_active: !isActive } : p
+      )));
     }
   };
 

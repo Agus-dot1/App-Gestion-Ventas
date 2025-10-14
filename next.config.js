@@ -4,11 +4,9 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   images: { unoptimized: true },
-  // Remove static export config for development
-  // output: 'export',
-  // trailingSlash: true,
-  // distDir: 'out',
-  // assetPrefix: './',
+  // Enable static export so Electron can load file:// assets
+  output: 'export',
+  trailingSlash: true,
   experimental: {
     // Completely disable RSC for static export
     ppr: false,

@@ -230,7 +230,6 @@ export const customerOperations = {
     return stmt.all() as Customer[];
   },
 
-  // Optimized pagination function
   getPaginated: (page: number = 1, pageSize: number = 10, searchTerm: string = ''): {
     customers: Customer[];
     total: number;
@@ -255,12 +254,10 @@ export const customerOperations = {
       const searchPattern = `%${searchTerm.trim()}%`;
       params = [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern];
     }
-    
-    // Get total count for pagination
+
     const countStmt = db.prepare(`SELECT COUNT(*) as total FROM customers ${whereClause}`);
     const { total } = countStmt.get(...params) as { total: number };
     
-    // Get paginated results with optimized query
     const stmt = db.prepare(`
       SELECT * FROM customers 
       ${whereClause}
@@ -663,6 +660,8 @@ export const saleOperations = {
     currentPage: number;
     pageSize: number;
   } => {
+    console.log('getPaginated ejecutándose en el proceso', process.type);
+    console.time('sales_query_total');
     const db = getDatabase();
     const offset = (page - 1) * pageSize;
     
@@ -695,7 +694,7 @@ export const saleOperations = {
     `);
     
     const sales = stmt.all(...params, pageSize, offset) as Sale[];
-    
+    console.timeEnd('sales_query_total');
     return {
       sales,
       total,
@@ -789,7 +788,7 @@ export const saleOperations = {
     const todayCount = (todayCountStmt.get(todayStart) as { count: number }).count + 1;
     const sequentialNumber = String(todayCount).padStart(3, '0');
     
-    const saleNumber = `VENTA-${year}${month}${day}-${sequentialNumber}`;
+    const saleNumber = `VENTA-${sequentialNumber}-${year}${month}${day}`;
     
     // Insert sale
     const saleStmt = db.prepare(`

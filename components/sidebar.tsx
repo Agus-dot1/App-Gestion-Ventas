@@ -121,11 +121,10 @@ export function Sidebar({ className }: SidebarProps) {
           </Button>
         </div>
 
-        {/* Search Bar 
+        {/* Search Bar */}
         <div className="px-3 py-4 border-b">
           <SearchTrigger onOpenSearch={handleOpenSearch} collapsed={collapsed} />
         </div>
-        */}
 
         {/* Navigation */}
         <ScrollArea className="flex-1 px-3 py-4">

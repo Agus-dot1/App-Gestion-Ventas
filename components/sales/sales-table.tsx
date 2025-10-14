@@ -16,6 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { SalesBulkOperations } from './sales-bulk-operations';
 import { SalesColumnToggle, type ColumnVisibility } from './sales-column-toggle';
 import { SaleDetailModal } from './sale-detail-modal';
+import { ButtonGroup } from '../ui/button-group';
 
 interface SalesTableProps {
   sales: Sale[];
@@ -602,34 +603,14 @@ export function SalesTable({
                         </TableCell>
                       )}
                       <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="h-8 w-8 p-0">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => {
+                          <ButtonGroup>
+                            <Button variant="outline" size="sm"  onClick={() => {
                               setDetailSale(sale);
                               setIsDetailModalOpen(true);
-                            }}>
-                              <Eye className="mr-2 h-4 w-4" />
-                              Ver detalles
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => onEdit(sale)}>
-                              <Edit className="mr-2 h-4 w-4" />
-                              Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem 
-                              onClick={() => setDeleteSale(sale)}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Eliminar
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                            }}>Ver detalles</Button>
+                            <Button variant="secondary" size="sm" onClick={() => onEdit(sale)}>Editar</Button>
+                            <Button variant="destructive" size="sm" onClick={() => setDeleteSale(sale)}>Eliminar</Button>
+                          </ButtonGroup>
                       </TableCell>
                     </TableRow>
                   ))}
