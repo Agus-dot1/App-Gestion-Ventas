@@ -18,13 +18,14 @@ exports.customerOperations = {
         let params = [];
         if (searchTerm.trim()) {
             whereClause = `WHERE 
+        dni LIKE ? OR
         name LIKE ? OR 
         email LIKE ? OR 
         company LIKE ? OR 
         tags LIKE ? OR
         phone LIKE ?`;
             const searchPattern = `%${searchTerm.trim()}%`;
-            params = [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern];
+            params = [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern];
         }
         // Get total count for pagination
         const countStmt = db.prepare(`SELECT COUNT(*) as total FROM customers ${whereClause}`);
@@ -53,6 +54,7 @@ exports.customerOperations = {
         const stmt = db.prepare(`
       SELECT * FROM customers 
       WHERE 
+        dni LIKE ? OR
         name LIKE ? OR 
         email LIKE ? OR 
         company LIKE ? OR 
@@ -60,17 +62,20 @@ exports.customerOperations = {
         phone LIKE ?
       ORDER BY 
         CASE 
-          WHEN name LIKE ? THEN 1
-          WHEN email LIKE ? THEN 2
-          WHEN company LIKE ? THEN 3
-          ELSE 4
+          WHEN dni = ? THEN 1
+          WHEN dni LIKE ? THEN 2
+          WHEN name LIKE ? THEN 3
+          WHEN email LIKE ? THEN 4
+          WHEN company LIKE ? THEN 5
+          ELSE 6
         END,
         name
       LIMIT ?
     `);
         const searchPattern = `%${searchTerm.trim()}%`;
         const exactPattern = `${searchTerm.trim()}%`;
-        return stmt.all(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, exactPattern, exactPattern, exactPattern, limit);
+        const exactMatch = searchTerm.trim();
+        return stmt.all(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, exactMatch, exactPattern, exactPattern, exactPattern, exactPattern, limit);
     },
     getById: (id) => {
         const db = (0, database_1.getDatabase)();
@@ -84,10 +89,10 @@ exports.customerOperations = {
     create: (customer) => {
         const db = (0, database_1.getDatabase)();
         const stmt = db.prepare(`
-      INSERT INTO customers (name, email, phone, address, company, notes, tags, contact_info) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO customers (name, dni, email, phone, address, company, notes, tags, contact_info) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-        const result = stmt.run(customer.name, customer.email || null, customer.phone || null, customer.address || null, customer.company || null, customer.notes || null, customer.tags || null, customer.contact_info || null);
+        const result = stmt.run(customer.name, customer.dni || null, customer.email || null, customer.phone || null, customer.address || null, customer.company || null, customer.notes || null, customer.tags || null, customer.contact_info || null);
         return result.lastInsertRowid;
     },
     update: (id, customer) => {
@@ -97,6 +102,10 @@ exports.customerOperations = {
         if (customer.name !== undefined) {
             fields.push('name = ?');
             values.push(customer.name);
+        }
+        if (customer.dni !== undefined) {
+            fields.push('dni = ?');
+            values.push(customer.dni);
         }
         if (customer.email !== undefined) {
             fields.push('email = ?');
@@ -180,6 +189,11 @@ exports.customerOperations = {
         const previous = previousMonthStmt.get().count;
         const change = previous === 0 ? 0 : ((current - previous) / previous) * 100;
         return { current, previous, change };
+    },
+    deleteAll: () => {
+        const db = (0, database_1.getDatabase)();
+        const stmt = db.prepare('DELETE FROM customers');
+        stmt.run();
     }
 };
 exports.productOperations = {
@@ -316,6 +330,11 @@ exports.productOperations = {
         const total = totalStmt.get().count;
         // Return same count for both months as placeholder
         return { current: total, previous: total, change: 0 };
+    },
+    deleteAll: () => {
+        const db = (0, database_1.getDatabase)();
+        const stmt = db.prepare('DELETE FROM products');
+        stmt.run();
     }
 };
 exports.saleOperations = {
@@ -600,6 +619,22 @@ exports.saleOperations = {
       ORDER BY s.date DESC
     `);
         return stmt.all();
+    },
+    getOverdueSalesCount: () => {
+        const db = (0, database_1.getDatabase)();
+        const stmt = db.prepare(`
+      SELECT COUNT(DISTINCT s.id) AS count
+      FROM sales s
+      LEFT JOIN installments i ON s.id = i.sale_id
+      WHERE i.status = 'overdue' OR (s.payment_status = 'unpaid' AND s.due_date < date('now'))
+    `);
+        const result = stmt.get();
+        return result.count;
+    },
+    deleteAll: () => {
+        const db = (0, database_1.getDatabase)();
+        const stmt = db.prepare('DELETE FROM sales');
+        stmt.run();
     }
 };
 exports.saleItemOperations = {
@@ -618,6 +653,11 @@ exports.saleItemOperations = {
     `);
         const result = stmt.run(saleItem.sale_id, saleItem.product_id, saleItem.quantity, saleItem.unit_price, saleItem.discount_per_item, saleItem.line_total, saleItem.product_name, saleItem.product_description || null, saleItem.status, saleItem.returned_quantity);
         return result.lastInsertRowid;
+    },
+    deleteAll: () => {
+        const db = (0, database_1.getDatabase)();
+        const stmt = db.prepare('DELETE FROM sale_items');
+        stmt.run();
     }
 };
 exports.installmentOperations = {
@@ -634,6 +674,23 @@ exports.installmentOperations = {
       ORDER BY due_date
     `);
         return stmt.all();
+    },
+    getUpcoming: (limit = 5) => {
+        const db = (0, database_1.getDatabase)();
+        const stmt = db.prepare(`
+      SELECT 
+        i.*,
+        c.name as customer_name,
+        s.sale_number
+      FROM installments i
+      JOIN sales s ON i.sale_id = s.id
+      JOIN customers c ON s.customer_id = c.id
+      WHERE i.status IN ('pending', 'partial') 
+      AND i.due_date >= date('now')
+      ORDER BY i.due_date ASC
+      LIMIT ?
+    `);
+        return stmt.all(limit);
     },
     recordPayment: (installmentId, amount, paymentMethod, reference) => {
         const db = (0, database_1.getDatabase)();
@@ -752,6 +809,11 @@ exports.installmentOperations = {
         // Delete the installment
         const stmt = db.prepare('DELETE FROM installments WHERE id = ?');
         stmt.run(id);
+    },
+    deleteAll: () => {
+        const db = (0, database_1.getDatabase)();
+        const stmt = db.prepare('DELETE FROM installments');
+        stmt.run();
     }
 };
 exports.paymentOperations = {
@@ -780,6 +842,11 @@ exports.paymentOperations = {
       ORDER BY i.due_date
     `);
         return stmt.all();
+    },
+    deleteAll: () => {
+        const db = (0, database_1.getDatabase)();
+        const stmt = db.prepare('DELETE FROM payment_transactions');
+        stmt.run();
     }
 };
 //# sourceMappingURL=database-operations.js.map

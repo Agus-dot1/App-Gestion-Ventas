@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { AlertCircle, Users, Phone, Mail, MapPin, User, Building, Tag } from 'lucide-react';
+import { AlertCircle, Users, Phone, Mail, MapPin, User, Building, Tag, CreditCard } from 'lucide-react';
 import type { Customer } from '@/lib/database-operations';
 
 interface CustomerFormProps {
@@ -19,6 +19,7 @@ interface CustomerFormProps {
 export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerFormProps) {
   const [formData, setFormData] = useState({
     name: customer?.name || '',
+    dni: customer?.dni || '',
     phone: customer?.phone || '',
     email: customer?.email || '',
     address: customer?.address || '',
@@ -33,6 +34,7 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
     if (customer) {
       setFormData({
         name: customer.name || '',
+        dni: customer.dni || '',
         phone: customer.phone || '',
         email: customer.email || '',
         address: customer.address || '',
@@ -42,6 +44,7 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
     } else {
       setFormData({
         name: '',
+        dni: '',
         phone: '',
         email: '',
         address: '',  
@@ -56,6 +59,14 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
 
     if (!formData.name.trim()) {
       newErrors.name = 'El nombre del cliente es obligatorio';
+    }
+
+    // DNI validation - optional but if provided, should be valid
+    if (formData.dni.trim()) {
+      const dniRegex = /^\d{7,8}$/; // 7 or 8 digits for Argentine DNI
+      if (!dniRegex.test(formData.dni.trim())) {
+        newErrors.dni = 'El DNI debe tener 7 u 8 dígitos';
+      }
     }
 
     setErrors(newErrors);
@@ -91,6 +102,7 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
     try {
       await onSave({
         name: formData.name.trim(),
+        dni: formData.dni.trim() || undefined,
         email: formData.email.trim() || undefined,
         phone: formData.phone.trim() || undefined,
         address: formData.address.trim() || undefined,
@@ -102,6 +114,7 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
       // Reset form - parent component will handle closing
       setFormData({
         name: '',
+        dni: '',
         phone: '',
         email: '',
         address: '',
@@ -139,6 +152,31 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid gap-6">
+            {/* DNI Field - First field */}
+            <div className="space-y-2">
+              <Label htmlFor="dni">DNI</Label>
+              <div className="relative">
+                <CreditCard className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="dni"
+                  value={formData.dni}
+                  onChange={(e) => handleInputChange('dni', e.target.value)}
+                  placeholder="12345678"
+                  className={`pl-10 ${errors.dni ? 'border-red-500' : ''}`}
+                  maxLength={8}
+                />
+              </div>
+              {errors.dni && (
+                <div className="flex items-center gap-1 text-sm text-red-600">
+                  <AlertCircle className="h-3 w-3" />
+                  {errors.dni}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Documento Nacional de Identidad (7 u 8 dígitos)
+              </p>
+            </div>
+
             {/* Customer Name */}
             <div className="space-y-2">
               <Label htmlFor="name">Nombre *</Label>

@@ -38,6 +38,7 @@ function createTables() {
     CREATE TABLE IF NOT EXISTS customers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
+      dni TEXT,
       email TEXT,
       phone TEXT,
       address TEXT,
@@ -50,6 +51,10 @@ function createTables() {
     )
   `);
     // Add new columns if they don't exist (for existing databases)
+    try {
+        db.exec('ALTER TABLE customers ADD COLUMN dni TEXT');
+    }
+    catch (e) { /* Column already exists */ }
     try {
         db.exec('ALTER TABLE customers ADD COLUMN email TEXT');
     }
@@ -259,8 +264,12 @@ function createTables() {
     -- Sales and related table indexes
     CREATE INDEX IF NOT EXISTS idx_sales_customer_id ON sales(customer_id);
     CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(date);
+    CREATE INDEX IF NOT EXISTS idx_sales_due_date ON sales(due_date);
+    CREATE INDEX IF NOT EXISTS idx_sales_payment_status ON sales(payment_status);
+    CREATE INDEX IF NOT EXISTS idx_sales_payment_status_due_date ON sales(payment_status, due_date);
     CREATE INDEX IF NOT EXISTS idx_installments_sale_id ON installments(sale_id);
     CREATE INDEX IF NOT EXISTS idx_installments_due_date ON installments(due_date);
+    CREATE INDEX IF NOT EXISTS idx_installments_status ON installments(status);
     CREATE INDEX IF NOT EXISTS idx_sale_items_sale_id ON sale_items(sale_id);
     CREATE INDEX IF NOT EXISTS idx_sale_items_product_id ON sale_items(product_id);
     CREATE INDEX IF NOT EXISTS idx_payment_transactions_sale_id ON payment_transactions(sale_id);

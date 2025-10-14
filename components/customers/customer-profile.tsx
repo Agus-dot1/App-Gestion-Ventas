@@ -26,6 +26,8 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import type { Customer, Sale } from '@/lib/database-operations';
 import { cn } from '@/lib/utils';
+import { Toast } from '@radix-ui/react-toast';
+import { toast, Toaster } from 'sonner';
 
 interface CustomerProfileProps {
   customer: Customer;
@@ -60,7 +62,11 @@ export function CustomerProfile({ customer, onEdit, onClose }: CustomerProfilePr
     try {
       await navigator.clipboard.writeText(text);
       setCopiedField(fieldName);
-      setTimeout(() => setCopiedField(null), 2000);
+      toast.success("Copiado!", {
+                    description: `Se copió el texto en el portapapeles`,
+                    position: "top-center",
+                    duration: 1000,
+                  })
     } catch (err) {
       console.error('Failed to copy text: ', err);
     }
@@ -259,12 +265,10 @@ export function CustomerProfile({ customer, onEdit, onClose }: CustomerProfilePr
                 className="cursor-pointer hover:bg-muted/50 transition-colors duration-200 animate-in slide-in-from-left-2 duration-500"
                 onClick={() => customer.email && copyToClipboard(customer.email, 'email')}
               >
+                <Toaster theme="dark" />
                 <CardContent className="pt-6">
                   <div className="flex items-center space-x-2">
-                    <Mail className={cn(
-                      "h-4 w-4",
-                      copiedField === 'email' ? "text-green-600" : "text-muted-foreground"
-                    )} />
+                    <Mail className="h-4 w-4" />
                     <span className="text-sm font-medium">Email</span>
                     {copiedField === 'email' && (
                       <span className="text-xs text-green-600 font-medium">¡Copiado!</span>
@@ -282,10 +286,7 @@ export function CustomerProfile({ customer, onEdit, onClose }: CustomerProfilePr
               >
                 <CardContent className="pt-6">
                   <div className="flex items-center space-x-2">
-                    <Phone className={cn(
-                      "h-4 w-4",
-                      copiedField === 'phone' ? "text-green-600" : "text-muted-foreground"
-                    )} />
+                    <Phone className="h-4 w-4" />
                     <span className="text-sm font-medium">Teléfono</span>
                     {copiedField === 'phone' && (
                       <span className="text-xs text-green-600 font-medium">¡Copiado!</span>
@@ -306,10 +307,7 @@ export function CustomerProfile({ customer, onEdit, onClose }: CustomerProfilePr
               >
                 <CardContent className="pt-6">
                   <div className="flex items-center space-x-2">
-                    <MapPin className={cn(
-                      "h-4 w-4",
-                      copiedField === 'address' ? "text-green-600" : "text-muted-foreground"
-                    )} />
+                    <MapPin className="h-4 w-4" />
                     <span className="text-sm font-medium">Dirección</span>
                     {copiedField === 'address' && (
                       <span className="text-xs text-green-600 font-medium">¡Copiado!</span>
@@ -327,10 +325,7 @@ export function CustomerProfile({ customer, onEdit, onClose }: CustomerProfilePr
               >
                 <CardContent className="pt-6">
                   <div className="flex items-center space-x-2">
-                    <Tag className={cn(
-                      "h-4 w-4",
-                      copiedField === 'tags' ? "text-green-600" : "text-muted-foreground"
-                    )} />
+                    <Tag className="h-4 w-4" />
                     <span className="text-sm font-medium">Etiquetas</span>
                     {copiedField === 'tags' && (
                       <span className="text-xs text-green-600 font-medium">¡Copiado!</span>
@@ -360,10 +355,7 @@ export function CustomerProfile({ customer, onEdit, onClose }: CustomerProfilePr
               >
                 <CardContent className="pt-6">
                   <div className="flex items-center space-x-2">
-                    <FileText className={cn(
-                      "h-4 w-4",
-                      copiedField === 'notes' ? "text-green-600" : "text-muted-foreground"
-                    )} />
+                    <FileText className="h-4 w-4" />
                     <span className="text-sm font-medium">Notas</span>
                     {copiedField === 'notes' && (
                       <span className="text-xs text-green-600 font-medium">¡Copiado!</span>

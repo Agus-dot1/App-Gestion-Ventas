@@ -1,20 +1,15 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
 import { DashboardLayout } from '@/components/dashboard-layout'
 import { toast } from 'sonner'
 import { 
   Download, 
   Upload, 
   Trash2, 
-  RotateCcw, 
   Database, 
-  HardDrive, 
-  Settings, 
   AlertTriangle,
   CheckCircle,
   Loader2,
@@ -45,9 +40,9 @@ export default function AjustesPage() {
   const [isExporting, setIsExporting] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [isClearingCache, setIsClearingCache] = useState(false)
-  const [isResetting, setIsResetting] = useState(false)
   const [isMigrating, setIsMigrating] = useState(false)
   const [isCheckingMigration, setIsCheckingMigration] = useState(false)
+  const [isDeletingDatabase, setIsDeletingDatabase] = useState(false)
   const [cacheSize, setCacheSize] = useState<string>('0 MB')
   const [lastBackup, setLastBackup] = useState<string | null>(null)
   const [migrationInfo, setMigrationInfo] = useState<MigrationInfo | null>(null)
@@ -217,29 +212,6 @@ export default function AjustesPage() {
     }
   }
 
-  const handleResetConfiguration = async () => {
-    setIsResetting(true)
-    try {
-      // Resetear configuraciones a valores predeterminados
-      localStorage.setItem('theme', 'light')
-      localStorage.setItem('language', 'es')
-      localStorage.setItem('currency', 'COP')
-      
-      // Limpiar otras configuraciones
-      const keysToRemove = Object.keys(localStorage).filter(key => 
-        !['theme', 'language', 'currency', 'lastBackupDate'].includes(key)
-      )
-      keysToRemove.forEach(key => localStorage.removeItem(key))
-
-      toast.success('Configuración restablecida a valores predeterminados. Recarga la página para ver los cambios.')
-    } catch (error) {
-      console.error('Error resetting configuration:', error)
-      toast.error('Error al restablecer configuración')
-    } finally {
-      setIsResetting(false)
-    }
-  }
-
   const checkMigrationStatus = async () => {
     if (!isElectron) return
     
@@ -308,6 +280,45 @@ export default function AjustesPage() {
   const handleCheckForUpdates = async () => {
     await checkMigrationStatus()
     toast.info('Verificación de actualizaciones completada')
+  }
+
+  const handleDeleteDatabase = async () => {
+    if (!isElectron) {
+      toast.error('Esta función solo está disponible en la aplicación de escritorio')
+      return
+    }
+
+    setIsDeletingDatabase(true)
+    try {
+      // Delete all data from all tables
+      await Promise.all([
+        window.electronAPI.database.customers.deleteAll?.() || Promise.resolve(),
+        window.electronAPI.database.products.deleteAll?.() || Promise.resolve(),
+        window.electronAPI.database.sales.deleteAll?.() || Promise.resolve()
+      ])
+
+      // Clear local storage data related to the app
+      const keysToKeep = ['theme', 'language', 'currency']
+      const allKeys = Object.keys(localStorage)
+      allKeys.forEach(key => {
+        if (!keysToKeep.includes(key)) {
+          localStorage.removeItem(key)
+        }
+      })
+
+      toast.success('Base de datos eliminada exitosamente. La aplicación se reiniciará.')
+      
+      // Reload the page to refresh the app state
+      setTimeout(() => {
+        window.location.reload()
+      }, 2000)
+      
+    } catch (error) {
+      console.error('Error deleting database:', error)
+      toast.error('Error al eliminar la base de datos')
+    } finally {
+      setIsDeletingDatabase(false)
+    }
   }
 
   return (
@@ -526,47 +537,67 @@ export default function AjustesPage() {
               </div>
             </div>
 
-            {/* Reset Configuration */}
-            <div className="p-4 border rounded-lg space-y-4">
+            {/* Database Reset - DANGER ZONE */}
+            <div className="p-4 border-2 border-red-900 rounded-lg space-y-4 bg-red-950">
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
-                  <h3 className="font-medium">Resetear Configuración</h3>
-                  <p className="text-sm text-muted-foreground">Restaura todas las configuraciones por defecto</p>
+                  <h3 className="font-medium text-red-200 flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4" />
+                    Eliminar Base de Datos
+                  </h3>
+                  <p className="text-sm text-red-300">
+                    ⚠️ PELIGRO: Elimina TODOS los datos (clientes, productos, ventas). Esta acción NO se puede deshacer.
+                  </p>
                 </div>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button 
                       variant="destructive" 
                       size="sm"
-                      disabled={isResetting}
+                      disabled={isDeletingDatabase || !isElectron}
+                      className="bg-red-600 hover:bg-red-700"
                     >
-                      {isResetting ? (
+                      {isDeletingDatabase ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Restableciendo...
+                          Eliminando...
                         </>
                       ) : (
                         <>
-                          <RotateCcw className="h-4 w-4 mr-2" />
-                          Resetear
+                          <Database className="h-4 w-4 mr-2" />
+                          Eliminar Todo
                         </>
                       )}
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle className="flex items-center gap-2">
-                        <AlertTriangle className="h-5 w-5 text-amber-500" />
-                        Confirmar Restablecimiento
+                      <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+                        <AlertTriangle className="h-5 w-5" />
+                        ⚠️ CONFIRMAR ELIMINACIÓN TOTAL
                       </AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Esta acción restablecerá todas las configuraciones. Perderás las personalizaciones realizadas.
+                      <AlertDialogDescription className="space-y-2">
+                        <p className="font-semibold text-red-700">
+                          Esta acción eliminará PERMANENTEMENTE:
+                        </p>
+                        <ul className="list-disc list-inside space-y-1 text-sm">
+                          <li>Todos los clientes</li>
+                          <li>Todos los productos</li>
+                          <li>Todas las ventas e instalments</li>
+                          <li>Todo el historial de pagos</li>
+                        </ul>
+                        <p className="font-semibold text-red-700 mt-3">
+                          Esta operación NO se puede deshacer. ¿Estás completamente seguro?
+                        </p>
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleResetConfiguration}>
-                        Restablecer
+                      <AlertDialogAction 
+                        onClick={handleDeleteDatabase}
+                        className="bg-red-600 hover:bg-red-700"
+                      >
+                        Sí, Eliminar Todo
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>

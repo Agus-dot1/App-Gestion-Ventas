@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Search, X, User, Mail, Building, Tag, Phone, MapPin } from 'lucide-react';
+import { Search, X, User, Mail, Building, Tag, Phone, MapPin, CreditCard } from 'lucide-react';
 import type { Customer } from '@/lib/database-operations';
 import { cn } from '@/lib/utils';
 
@@ -55,7 +55,7 @@ function fuzzyMatch(text: string, query: string): { score: number; matches: numb
 
 interface SearchSuggestion {
   id: string;
-  type: 'customer' | 'email' | 'company' | 'phone' | 'tag';
+  type: 'customer' | 'email' | 'company' | 'phone' | 'tag' | 'dni';
   label: string;
   value: string;
   customer?: Customer;
@@ -96,6 +96,25 @@ export function AdvancedSearch({
     const queryTrimmed = query.trim();
 
     customers.forEach(customer => {
+      // DNI suggestions (highest priority for exact matches)
+      if (customer.dni) {
+        const dniMatch = fuzzyMatch(customer.dni, queryTrimmed);
+        if (dniMatch.score > 0) {
+          // Give DNI matches the highest score boost for exact matches
+          const scoreBoost = customer.dni === queryTrimmed ? 50 : 20;
+          newSuggestions.push({
+            id: `dni-${customer.id}`,
+            type: 'dni',
+            label: `${customer.name} (DNI: ${customer.dni})`,
+            value: customer.dni,
+            customer,
+            icon: CreditCard,
+            score: dniMatch.score + scoreBoost,
+            matches: dniMatch.matches
+          });
+        }
+      }
+
       // Customer name suggestions
       const nameMatch = fuzzyMatch(customer.name, queryTrimmed);
       if (nameMatch.score > 0) {
@@ -365,7 +384,15 @@ export function searchCustomersWithFuzzy(customers: Customer[], query: string): 
   customers.forEach(customer => {
     let totalScore = 0;
     
-    // Search in name (highest weight)
+    // Search in DNI (highest weight for exact matches)
+    if (customer.dni) {
+      const dniMatch = fuzzyMatch(customer.dni, queryTrimmed);
+      // Give DNI matches extremely high weight, especially for exact matches
+      const dniWeight = customer.dni === queryTrimmed ? 10 : 5;
+      totalScore += dniMatch.score * dniWeight;
+    }
+    
+    // Search in name (high weight)
     const nameMatch = fuzzyMatch(customer.name, queryTrimmed);
     totalScore += nameMatch.score * 3;
     

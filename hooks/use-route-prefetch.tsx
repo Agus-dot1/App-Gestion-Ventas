@@ -9,11 +9,11 @@ export function useRoutePrefetch() {
   const prefetchProducts = useCallback(async () => {
     // Only prefetch if we're in Electron and don't have cached data
     if (typeof window !== 'undefined' && window.electronAPI) {
-      const cached = dataCache.getCachedProducts(1, 10, '');
+      const cached = dataCache.getCachedProducts(1, 25, '');
       if (!cached) {
         try {
-          const result = await window.electronAPI.database.products.getPaginated(1, 10, '');
-          
+          const result = await window.electronAPI.database.products.getPaginated(1, 25, '');
+
           const paginatedData = {
             items: result.products,
             total: result.total,
@@ -23,8 +23,8 @@ export function useRoutePrefetch() {
             searchTerm: '',
             timestamp: Date.now()
           };
-          
-          dataCache.setCachedProducts(1, 10, '', paginatedData);
+
+          dataCache.setCachedProducts(1, 25, '', paginatedData);
         } catch (error) {
           console.log('Prefetch products failed:', error);
         }
@@ -39,7 +39,7 @@ export function useRoutePrefetch() {
       if (!cached) {
         try {
           const result = await window.electronAPI.database.customers.getPaginated(1, 10, '');
-          
+
           const paginatedData = {
             items: result.customers,
             total: result.total,
@@ -49,7 +49,7 @@ export function useRoutePrefetch() {
             searchTerm: '',
             timestamp: Date.now()
           };
-          
+
           dataCache.setCachedCustomers(1, 10, '', paginatedData);
         } catch (error) {
           console.log('Prefetch customers failed:', error);
@@ -61,11 +61,11 @@ export function useRoutePrefetch() {
   const prefetchSales = useCallback(async () => {
     // Only prefetch if we're in Electron and don't have cached data
     if (typeof window !== 'undefined' && window.electronAPI) {
-      const cached = dataCache.getCachedSales(1, 10, '');
+      const cached = dataCache.getCachedSales(1, 25, '');
       if (!cached) {
         try {
-          const result = await window.electronAPI.database.sales.getPaginated(1, 10, '');
-          
+          const result = await window.electronAPI.database.sales.getPaginated(1, 25, '');
+
           const paginatedData = {
             items: result.sales,
             total: result.total,
@@ -75,8 +75,8 @@ export function useRoutePrefetch() {
             searchTerm: '',
             timestamp: Date.now()
           };
-          
-          dataCache.setCachedSales(1, 10, '', paginatedData);
+
+          dataCache.setCachedSales(1, 25, '', paginatedData);
         } catch (error) {
           console.log('Prefetch sales failed:', error);
         }
@@ -96,11 +96,11 @@ export function useRoutePrefetch() {
     setTimeout(() => {
       prefetchProducts();
     }, 100);
-    
+
     setTimeout(() => {
       prefetchCustomers();
     }, 200);
-    
+
     setTimeout(() => {
       prefetchSales();
     }, 300);

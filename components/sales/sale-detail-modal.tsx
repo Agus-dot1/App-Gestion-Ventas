@@ -201,7 +201,6 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
       
       const financialData = [
         ['Subtotal', formatCurrency(sale?.subtotal ?? 0)],
-        ['Impuestos', formatCurrency(sale?.tax_amount ?? 0)],
         ['Descuento', formatCurrency(sale?.discount_amount ?? 0)],
         ['Total', formatCurrency(sale?.total_amount ?? 0)]
       ];
@@ -351,7 +350,6 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
         'Teléfono': customer?.phone || 'N/A',
         'Dirección': customer?.address || 'N/A',
         'Subtotal': formatCurrency(sale?.subtotal ?? 0),
-        'Impuestos': formatCurrency(sale?.tax_amount ?? 0),
         'Descuento': formatCurrency(sale?.discount_amount ?? 0),
         'Total': formatCurrency(sale?.total_amount ?? 0),
         'Método de Pago': sale?.payment_type ? getPaymentTypeBadge(sale.payment_type).label : 'N/A',
@@ -569,10 +567,6 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
                           <span className="text-sm">{formatCurrency(sale.subtotal)}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-sm font-medium">Impuestos:</span>
-                          <span className="text-sm">{formatCurrency(sale.tax_amount)}</span>
-                        </div>
-                        <div className="flex justify-between">
                           <span className="text-sm font-medium">Descuento:</span>
                           <span className="text-sm">{formatCurrency(sale.discount_amount)}</span>
                         </div>
@@ -631,9 +625,6 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
                           </div>
                           <div>
                             <h3 className="font-semibold">{customer.name}</h3>
-                            {customer.company && (
-                              <p className="text-sm text-muted-foreground">{customer.company}</p>
-                            )}
                           </div>
                         </div>
                         <div className="grid gap-3">
@@ -674,7 +665,7 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
                             </div>
                           )}
                         </div>
-                        {customer.notes && (
+                                                {customer.notes && (
                           <div className="mt-4">
                             <span className="text-sm font-medium">Notas del Cliente:</span>
                             <p className="text-sm text-muted-foreground mt-1 p-3 bg-muted rounded-md">

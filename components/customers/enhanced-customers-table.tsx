@@ -12,11 +12,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, MoreHorizontal, Edit, Trash2, Users, Phone, Calendar, Loader2, Mail, Building, Tag, Eye, Download, X, ChevronUp, ChevronDown, FileText } from 'lucide-react';
-import { CustomerProfile } from './customer-profile';
+import { Search, MoreHorizontal, Edit, Trash2, Users, Phone, Calendar, Loader2, Mail, Building, Tag, Eye, Download, X, ChevronUp, ChevronDown, FileText, MoreHorizontalIcon } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { Customer, Sale } from '@/lib/database-operations';
 import { cn } from '@/lib/utils';
+import { ButtonGroup } from "@/components/ui/button-group";
+import { DropdownMenuGroup } from '@radix-ui/react-dropdown-menu';
 
 interface EnhancedCustomersTableProps {
   customers: Customer[];
@@ -116,6 +117,7 @@ export function EnhancedCustomersTable({
 
   // Client-side filtering and sorting (only when not using server-side pagination)
   const filteredCustomers = serverSidePagination ? customers : customers.filter(customer =>
+    customer.dni?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -220,12 +222,13 @@ export function EnhancedCustomersTable({
       customer.name,
       customer.email || '-',
       customer.phone || '-',
+      customer.dni || 'Sin DNI',
       customer.address || '-'
     ]);
     
     // Add table
     autoTable(doc, {
-      head: [['Nombre', 'Email', 'Teléfono', 'Dirección']],
+      head: [['Nombre', 'Email', 'Teléfono', 'DNI', 'Dirección']],
       body: tableData,
       startY: 30,
       styles: { fontSize: 8 },
@@ -251,6 +254,7 @@ export function EnhancedCustomersTable({
       'Nombre': customer.name,
       'Email': customer.email || '',
       'Teléfono': customer.phone || '',
+      'DNI': customer.dni || '',
       'Dirección': customer.address || '',
       'Notas': customer.notes || '',
       'Etiquetas': customer.tags || ''
@@ -361,6 +365,14 @@ export function EnhancedCustomersTable({
                       </Button>
                     </TableHead>
                     <TableHead>
+                      <Button variant="ghost" onClick={() => handleSort('dni')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                        DNI
+                        {sortConfig.key === 'dni' && (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="ml-1 h-4 w-4" /> : <ChevronDown className="ml-1 h-4 w-4" />
+                        )}
+                      </Button>
+                    </TableHead>
+                    <TableHead>
                       <Button variant="ghost" onClick={() => handleSort('address')} className="h-auto p-0 font-semibold" disabled={isLoading}>
                         Dirección
                         {sortConfig.key === 'address' && (
@@ -442,20 +454,25 @@ export function EnhancedCustomersTable({
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>{customer.address || '-'}</TableCell>
                         <TableCell>
+                          <div className="flex items-center gap-1">
+                            <FileText className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-sm">{customer.dni || 'Sin DNI'}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>{customer.address || '-'}</TableCell>
+                        <TableCell className="flex">
+                          <ButtonGroup >
+                            <Button variant="outline"  onClick={() => onView(customer)}>Ver detalles</Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" className="h-8 w-8 p-0">
-                                <MoreHorizontal className="h-4 w-4" />
+                              <Button variant="outline" size="icon" aria-label="More Options">
+                                <MoreHorizontalIcon />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => onView(customer)}>
-                                <Eye className="mr-2 h-4 w-4" />
-                                Ver detalles
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => onEdit(customer)}>
+                              <DropdownMenuGroup>
+                                <DropdownMenuItem onClick={() => onEdit(customer)}>
                                 <Edit className="mr-2 h-4 w-4" />
                                 Editar
                               </DropdownMenuItem>
@@ -467,8 +484,11 @@ export function EnhancedCustomersTable({
                                 <Trash2 className="mr-2 h-4 w-4" />
                                 Eliminar
                               </DropdownMenuItem>
+                              </DropdownMenuGroup>
+                              
                             </DropdownMenuContent>
                           </DropdownMenu>
+                        </ButtonGroup>
                         </TableCell>
                       </TableRow>
                     ))

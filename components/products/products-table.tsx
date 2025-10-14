@@ -406,7 +406,7 @@ export function ProductsTable({
                             <span className="font-semibold text-foreground">{product.name}</span>
                             {highlightId === product.id?.toString() && (
                               <Badge variant="outline" className="bg-primary/10 text-primary w-fit mt-1">
-                                Found
+                                Coincidencia
                               </Badge>
                             )}
                           </div>

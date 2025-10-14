@@ -34,7 +34,7 @@ function createWindow() {
 
   // Load the app
   if (isDev) {
-    mainWindow.loadURL('http://localhost:3000');
+    mainWindow.loadURL('http://localhost:3001');
     // Open DevTools in development
     mainWindow.webContents.openDevTools();
   } else {
@@ -55,80 +55,78 @@ function createWindow() {
 // Set up IPC handlers for database operations
 function setupIpcHandlers() {
   // Customer operations
-  ipcMain.handle('db:customers:getAll', () => customerOperations.getAll());
-  ipcMain.handle('db:customers:getPaginated', (_, page, pageSize, searchTerm) => customerOperations.getPaginated(page, pageSize, searchTerm));
-  ipcMain.handle('db:customers:search', (_, searchTerm, limit) => customerOperations.search(searchTerm, limit));
-  ipcMain.handle('db:customers:getCount', () => customerOperations.getCount());
-  ipcMain.handle('db:customers:getRecent', (_, limit) => customerOperations.getRecent(limit));
-  ipcMain.handle('db:customers:getMonthlyComparison', () => customerOperations.getMonthlyComparison());
-
-  // Add IPC handlers for pagination
-  ipcMain.handle('db:products:getPaginated', async (event, page: number, pageSize: number, searchTerm: string) => {
-    return productOperations.getPaginated(page, pageSize, searchTerm);
-  });
-
-  ipcMain.handle('db:products:search', async (event, searchTerm: string, limit?: number) => {
-    return productOperations.search(searchTerm, limit);
-  });
-
-  ipcMain.handle('db:sales:getPaginated', async (event, page: number, pageSize: number, searchTerm: string) => {
-    return saleOperations.getPaginated(page, pageSize, searchTerm);
-  });
-
-  ipcMain.handle('db:sales:search', async (event, searchTerm: string, limit?: number) => {
-    return saleOperations.search(searchTerm, limit);
-  });
-  ipcMain.handle('db:customers:getById', (_, id) => customerOperations.getById(id));
-  ipcMain.handle('db:customers:create', (_, customer) => customerOperations.create(customer));
-  ipcMain.handle('db:customers:update', (_, id, customer) => customerOperations.update(id, customer));
-  ipcMain.handle('db:customers:delete', (_, id) => customerOperations.delete(id));
+  ipcMain.handle('customers:getAll', () => customerOperations.getAll());
+  ipcMain.handle('customers:getPaginated', (_, page, pageSize, searchTerm) => 
+    customerOperations.getPaginated(page, pageSize, searchTerm));
+  ipcMain.handle('customers:search', (_, searchTerm, limit) => customerOperations.search(searchTerm, limit));
+  ipcMain.handle('customers:getById', (_, id) => customerOperations.getById(id));
+  ipcMain.handle('customers:create', (_, customer) => customerOperations.create(customer));
+  ipcMain.handle('customers:update', (_, id, customer) => customerOperations.update(id, customer));
+  ipcMain.handle('customers:delete', (_, id) => customerOperations.delete(id));
+  ipcMain.handle('customers:getCount', () => customerOperations.getCount());
+  ipcMain.handle('customers:getRecent', (_, limit) => customerOperations.getRecent(limit));
+  ipcMain.handle('customers:getMonthlyComparison', () => customerOperations.getMonthlyComparison());
+  ipcMain.handle('customers:deleteAll', () => customerOperations.deleteAll());
 
   // Product operations
-  ipcMain.handle('db:products:getAll', () => productOperations.getAll());
-  ipcMain.handle('db:products:getActive', () => productOperations.getActive());
-  ipcMain.handle('db:products:getById', (_, id) => productOperations.getById(id));
-  ipcMain.handle('db:products:create', (_, product) => productOperations.create(product));
-  ipcMain.handle('db:products:update', (_, id, product) => productOperations.update(id, product));
-  ipcMain.handle('db:products:delete', (_, id) => productOperations.delete(id));
-  ipcMain.handle('db:products:getCount', () => productOperations.getCount());
-  ipcMain.handle('db:products:getMonthlyComparison', () => productOperations.getMonthlyComparison());
+  ipcMain.handle('products:getAll', () => productOperations.getAll());
+  ipcMain.handle('products:getPaginated', (_, page, pageSize, searchTerm) => 
+    productOperations.getPaginated(page, pageSize, searchTerm));
+  ipcMain.handle('products:search', (_, searchTerm, limit) => productOperations.search(searchTerm, limit));
+  ipcMain.handle('products:getActive', () => productOperations.getActive());
+  ipcMain.handle('products:getById', (_, id) => productOperations.getById(id));
+  ipcMain.handle('products:create', (_, product) => productOperations.create(product));
+  ipcMain.handle('products:update', (_, id, product) => productOperations.update(id, product));
+  ipcMain.handle('products:delete', (_, id) => productOperations.delete(id));
+  ipcMain.handle('products:getCount', () => productOperations.getCount());
+  ipcMain.handle('products:getMonthlyComparison', () => productOperations.getMonthlyComparison());
+  ipcMain.handle('products:deleteAll', () => productOperations.deleteAll());
 
   // Sale operations
-  ipcMain.handle('db:sales:getAll', () => saleOperations.getAll());
-  ipcMain.handle('db:sales:getById', (_, id) => saleOperations.getById(id));
-  ipcMain.handle('db:sales:getByCustomer', (_, customerId) => saleOperations.getByCustomer(customerId));
-  ipcMain.handle('db:sales:create', (_, sale) => saleOperations.create(sale));
-  ipcMain.handle('db:sales:update', (_, id, sale) => saleOperations.update(id, sale));
-  ipcMain.handle('db:sales:delete', (_, id) => saleOperations.delete(id));
-  ipcMain.handle('db:sales:getWithDetails', (_, id) => saleOperations.getWithDetails(id));
-  ipcMain.handle('db:sales:getOverdueSales', () => saleOperations.getOverdueSales());
-  ipcMain.handle('db:sales:getCount', () => saleOperations.getCount());
-  ipcMain.handle('db:sales:getTotalRevenue', () => saleOperations.getTotalRevenue());
-  ipcMain.handle('db:sales:getRecent', (_, limit) => saleOperations.getRecent(limit));
-  ipcMain.handle('db:sales:getSalesChartData', (_, days) => saleOperations.getSalesChartData(days));
-  ipcMain.handle('db:sales:getStatsComparison', () => saleOperations.getStatsComparison());
+  ipcMain.handle('sales:getAll', () => saleOperations.getAll());
+  ipcMain.handle('sales:getPaginated', (_, page, pageSize, searchTerm) => 
+    saleOperations.getPaginated(page, pageSize, searchTerm));
+  ipcMain.handle('sales:search', (_, searchTerm, limit) => saleOperations.search(searchTerm, limit));
+  ipcMain.handle('sales:getById', (_, id) => saleOperations.getById(id));
+  ipcMain.handle('sales:getByCustomer', (_, customerId) => saleOperations.getByCustomer(customerId));
+  ipcMain.handle('sales:create', (_, saleData) => saleOperations.create(saleData));
+  ipcMain.handle('sales:update', (_, id, sale) => saleOperations.update(id, sale));
+  ipcMain.handle('sales:delete', (_, id) => saleOperations.delete(id));
+  ipcMain.handle('sales:getWithDetails', (_, id) => saleOperations.getWithDetails(id));
+  ipcMain.handle('sales:getOverdueSales', () => saleOperations.getOverdueSales());
+  ipcMain.handle('sales:getOverdueSalesCount', () => saleOperations.getOverdueSalesCount());
+  ipcMain.handle('sales:getCount', () => saleOperations.getCount());
+  ipcMain.handle('sales:getTotalRevenue', () => saleOperations.getTotalRevenue());
+  ipcMain.handle('sales:getRecent', (_, limit) => saleOperations.getRecent(limit));
+  ipcMain.handle('sales:getSalesChartData', (_, days) => saleOperations.getSalesChartData(days));
+  ipcMain.handle('sales:getStatsComparison', () => saleOperations.getStatsComparison());
+  ipcMain.handle('sales:deleteAll', () => saleOperations.deleteAll());
 
   // Installment operations
-  ipcMain.handle('db:installments:getBySale', (_, saleId) => installmentOperations.getBySale(saleId));
-  ipcMain.handle('db:installments:getOverdue', () => installmentOperations.getOverdue());
-  ipcMain.handle('db:installments:create', (_, installment) => installmentOperations.create(installment));
-  ipcMain.handle('db:installments:markAsPaid', (_, id) => installmentOperations.markAsPaid(id));
-  ipcMain.handle('db:installments:recordPayment', (_, installmentId, amount, paymentMethod, reference) =>
+  ipcMain.handle('installments:getBySale', (_, saleId) => installmentOperations.getBySale(saleId));
+  ipcMain.handle('installments:getOverdue', () => installmentOperations.getOverdue());
+  ipcMain.handle('installments:getUpcoming', (_, limit) => installmentOperations.getUpcoming(limit));
+  ipcMain.handle('installments:create', (_, installment) => installmentOperations.create(installment));
+  ipcMain.handle('installments:markAsPaid', (_, id) => installmentOperations.markAsPaid(id));
+  ipcMain.handle('installments:recordPayment', (_, installmentId, amount, paymentMethod, reference) =>
     installmentOperations.recordPayment(installmentId, amount, paymentMethod, reference));
-  ipcMain.handle('db:installments:applyLateFee', (_, installmentId, fee) =>
+  ipcMain.handle('installments:applyLateFee', (_, installmentId, fee) =>
     installmentOperations.applyLateFee(installmentId, fee));
-ipcMain.handle('db:installments:revertPayment', (_, installmentId, transactionId) =>
+  ipcMain.handle('installments:revertPayment', (_, installmentId, transactionId) =>
     installmentOperations.revertPayment(installmentId, transactionId));
-  ipcMain.handle('db:installments:delete', (_, id) => installmentOperations.delete(id));
+  ipcMain.handle('installments:delete', (_, id) => installmentOperations.delete(id));
+  ipcMain.handle('installments:deleteAll', () => installmentOperations.deleteAll());
 
   // Sale item operations
-  ipcMain.handle('db:saleItems:getBySale', (_, saleId) => saleItemOperations.getBySale(saleId));
-  ipcMain.handle('db:saleItems:create', (_, saleItem) => saleItemOperations.create(saleItem));
+  ipcMain.handle('saleItems:getBySale', (_, saleId) => saleItemOperations.getBySale(saleId));
+  ipcMain.handle('saleItems:create', (_, saleItem) => saleItemOperations.create(saleItem));
+  ipcMain.handle('saleItems:deleteAll', () => saleItemOperations.deleteAll());
 
   // Payment operations
-  ipcMain.handle('db:payments:getBySale', (_, saleId) => paymentOperations.getBySale(saleId));
-  ipcMain.handle('db:payments:getOverdue', () => paymentOperations.getOverdue());
-  ipcMain.handle('db:payments:create', (_, payment) => paymentOperations.create(payment));
+  ipcMain.handle('payments:getBySale', (_, saleId) => paymentOperations.getBySale(saleId));
+  ipcMain.handle('payments:getOverdue', () => paymentOperations.getOverdue());
+  ipcMain.handle('payments:create', (_, payment) => paymentOperations.create(payment));
+  ipcMain.handle('payments:deleteAll', () => paymentOperations.deleteAll());
 
   // Backup and restore operations
   ipcMain.handle('backup:save', async (_, backupData) => {
@@ -301,6 +299,24 @@ ipcMain.handle('db:installments:revertPayment', (_, installmentId, transactionId
       return { success: true, message };
     } catch (error) {
       console.error('Error clearing cache:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Error desconocido' };
+    }
+  });
+
+  // Database deletion handler
+  ipcMain.handle('db:deleteAll', async () => {
+    try {
+      // Clear all tables
+      await customerOperations.deleteAll();
+      await productOperations.deleteAll();
+      await saleOperations.deleteAll();
+      await installmentOperations.deleteAll();
+      await saleItemOperations.deleteAll();
+      await paymentOperations.deleteAll();
+      
+      return { success: true, message: 'Base de datos eliminada exitosamente' };
+    } catch (error) {
+      console.error('Error deleting database:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Error desconocido' };
     }
   });

@@ -4,6 +4,7 @@ import { getDatabase } from './database';
 export interface Customer {
   id?: number;
   name: string;
+  dni?: string;
   email?: string;
   phone?: string;
   address?: string;
@@ -35,8 +36,10 @@ export interface Sale {
   tax_amount: number;
   discount_amount: number;
   total_amount: number;
-  payment_type: 'cash' | 'installments' | 'credit' | 'mixed';
+  payment_type: 'cash' | 'installments' | 'credit';
   payment_status: 'paid' | 'partial' | 'unpaid' | 'overdue';
+  payment_period?: '1 to 10' | '20 to 30';
+  period_type?: 'monthly' | 'weekly' | 'biweekly';
   number_of_installments?: number;
   installment_amount?: number;
   advance_installments: number;
@@ -108,7 +111,7 @@ export interface SaleFormData {
     unit_price: number;
     discount_per_item?: number;
   }>;
-  payment_type: 'cash' | 'installments' | 'credit' | 'mixed';
+  payment_type: 'cash' | 'installments' | 'credit';
   number_of_installments?: number;
   advance_installments?: number;
   tax_amount?: number;
@@ -138,6 +141,7 @@ declare global {
           getCount: () => Promise<number>;
           getRecent: (limit?: number) => Promise<Customer[]>;
           getMonthlyComparison: () => Promise<{ current: number; previous: number; change: number }>;
+          deleteAll: () => Promise<void>;
         };
         products: {
           getAll: () => Promise<Product[]>;
@@ -156,6 +160,7 @@ declare global {
           delete: (id: number) => Promise<void>;
           getCount: () => Promise<number>;
           getMonthlyComparison: () => Promise<{ current: number; previous: number; change: number }>;
+          deleteAll: () => Promise<void>;
         };
         sales: {
           getAll: () => Promise<Sale[]>;
@@ -174,15 +179,18 @@ declare global {
           delete: (id: number) => Promise<void>;
           getWithDetails: (id: number) => Promise<Sale>;
           getOverdueSales: () => Promise<Sale[]>;
+          getOverdueSalesCount: () => Promise<number>;
           getCount: () => Promise<number>;
           getTotalRevenue: () => Promise<number>;
           getRecent: (limit?: number) => Promise<Sale[]>;
           getSalesChartData: (days?: number) => Promise<Array<{ date: string; sales: number; revenue: number }>>;
           getStatsComparison: () => Promise<{ current: number; previous: number; change: number }>;
+          deleteAll: () => Promise<void>;
         };
         installments: {
           getBySale: (saleId: number) => Promise<Installment[]>;
           getOverdue: () => Promise<Installment[]>;
+          getUpcoming: (limit?: number) => Promise<Array<Installment & { customer_name: string; sale_number: string }>>;
           create: (installment: Omit<Installment, 'id' | 'created_at' | 'updated_at'>) => Promise<number>;
           recordPayment: (installmentId: number, amount: number, paymentMethod: string, reference?: string) => Promise<void>;
           revertPayment: (installmentId: number, transactionId: number) => Promise<void>;
@@ -238,13 +246,14 @@ export const customerOperations = {
     
     if (searchTerm.trim()) {
       whereClause = `WHERE 
+        dni LIKE ? OR
         name LIKE ? OR 
         email LIKE ? OR 
         company LIKE ? OR 
         tags LIKE ? OR
         phone LIKE ?`;
       const searchPattern = `%${searchTerm.trim()}%`;
-      params = [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern];
+      params = [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern];
     }
     
     // Get total count for pagination
@@ -278,6 +287,7 @@ export const customerOperations = {
     const stmt = db.prepare(`
       SELECT * FROM customers 
       WHERE 
+        dni LIKE ? OR
         name LIKE ? OR 
         email LIKE ? OR 
         company LIKE ? OR 
@@ -285,10 +295,12 @@ export const customerOperations = {
         phone LIKE ?
       ORDER BY 
         CASE 
-          WHEN name LIKE ? THEN 1
-          WHEN email LIKE ? THEN 2
-          WHEN company LIKE ? THEN 3
-          ELSE 4
+          WHEN dni = ? THEN 1
+          WHEN dni LIKE ? THEN 2
+          WHEN name LIKE ? THEN 3
+          WHEN email LIKE ? THEN 4
+          WHEN company LIKE ? THEN 5
+          ELSE 6
         END,
         name
       LIMIT ?
@@ -296,10 +308,11 @@ export const customerOperations = {
     
     const searchPattern = `%${searchTerm.trim()}%`;
     const exactPattern = `${searchTerm.trim()}%`;
+    const exactMatch = searchTerm.trim();
     
     return stmt.all(
-      searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
-      exactPattern, exactPattern, exactPattern,
+      searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
+      exactMatch, exactPattern, exactPattern, exactPattern, exactPattern,
       limit
     ) as Customer[];
   },
@@ -317,11 +330,12 @@ export const customerOperations = {
   create: (customer: Omit<Customer, 'id' | 'created_at' | 'updated_at'>): number => {
     const db = getDatabase();
     const stmt = db.prepare(`
-      INSERT INTO customers (name, email, phone, address, company, notes, tags, contact_info) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO customers (name, dni, email, phone, address, company, notes, tags, contact_info) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const result = stmt.run(
       customer.name,
+      customer.dni || null,
       customer.email || null,
       customer.phone || null,
       customer.address || null,
@@ -341,6 +355,10 @@ export const customerOperations = {
     if (customer.name !== undefined) {
       fields.push('name = ?');
       values.push(customer.name);
+    }
+    if (customer.dni !== undefined) {
+      fields.push('dni = ?');
+      values.push(customer.dni);
     }
     if (customer.email !== undefined) {
       fields.push('email = ?');
@@ -436,6 +454,12 @@ export const customerOperations = {
     const change = previous === 0 ? 0 : ((current - previous) / previous) * 100;
     
     return { current, previous, change };
+  },
+
+  deleteAll: (): void => {
+    const db = getDatabase();
+    const stmt = db.prepare('DELETE FROM customers');
+    stmt.run();
   }
 };
 
@@ -611,6 +635,12 @@ export const productOperations = {
     
     // Return same count for both months as placeholder
     return { current: total, previous: total, change: 0 };
+  },
+
+  deleteAll: (): void => {
+    const db = getDatabase();
+    const stmt = db.prepare('DELETE FROM products');
+    stmt.run();
   }
 };
 
@@ -999,6 +1029,23 @@ export const saleOperations = {
       ORDER BY s.date DESC
     `);
     return stmt.all() as Sale[];
+  },
+
+  getOverdueSalesCount: (): number => {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      SELECT COUNT(DISTINCT s.id) AS count
+      FROM sales s
+      LEFT JOIN installments i ON s.id = i.sale_id
+      WHERE i.status = 'overdue' OR (s.payment_status = 'unpaid' AND s.due_date < date('now'))
+    `);
+    const result = stmt.get() as { count: number };
+    return result.count;
+  },
+  deleteAll: (): void => {
+    const db = getDatabase();
+    const stmt = db.prepare('DELETE FROM sales');
+    stmt.run();
   }
 };
 
@@ -1030,6 +1077,12 @@ export const saleItemOperations = {
       saleItem.returned_quantity
     );
     return result.lastInsertRowid as number;
+  },
+
+  deleteAll: (): void => {
+    const db = getDatabase();
+    const stmt = db.prepare('DELETE FROM sale_items');
+    stmt.run();
   }
 };
 
@@ -1048,6 +1101,24 @@ export const installmentOperations = {
       ORDER BY due_date
     `);
     return stmt.all() as Installment[];
+  },
+
+  getUpcoming: (limit: number = 5): Array<Installment & { customer_name: string; sale_number: string }> => {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      SELECT 
+        i.*,
+        c.name as customer_name,
+        s.sale_number
+      FROM installments i
+      JOIN sales s ON i.sale_id = s.id
+      JOIN customers c ON s.customer_id = c.id
+      WHERE i.status IN ('pending', 'partial') 
+      AND i.due_date >= date('now')
+      ORDER BY i.due_date ASC
+      LIMIT ?
+    `);
+    return stmt.all(limit) as Array<Installment & { customer_name: string; sale_number: string }>;
   },
 
   recordPayment: (installmentId: number, amount: number, paymentMethod: string, reference?: string): void => {
@@ -1217,6 +1288,12 @@ export const installmentOperations = {
     // Delete the installment
     const stmt = db.prepare('DELETE FROM installments WHERE id = ?');
     stmt.run(id);
+  },
+
+  deleteAll: (): void => {
+    const db = getDatabase();
+    const stmt = db.prepare('DELETE FROM installments');
+    stmt.run();
   }
 };
 
@@ -1258,5 +1335,11 @@ export const paymentOperations = {
       ORDER BY i.due_date
     `);
     return stmt.all() as PaymentTransaction[];
+  },
+
+  deleteAll: (): void => {
+    const db = getDatabase();
+    const stmt = db.prepare('DELETE FROM payment_transactions');
+    stmt.run();
   }
 };

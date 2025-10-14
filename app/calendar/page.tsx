@@ -33,6 +33,7 @@ import {
 import type { CalendarEvent, EventType, EventStatus } from '@/lib/calendar-types';
 import type { Sale } from '@/lib/database-operations';
 
+
 export default function CalendarPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
@@ -641,9 +642,9 @@ export default function CalendarPage() {
                       <span>Vencidos:</span>
                       <span className="text-red-600">{monthEvents.filter(e => e.status === 'overdue').length}</span>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
+                    </div>
+                  </CardContent>
+                </Card>
             </div>
           </div>
         ) : (
@@ -674,6 +675,6 @@ export default function CalendarPage() {
           onDelete={handleEventDelete}
         />
       </div>
-    </DashboardLayout>
-  );
+      </DashboardLayout>
+    );
 }
