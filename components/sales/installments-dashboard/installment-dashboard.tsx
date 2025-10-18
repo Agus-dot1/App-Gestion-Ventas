@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useImperativeHandle, forwardRef } from 'react';
+import { useState, useEffect, useMemo, useImperativeHandle, forwardRef, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -31,12 +31,14 @@ import {
   Mail,
   MapPin,
   Eye,
-  MoreHorizontal
+  MoreHorizontal,
+  Copy
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InstallmentForm } from '../installment-form';
 import { PaymentForm } from '../payment-form';
 import type { Customer, Sale, Installment } from '@/lib/database-operations';
+import { toast } from 'sonner';
 
 interface CustomerWithInstallments extends Customer {
   sales: Sale[];
@@ -57,15 +59,19 @@ export interface InstallmentDashboardRef {
 
 type StatusFilter = 'all' | 'pending' | 'paid' | 'overdue' | 'partial';
 type SortBy = 'customer' | 'amount' | 'dueDate' | 'status';
+type PaymentWindow = '1 to 10' | '20 to 30';
+type WindowFilter = 'all' | PaymentWindow;
 
 export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, InstallmentDashboardProps>(({ highlightId, onRefresh }, ref) => {
   const [customers, setCustomers] = useState<CustomerWithInstallments[]>([]);
   const [expandedCustomers, setExpandedCustomers] = useState<Set<number>>(new Set());
+  const [expandedSales, setExpandedSales] = useState<Set<number>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [sortBy, setSortBy] = useState<SortBy>('customer');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [windowFilter, setWindowFilter] = useState<WindowFilter>('all');
   
   const [selectedInstallment, setSelectedInstallment] = useState<Installment | null>(null);
   const [isInstallmentFormOpen, setIsInstallmentFormOpen] = useState(false);
@@ -86,19 +92,53 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
     }
   }, [isElectron]);
 
+  // Track whether we've already applied the highlight for the current deep link
+  const highlightAppliedRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (highlightId) {
-      const customerId = parseInt(highlightId);
-      if (!isNaN(customerId)) {
-        setExpandedCustomers(prev => {
-          const newSet = new Set<number>();
-          prev.forEach(id => newSet.add(id));
-          newSet.add(customerId);
-          return newSet;
-        });
+    if (!highlightId) return;
+    // Prevent re-running for the same highlightId (e.g., after state updates)
+    if (highlightAppliedRef.current === highlightId) return;
+
+    if (highlightId.startsWith('i-')) {
+      const instId = parseInt(highlightId.slice(2), 10);
+      if (!isNaN(instId) && customers.length > 0) {
+        const targetCustomer = customers.find(c => c.installments.some(i => i.id === instId));
+        if (targetCustomer?.id) {
+          setExpandedCustomers(prev => {
+            const next = new Set<number>(prev);
+            next.add(targetCustomer.id!);
+            return next;
+          });
+          highlightAppliedRef.current = highlightId;
+          setTimeout(() => {
+            const el = document.getElementById(`installment-${instId}`);
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              el.classList.add('bg-muted/100');
+              setTimeout(() => {
+                el.classList.remove('bg-muted/50');
+              }, 3000);
+            }
+          }, 200);
+        }
       }
+      return;
     }
-  }, [highlightId]);
+
+    // Case 2: highlight customer by numeric id
+    const customerId = parseInt(highlightId, 10);
+    if (!isNaN(customerId)) {
+      setExpandedCustomers(prev => {
+        const newSet = new Set<number>();
+        prev.forEach(id => newSet.add(id));
+        newSet.add(customerId);
+        return newSet;
+      });
+      // Mark as applied for this highlightId
+      highlightAppliedRef.current = highlightId;
+    }
+  }, [highlightId, customers]);
 
   const loadInstallmentData = async () => {
     setIsLoading(true);
@@ -204,8 +244,10 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
       );
       
       onRefresh?.();
+      toast.success('Cuota marcada como pagada');
     } catch (error) {
       console.error('Error marking installment as paid:', error);
+      toast.error('Error al marcar la cuota como pagada');
     }
   };
 
@@ -222,6 +264,7 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
       
       if (installmentPayments.length === 0) {
         console.error('No completed payments found for this installment');
+        toast.warning('No se encontraron pagos completados para revertir');
         return;
       }
       
@@ -289,8 +332,10 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
       );
       
       onRefresh?.();
+      toast.success('Pago revertido correctamente');
     } catch (error) {
       console.error('Error reverting payment:', error);
+      toast.error('Error revirtiendo el último pago');
     }
   };
 
@@ -325,8 +370,10 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
       );
       
       onRefresh?.();
+      toast.success('Cliente eliminado correctamente');
     } catch (error) {
       console.error('Error deleting customer:', error);
+      toast.error('Error eliminando el cliente');
     } finally {
       setDeleteCustomer(null);
     }
@@ -370,11 +417,33 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
       );
       
       onRefresh?.();
+      toast.success('Cuota eliminada correctamente');
     } catch (error) {
       console.error('Error deleting installment:', error);
+      toast.error('Error eliminando la cuota');
     } finally {
       setDeleteInstallment(null);
     }
+  };
+
+  const handleCopyValue = async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(`${label} copiado al portapapeles.`);
+    } catch (err) {
+      console.error('Error copying value:', err);
+      toast.error(`No se pudo copiar ${label}.`);
+    }
+  };
+
+  const formatPaymentPeriod = (win?: string | null, dueDate?: string) => {
+    if (dueDate) {
+      const day = new Date(dueDate).getDate();
+      return day <= 10 ? '1 al 10' : '20 al 30';
+    }
+    if (win === '1 to 10') return '1 al 10';
+    if (win === '20 to 30') return '20 al 30';
+    return '1 al 10';
   };
 
   const handlePaymentSave = async (paymentData: any) => {
@@ -440,10 +509,25 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
       onRefresh?.();
       setIsPaymentFormOpen(false);
       setSelectedInstallment(null);
+      toast.success('Pago registrado correctamente');
     } catch (error) {
       console.error('Error recording payment:', error);
+      toast.error('Error registrando el pago');
       throw error;
     }
+  };
+
+  // Determine customer's effective payment window using fallbacks
+  const getEffectivePaymentWindow = (c: CustomerWithInstallments): PaymentWindow | null => {
+    if (c.payment_window === '1 to 10' || c.payment_window === '20 to 30') {
+      return c.payment_window;
+    }
+    if (c.installments && c.installments.length > 0) {
+      const earliest = [...c.installments].sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
+      const day = new Date(earliest.due_date).getDate();
+      return day <= 15 ? '1 to 10' : '20 to 30';
+    }
+    return null;
   };
 
   const filteredAndSortedCustomers = useMemo(() => {
@@ -453,6 +537,12 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
         customer.phone?.toLowerCase().includes(searchTerm.toLowerCase());
 
       if (!matchesSearch) return false;
+
+      // Filter by effective payment window if selected
+      if (windowFilter !== 'all') {
+        const effective = getEffectivePaymentWindow(customer);
+        if (effective !== windowFilter) return false;
+      }
 
       if (statusFilter === 'all') return true;
 
@@ -509,7 +599,39 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
     });
 
     return filtered;
-  }, [customers, searchTerm, statusFilter, sortBy, sortOrder]);
+  }, [customers, searchTerm, statusFilter, sortBy, sortOrder, windowFilter]);
+
+  // Visual feedback helpers (client-only)
+  const [clientDate, setClientDate] = useState<Date | null>(null);
+  useEffect(() => {
+    // Set on client after mount to avoid SSR/client mismatches
+    setClientDate(new Date());
+  }, []);
+
+  const getActiveWindowForDate = (date: Date): PaymentWindow | null => {
+    const day = date.getDate();
+    if (day >= 1 && day <= 10) return '1 to 10';
+    if (day > 20 && day <= 30) return '20 to 30';
+    return null;
+  };
+
+  const activeWindow = useMemo(() => clientDate ? getActiveWindowForDate(clientDate) : null, [clientDate]);
+
+  const isWindowActive = (win?: string | null) => {
+    if (!win) return false;
+    return activeWindow === win;
+  };
+
+  const getAnchorDay = (win?: string | null) => {
+    if (win === '1 to 10') return 10;
+    if (win === '20 to 30') return 30;
+    return 30;
+  };
+
+  const windowCounts = useMemo(() => ({
+    '1 to 10': customers.filter(c => c.payment_window === '1 to 10').length,
+    '20 to 30': customers.filter(c => c.payment_window === '20 to 30').length,
+  }), [customers]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-AR', {
@@ -582,7 +704,7 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 overflow-y-visible">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -698,6 +820,16 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                   <SelectItem value="status">Estado</SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={windowFilter} onValueChange={(value: WindowFilter) => setWindowFilter(value)}>
+                <SelectTrigger className="w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las ventanas</SelectItem>
+                  <SelectItem value="1 to 10">Cobros del 1–10</SelectItem>
+                  <SelectItem value="20 to 30">Cobros del 20–30</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardHeader>
@@ -738,7 +870,10 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                   <Card className={cn(
                     "transition-all duration-200 hover:shadow-md",
                     customer.overdueAmount > 0 && "border-l-4 border-l-red-800",
-                    highlightId === customer.id?.toString() && "ring-2 ring-primary"
+                    customer.overdueAmount <= 0 && isWindowActive(customer.payment_window) && (
+                      customer.payment_window === '1 to 10' ? "border-l-4 border-l-blue-600" : "border-l-4 border-l-purple-600"
+                    ),
+                    highlightId === customer.id?.toString() && "bg-muted/50"
                   )}>
                     <CollapsibleTrigger asChild>
                       <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
@@ -756,6 +891,17 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
                                 <CardTitle className="text-lg">{customer.name}</CardTitle>
+                                {customer.payment_window && (
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      "text-xs",
+                                      customer.payment_window === '1 to 10' ? "text-white" : "text-white",
+                                    )}
+                                  >
+                                    Ventana {customer.payment_window === '1 to 10' ? '1-10' : '20-30'} · vence el {getAnchorDay(customer.payment_window)}
+                                  </Badge>
+                                )}
                                 {customer.overdueAmount > 0 && (
                                   <Badge variant="destructive" className="text-xs">
                                     {customer.installments.filter(i => {
@@ -770,12 +916,30 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                                   <div className="flex items-center gap-1">
                                     <Mail className="h-3 w-3" />
                                     {customer.email}
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 w-6 p-0"
+                                      onClick={(e) => { e.stopPropagation(); handleCopyValue(customer.email!, 'Email'); }}
+                                      title="Copiar email"
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                    </Button>
                                   </div>
                                 )}
                                 {customer.phone && (
                                   <div className="flex items-center gap-1">
                                     <Phone className="h-3 w-3" />
                                     {customer.phone}
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 w-6 p-0"
+                                      onClick={(e) => { e.stopPropagation(); handleCopyValue(customer.phone!, 'Teléfono'); }}
+                                      title="Copiar teléfono"
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                    </Button>
                                   </div>
                                 )}
                               </div>
@@ -814,113 +978,175 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                     <CollapsibleContent>
                       <CardContent className="pt-0">
                         <div className="border-t pt-4">
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>Cuota</TableHead>
-                                <TableHead>Venta</TableHead>
-                                <TableHead>Vencimiento</TableHead>
-                                <TableHead>Monto</TableHead>
-                                <TableHead>Pagado</TableHead>
-                                <TableHead>Balance</TableHead>
-                                <TableHead>Estado</TableHead>
-                                <TableHead className="w-[100px]">Acciones</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {customer.installments
-                                .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
-                                .map((installment) => {
-                                  const sale = customer.sales.find(s => s.id === installment.sale_id);
-                                  const isOverdue = new Date(installment.due_date) < new Date() && installment.status !== 'paid';
-                                  
-                                  return (
-                                    <TableRow 
-                                      key={installment.id}
-                                      className={cn(
-                                        isOverdue && "bg-red-950", 
-                                        installment.status === 'paid' && "bg-white/5"
+                          {/* Group installments by sale */}
+                          {customer.sales.map((sale) => {
+                            const saleInstallments = customer.installments
+                              .filter(inst => inst.sale_id === sale.id)
+                              .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+
+                            return (
+                              <Collapsible
+                                key={sale.id}
+                                open={expandedSales.has(sale.id!)}
+                                onOpenChange={(open) => {
+                                  setExpandedSales(prev => {
+                                    const next = new Set(prev);
+                                    if (open) next.add(sale.id!); else next.delete(sale.id!);
+                                    return next;
+                                  });
+                                }}
+                              >
+                                <Card className="mb-3 bg-muted/20">
+                                  <CollapsibleTrigger asChild>
+                                    <div className="cursor-pointer p-3 hover:bg-muted/50 rounded-md flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        {expandedSales.has(sale.id!) ? (
+                                          <ChevronDown className="h-4 w-4" />
+                                        ) : (
+                                          <ChevronRight className="h-4 w-4" />
+                                        )}
+                                        <span className="font-medium">Venta #{sale.sale_number}</span>
+                                        {saleInstallments.length > 0 && (
+                                          <Badge variant="outline" className="text-xs">
+                                            {saleInstallments.length} cuotas
+                                          </Badge>
+                                        )}
+                                        {sale.payment_status === 'overdue' && (
+                                          <Badge variant="destructive" className="text-xs">Pago Vencido</Badge>
+                                        )}
+                                      </div>
+                                      <div className="text-sm text-muted-foreground">
+                                        {sale.date ? formatDate(sale.date) : ''}
+                                      </div>
+                                    </div>
+                                  </CollapsibleTrigger>
+                                  <CollapsibleContent>
+                                    <div className="pt-2">
+                                      {saleInstallments.length === 0 ? (
+                                        <div className="text-sm text-muted-foreground p-2">Sin cuotas para esta venta.</div>
+                                      ) : (
+                                        <Table>
+                                          <TableHeader>
+                                            <TableRow>
+                                              <TableHead>Cuota</TableHead>
+                                              <TableHead>Vencimiento</TableHead>
+                                              <TableHead>Periodo de pago</TableHead>
+                                              <TableHead>Monto</TableHead>
+                                              <TableHead>Pagado</TableHead>
+                                              <TableHead>Balance</TableHead>
+                                              <TableHead>Estado</TableHead>
+                                              <TableHead className="w-[100px]">Acciones</TableHead>
+                                            </TableRow>
+                                          </TableHeader>
+                                          <TableBody>
+                                            {saleInstallments.map((installment) => {
+                                              const isOverdue = new Date(installment.due_date) < new Date() && installment.status !== 'paid';
+                                              return (
+                                                <TableRow
+                                                  key={installment.id}
+                                                  id={`installment-${installment.id}`}
+                                                  className={cn(
+                                                    isOverdue && "bg-red-950",
+                                                    installment.status === 'paid' && "bg-white/5"
+                                                  )}
+                                                >
+                                                  <TableCell className="font-medium">
+                                                    <div className="flex items-center gap-2">
+                                                      #{installment.installment_number}
+                                                      {installment.notes === 'Pago adelantado' && (
+                                                        <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-800">
+                                                          Adelantado
+                                                        </Badge>
+                                                      )}
+                                                    </div>
+                                                  </TableCell>
+                                                  <TableCell>
+                                                    <div className={cn(
+                                                      "text-sm",
+                                                      isOverdue && "text-red-600 font-medium"
+                                                    )}>
+                                                      {formatDate(installment.due_date)}
+                                                      {(() => {
+                                                        const due = new Date(installment.due_date);
+                                                        const isSameMonth = clientDate && (due.getFullYear() === clientDate.getFullYear() && due.getMonth() === clientDate.getMonth());
+                                                        const anchor = getAnchorDay(customer.payment_window);
+                                                        const isAnchorThisMonth = !!isSameMonth && due.getDate() === anchor;
+                                                        const isActive = isWindowActive(customer.payment_window);
+                                                        return (isAnchorThisMonth && isActive && installment.status !== 'paid') ? (
+                                                          <Badge className="ml-2 text-xs bg-amber-100 text-amber-800">Activa</Badge>
+                                                        ) : null;
+                                                      })()}
+                                                    </div>
+                                                  </TableCell>
+                                                  <TableCell>
+                                                    <div className="text-sm text-muted-foreground">
+                                                      {formatPaymentPeriod(customer.payment_window, installment.due_date)}
+                                                    </div>
+                                                  </TableCell>
+                                                  <TableCell>{formatCurrency(installment.amount)}</TableCell>
+                                                  <TableCell>{formatCurrency(installment.paid_amount)}</TableCell>
+                                                  <TableCell>
+                                                    <span className={cn(
+                                                      "font-medium",
+                                                      installment.balance > 0 ? "text-red-600" : "text-green-600"
+                                                    )}>
+                                                      {formatCurrency(installment.balance)}
+                                                    </span>
+                                                  </TableCell>
+                                                  <TableCell>
+                                                    {getInstallmentStatusBadge(installment)}
+                                                  </TableCell>
+                                                  <TableCell>
+                                                    <div className="flex items-center gap-1">
+                                                      {installment.status !== 'paid' ? (
+                                                        <>
+                                                          <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            onClick={() => handleMarkAsPaid(installment)}
+                                                            className="h-7 px-2 text-xs"
+                                                          >
+                                                            <CheckCircle className="h-3 w-3 mr-1" />
+                                                            Marcar Pagada
+                                                          </Button>
+                                                          <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            onClick={() => handleRecordPayment(installment)}
+                                                            className="h-7 px-2 text-xs"
+                                                          >
+                                                            <DollarSign className="h-3 w-3 mr-1" />
+                                                            Pago
+                                                          </Button>
+                                                        </>
+                                                      ) : (
+                                                        <>
+                                                          <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            onClick={() => handleRevertPayment(installment)}
+                                                            className="h-7 px-2 text-xs text-white/80 hover:text-white border-white hover:border-white"
+                                                          >
+                                                            <X className="h-3 w-3 mr-1" />
+                                                            Revertir
+                                                          </Button>
+                                                        </>
+                                                      )}
+                                                    </div>
+                                                  </TableCell>
+                                                </TableRow>
+                                              )
+                                            })}
+                                          </TableBody>
+                                        </Table>
                                       )}
-                                    >
-                                      <TableCell className="font-medium">
-                                        <div className="flex items-center gap-2">
-                                          #{installment.installment_number}
-                                          {installment.notes === 'Pago adelantado' && (
-                                            <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-800">
-                                              Adelantado
-                                            </Badge>
-                                          )}
-                                        </div>
-                                      </TableCell>
-                                      <TableCell>
-                                        <div className="text-sm">
-                                          {sale?.sale_number}
-                                        </div>
-                                      </TableCell>
-                                      <TableCell>
-                                        <div className={cn(
-                                          "text-sm",
-                                          isOverdue && "text-red-600 font-medium"
-                                        )}>
-                                          {formatDate(installment.due_date)}
-                                        </div>
-                                      </TableCell>
-                                      <TableCell>{formatCurrency(installment.amount)}</TableCell>
-                                      <TableCell>{formatCurrency(installment.paid_amount)}</TableCell>
-                                      <TableCell>
-                                        <span className={cn(
-                                          "font-medium",
-                                          installment.balance > 0 ? "text-red-600" : "text-green-600"
-                                        )}>
-                                          {formatCurrency(installment.balance)}
-                                        </span>
-                                      </TableCell>
-                                      <TableCell>
-                                        {getInstallmentStatusBadge(installment)}
-                                      </TableCell>
-                                      <TableCell>
-                                        <div className="flex items-center gap-1">
-                                          {installment.status !== 'paid' ? (
-                                            <>
-                                              <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() => handleMarkAsPaid(installment)}
-                                                className="h-7 px-2 text-xs"
-                                              >
-                                                <CheckCircle className="h-3 w-3 mr-1" />
-                                                Marcar Pagada
-                                              </Button>
-                                              <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() => handleRecordPayment(installment)}
-                                                className="h-7 px-2 text-xs"
-                                              >
-                                                <DollarSign className="h-3 w-3 mr-1" />
-                                                Pago
-                                              </Button>
-                                            </>
-                                          ) : (
-                                            <>
-                                              <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() => handleRevertPayment(installment)}
-                                                className="h-7 px-2 text-xs text-white/80 hover:text-white border-white hover:border-white"
-                                              >
-                                                <X className="h-3 w-3 mr-1" />
-                                                Revertir
-                                              </Button>
-                                            </>
-                                          )}
-                                        </div>
-                                      </TableCell>
-                                    </TableRow>
-                                  );
-                                })}
-                            </TableBody>
-                          </Table>
+                                    </div>
+                                  </CollapsibleContent>
+                                </Card>
+                              </Collapsible>
+                            );
+                          })
+                          }
                         </div>
                       </CardContent>
                     </CollapsibleContent>

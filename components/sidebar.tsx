@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -20,29 +20,86 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
-  CreditCard
+  CreditCard,
+  LayoutDashboard
 } from 'lucide-react';
 
 interface SidebarProps {
   className?: string;
+  initialCollapsed?: boolean;
 }
 
 
-export function Sidebar({ className }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
+export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
+  // Initialize from server-provided cookie to align SSR and client
+  const [collapsed, setCollapsed] = useState<boolean>(initialCollapsed);
   const [searchOpen, setSearchOpen] = useState(false);
   const pathname = usePathname();
+  const [currentPath, setCurrentPath] = useState<string>('/');
   const { prefetchProducts, prefetchCustomers, prefetchSales, prefetchCalendar } = useRoutePrefetch();
+
+  // After mount, restore collapsed state from localStorage (first load may briefly flicker)
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem('sidebar:collapsed');
+      if (stored !== null) {
+        setCollapsed(stored === 'true');
+      }
+    } catch {
+      // ignore read errors
+    }
+  }, []);
+
+  // Persist collapsed state so it survives route changes and reloads
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('sidebar:collapsed', String(collapsed));
+      // Also persist to cookie so SSR matches on first load
+      document.cookie = `sidebar-collapsed=${collapsed}; path=/; max-age=${60 * 60 * 24 * 365}`;
+    } catch {
+      // ignore write errors (e.g., privacy mode)
+    }
+  }, [collapsed]);
+
+  // Keep a stable, normalized current path to avoid transient '/' on first paint
+  useEffect(() => {
+    try {
+      const path = typeof window !== 'undefined' ? window.location.pathname : (pathname || '/');
+      setCurrentPath(path || '/');
+    } catch {
+      setCurrentPath(pathname || '/');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (pathname) {
+      setCurrentPath(pathname);
+    }
+  }, [pathname]);
+
+  const isRouteActive = useCallback((href: string) => {
+    // Normalize paths (remove trailing slash except for root)
+    const normalize = (p: string) => (p && p !== '/' && p.endsWith('/') ? p.slice(0, -1) : p || '/');
+    const current = normalize(currentPath || '/');
+    const target = normalize(href);
+    if (target === '/') return current === '/';
+    return current === target || current.startsWith(`${target}/`);
+  }, [currentPath]);
 
   const handleOpenSearch = useCallback(() => {
     setSearchOpen(true);
   }, []);
 
+  const handleToggleSearch = useCallback(() => {
+    setSearchOpen(prev => !prev);
+  }, []);
+
   // Set up global keyboard shortcut
-  useSearchShortcut({ onOpenSearch: handleOpenSearch });
+  useSearchShortcut({ onOpenSearch: handleOpenSearch, onToggleSearch: handleToggleSearch });
   const navigationItems = [
     {
-      title: 'Dashboard',
+      title: 'Inicio',
       icon: Home,
       href: '/',
       prefetch: null
@@ -102,9 +159,8 @@ export function Sidebar({ className }: SidebarProps) {
           {!collapsed && (
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <BarChart3 className="w-4 h-4 text-primary-foreground" />
+                <LayoutDashboard className="w-4 h-4 text-primary-foreground" />
               </div>
-              <span className="font-semibold text-lg">Dashboard</span>
             </div>
           )}
           <Button
@@ -131,7 +187,7 @@ export function Sidebar({ className }: SidebarProps) {
           <div className="space-y-2">
             {navigationItems.map((item) => {
               const Icon = item.icon;
-              const isActive = pathname === item.href;
+              const isActive = isRouteActive(item.href);
               return (
                 <Link
                   key={item.href}
@@ -151,6 +207,7 @@ export function Sidebar({ className }: SidebarProps) {
                       collapsed && 'justify-center px-2',
                       isActive && 'bg-secondary text-secondary-foreground font-medium'
                     )}
+                    aria-current={isActive ? 'page' : undefined}
                   >
                     <Icon className="h-4 w-4 flex-shrink-0" />
                     {!collapsed && (
@@ -171,12 +228,13 @@ export function Sidebar({ className }: SidebarProps) {
               className="block"
             >
               <Button
-                variant={pathname === '/ajustes' ? 'secondary' : 'ghost'}
+                variant={isRouteActive('/ajustes') ? 'secondary' : 'ghost'}
                 className={cn(
                   'w-full justify-start gap-3 h-10 transition-colors',
                   collapsed && 'justify-center px-2',
-                  pathname === '/ajustes' && 'bg-secondary text-secondary-foreground font-medium'
+                  isRouteActive('/ajustes') && 'bg-secondary text-secondary-foreground font-medium'
                 )}
+                aria-current={isRouteActive('/ajustes') ? 'page' : undefined}
               >
                 <Settings className="h-4 w-4 flex-shrink-0" />
                 {!collapsed && <span className="truncate">Ajustes</span>}

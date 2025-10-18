@@ -64,6 +64,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saleItems: {
       getBySale: (saleId) => ipcRenderer.invoke('saleItems:getBySale', saleId),
       create: (saleItem) => ipcRenderer.invoke('saleItems:create', saleItem),
+      getSalesForProduct: (productId) => ipcRenderer.invoke('saleItems:getSalesForProduct', productId),
       deleteAll: () => ipcRenderer.invoke('saleItems:deleteAll')
     },
     payments: {

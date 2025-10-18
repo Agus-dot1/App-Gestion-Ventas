@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 
 export interface SalesFilters {
   search: string;
-  sortBy: 'sale_number' | 'customer_name' | 'date' | 'total_amount' | 'payment_status';
+  sortBy: 'sale_number' | 'customer_name' | 'date' | 'total_amount' | 'payment_status' | 'payment_type';
   sortOrder: 'asc' | 'desc';
   paymentStatus: string[];
   paymentType: string[];
@@ -99,49 +99,10 @@ export function SalesFiltersComponent({
   const paymentTypes = [
     { value: 'cash', label: 'Efectivo' },
     { value: 'installments', label: 'Cuotas' },
-    { value: 'credit', label: 'Crédito' },
   ];
 
   return (
     <div className="space-y-4">
-      {/* Mobile Layout */}
-      <div className="flex flex-col gap-3 md:hidden">
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar ventas..."
-            value={filters.search}
-            onChange={(e) => updateFilters({ search: e.target.value })}
-            className="pl-8"
-          />
-        </div>
-        
-        {/* Sort and Filter Controls */}
-        <div className="flex items-center gap-2">
-          <Select value={filters.sortBy} onValueChange={(value: any) => updateFilters({ sortBy: value })}>
-            <SelectTrigger className="flex-1">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="date">Fecha</SelectItem>
-              <SelectItem value="sale_number">Número de venta</SelectItem>
-              <SelectItem value="customer_name">Cliente</SelectItem>
-              <SelectItem value="total_amount">Monto total</SelectItem>
-              <SelectItem value="payment_status">Estado de pago</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => updateFilters({ sortOrder: filters.sortOrder === 'asc' ? 'desc' : 'asc' })}
-          >
-            {filters.sortOrder === 'asc' ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />}
-          </Button>
-        </div>
-      </div>
-      
       {/* Desktop Layout */}
       <div className="hidden md:flex items-center gap-2">
         {/* Search */}
@@ -155,19 +116,6 @@ export function SalesFiltersComponent({
           />
         </div>
 
-        {/* Sort Controls */}
-        <Select value={filters.sortBy} onValueChange={(value: any) => updateFilters({ sortBy: value })}>
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="date">Fecha</SelectItem>
-            <SelectItem value="sale_number">Número de venta</SelectItem>
-            <SelectItem value="customer_name">Cliente</SelectItem>
-            <SelectItem value="total_amount">Monto total</SelectItem>
-            <SelectItem value="payment_status">Estado de pago</SelectItem>
-          </SelectContent>
-        </Select>
       {/* Advanced Filters */}
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
@@ -181,7 +129,7 @@ export function SalesFiltersComponent({
             )}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[calc(100vw-2rem)] md:w-96" align="end">
+        <PopoverContent className="w-[calc(100vw-2rem)] md:w-[32rem]" align="start">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h4 className="font-medium">Filtros avanzados</h4>
@@ -277,11 +225,11 @@ export function SalesFiltersComponent({
                       <Button
                         variant="outline"
                         className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !filters.dateAfter && "text-muted-foreground"
+                          "w-full justify-start text-left font-normal text-ellipsis",
+                          !filters.dateAfter && "text-muted-foreground text-ellipsis"
                         )}
                       >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        <CalendarIcon className="mr-1 h-4 w-4" />
                         {filters.dateAfter ? (
                           format(filters.dateAfter, "PPP", { locale: es })
                         ) : (
@@ -291,6 +239,7 @@ export function SalesFiltersComponent({
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
                       <Calendar
+                        locale={es}
                         mode="single"
                         selected={filters.dateAfter || undefined}
                         onSelect={(date) => updateFilters({ dateAfter: date || null })}
@@ -320,6 +269,7 @@ export function SalesFiltersComponent({
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
                       <Calendar
+                        locale={es}
                         mode="single"
                         selected={filters.dateBefore || undefined}
                         onSelect={(date) => updateFilters({ dateBefore: date || null })}
@@ -333,77 +283,7 @@ export function SalesFiltersComponent({
           </div>
         </PopoverContent>
       </Popover>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => updateFilters({ sortOrder: filters.sortOrder === 'asc' ? 'desc' : 'asc' })}
-        >
-          {filters.sortOrder === 'asc' ? <SortAsc className="h- w-5" /> : <SortDesc className="h-5 w-5" />}
-        </Button>
-        
       </div>
-
-      
-
-      {/* Active Filters Display */}
-      {activeFiltersCount > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {filters.paymentStatus.map((status) => (
-            <Badge key={status} variant="secondary" className="gap-1">
-              Estado: {paymentStatuses.find(s => s.value === status)?.label}
-              <X 
-                className="h-3 w-3 cursor-pointer" 
-                onClick={() => togglePaymentStatus(status)}
-              />
-            </Badge>
-          ))}
-          {filters.paymentType.map((type) => (
-            <Badge key={type} variant="secondary" className="gap-1">
-              Tipo: {paymentTypes.find(t => t.value === type)?.label}
-              <X 
-                className="h-3 w-3 cursor-pointer" 
-                onClick={() => togglePaymentType(type)}
-              />
-            </Badge>
-          ))}
-          {filters.minAmount !== null && (
-            <Badge variant="secondary" className="gap-1">
-              Min: ${filters.minAmount.toLocaleString()}
-              <X 
-                className="h-3 w-3 cursor-pointer" 
-                onClick={() => updateFilters({ minAmount: null })}
-              />
-            </Badge>
-          )}
-          {filters.maxAmount !== null && (
-            <Badge variant="secondary" className="gap-1">
-              Max: ${filters.maxAmount.toLocaleString()}
-              <X 
-                className="h-3 w-3 cursor-pointer" 
-                onClick={() => updateFilters({ maxAmount: null })}
-              />
-            </Badge>
-          )}
-          {filters.dateAfter && (
-            <Badge variant="secondary" className="gap-1">
-              Desde: {format(filters.dateAfter, "dd/MM/yyyy")}
-              <X 
-                className="h-3 w-3 cursor-pointer" 
-                onClick={() => updateFilters({ dateAfter: null })}
-              />
-            </Badge>
-          )}
-          {filters.dateBefore && (
-            <Badge variant="secondary" className="gap-1">
-              Hasta: {format(filters.dateBefore, "dd/MM/yyyy")}
-              <X 
-                className="h-3 w-3 cursor-pointer" 
-                onClick={() => updateFilters({ dateBefore: null })}
-              />
-            </Badge>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -483,6 +363,10 @@ export function applySalesFilters(sales: Sale[], filters: SalesFilters): Sale[] 
       case 'payment_status':
         aValue = a.payment_status;
         bValue = b.payment_status;
+        break;
+      case 'payment_type':
+        aValue = a.payment_type;
+        bValue = b.payment_type;
         break;
       default:
         aValue = a.date;

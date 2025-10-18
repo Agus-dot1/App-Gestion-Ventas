@@ -46,6 +46,7 @@ function createTables() {
       company TEXT,
       notes TEXT,
       tags TEXT,
+      payment_window TEXT,
       contact_info TEXT, -- Keep for backward compatibility
       created_at DATETIME DEFAULT (datetime('now')),
       updated_at DATETIME DEFAULT (datetime('now'))
@@ -73,6 +74,9 @@ function createTables() {
   } catch (e) { /* Column already exists */ }
   try {
     db.exec('ALTER TABLE customers ADD COLUMN tags TEXT');
+  } catch (e) { /* Column already exists */ }
+  try {
+    db.exec('ALTER TABLE customers ADD COLUMN payment_window TEXT');
   } catch (e) { /* Column already exists */ }
   // Check if updated_at column exists before adding it
   const tableInfo = db.prepare("PRAGMA table_info(customers)").all();
@@ -102,7 +106,9 @@ function createTables() {
       description TEXT,
       category TEXT,
       stock INTEGER,
-      is_active BOOLEAN DEFAULT 1
+      is_active BOOLEAN DEFAULT 1,
+      created_at DATETIME DEFAULT (datetime('now')),
+      updated_at DATETIME DEFAULT (datetime('now'))
     )
   `);
 
@@ -110,6 +116,8 @@ function createTables() {
   const productsTableInfo = db.prepare("PRAGMA table_info(products)").all();
   const hasCategory = productsTableInfo.some((col: any) => col.name === 'category');
   const hasStock = productsTableInfo.some((col: any) => col.name === 'stock');
+  const hasProductCreatedAt = productsTableInfo.some((col: any) => col.name === 'created_at');
+  const hasProductUpdatedAt = productsTableInfo.some((col: any) => col.name === 'updated_at');
   
   if (!hasCategory) {
     try {
@@ -126,6 +134,29 @@ function createTables() {
       console.log('Successfully added stock column to products table');
     } catch (e) {
       console.error('Error adding stock column to products table:', e);
+    }
+  }
+
+  // Add timestamp columns if they don't exist (for existing databases)
+  if (!hasProductCreatedAt) {
+    try {
+      // Add column and backfill existing rows
+      db.exec('ALTER TABLE products ADD COLUMN created_at DATETIME');
+      db.exec("UPDATE products SET created_at = datetime('now') WHERE created_at IS NULL");
+      console.log('Successfully added created_at column to products table');
+    } catch (e) {
+      console.error('Error adding created_at column to products table:', e);
+    }
+  }
+
+  if (!hasProductUpdatedAt) {
+    try {
+      // Add column and backfill existing rows
+      db.exec('ALTER TABLE products ADD COLUMN updated_at DATETIME');
+      db.exec("UPDATE products SET updated_at = datetime('now') WHERE updated_at IS NULL");
+      console.log('Successfully added updated_at column to products table');
+    } catch (e) {
+      console.error('Error adding updated_at column to products table:', e);
     }
   }
 
@@ -264,6 +295,12 @@ function createTables() {
     CREATE INDEX IF NOT EXISTS idx_customers_updated_at ON customers(updated_at);
     CREATE INDEX IF NOT EXISTS idx_customers_name_email ON customers(name, email);
     CREATE INDEX IF NOT EXISTS idx_customers_search ON customers(name, email, company, tags);
+    
+    -- Product table indexes
+    CREATE INDEX IF NOT EXISTS idx_products_name ON products(name);
+    CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
+    CREATE INDEX IF NOT EXISTS idx_products_created_at ON products(created_at);
+    CREATE INDEX IF NOT EXISTS idx_products_updated_at ON products(updated_at);
     
     -- Sales and related table indexes
     CREATE INDEX IF NOT EXISTS idx_sales_customer_id ON sales(customer_id);

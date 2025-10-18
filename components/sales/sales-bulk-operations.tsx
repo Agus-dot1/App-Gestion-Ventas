@@ -147,10 +147,7 @@ export function SalesBulkOperations({
 
   return (
     <>
-      <div className="flex items-center gap-2">
-        <Badge variant="secondary" className="bg-primary/10 text-primary">
-          {selectedSales.size} seleccionada{selectedSales.size !== 1 ? 's' : ''}
-        </Badge>
+      <div className="flex items-center gap-2 animate-in fade-in">
         
         <Button
           variant="outline"
@@ -173,52 +170,6 @@ export function SalesBulkOperations({
           <Download className="h-4 w-4 mr-1" />
           Excel
         </Button>
-        
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="h-8" disabled={isLoading}>
-              <MoreHorizontal className="h-4 w-4 mr-1" />
-              Acciones
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem className="text-sm">
-              <div className="flex items-center gap-2 w-full">
-                <span className="text-xs text-muted-foreground">Cambiar estado:</span>
-                <Select value={bulkStatus} onValueChange={(value) => setBulkStatus(value as Sale['payment_status'] | '')}>
-                  <SelectTrigger className="h-6 text-xs">
-                    <SelectValue placeholder="Estado" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="paid">Pagado</SelectItem>
-                    <SelectItem value="partial">Parcial</SelectItem>
-                    <SelectItem value="unpaid">Pendiente</SelectItem>
-                    <SelectItem value="overdue">Vencido</SelectItem>
-                  </SelectContent>
-                </Select>
-                {bulkStatus && (
-                  <Button
-                    size="sm"
-                    onClick={handleBulkStatusUpdate}
-                    className="h-6 px-2 text-xs"
-                    disabled={isLoading}
-                  >
-                    Aplicar
-                  </Button>
-                )}
-              </div>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => setShowBulkDeleteDialog(true)}
-              className="text-red-600 focus:text-red-600"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Eliminar seleccionadas
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        
         <Button
           variant="ghost"
           size="sm"
@@ -228,6 +179,9 @@ export function SalesBulkOperations({
         >
           Limpiar selección
         </Button>
+                <Badge variant="secondary" className="bg-primary/10 text-primary">
+          {selectedSales.size} seleccionada{selectedSales.size !== 1 ? 's' : ''}
+        </Badge>
       </div>
 
       {/* Bulk Delete Dialog */}

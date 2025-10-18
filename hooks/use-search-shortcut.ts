@@ -1,21 +1,26 @@
+// File: use-search-shortcut.ts
+
 'use client';
 
 import { useEffect } from 'react';
 
 interface UseSearchShortcutProps {
   onOpenSearch: () => void;
+  onToggleSearch?: () => void;
 }
 
-export function useSearchShortcut({ onOpenSearch }: UseSearchShortcutProps) {
+export function useSearchShortcut({ onOpenSearch, onToggleSearch }: UseSearchShortcutProps) {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Check for Cmd+K (Mac) or Ctrl+K (Windows/Linux)
-      if ((event.metaKey || event.ctrlKey) && event.key === 'g') {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'b') {
         event.preventDefault();
-        onOpenSearch();
+        if (onToggleSearch) {
+          onToggleSearch();
+        } else {
+          onOpenSearch();
+        }
       }
       
-      // Also handle Cmd+/ or Ctrl+/ as alternative
       if ((event.metaKey || event.ctrlKey) && event.key === 'f') {
         event.preventDefault();
         onOpenSearch();
@@ -24,5 +29,5 @@ export function useSearchShortcut({ onOpenSearch }: UseSearchShortcutProps) {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onOpenSearch]);
+  }, [onOpenSearch, onToggleSearch]);
 }

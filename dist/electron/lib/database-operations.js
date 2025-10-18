@@ -3,12 +3,35 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.paymentOperations = exports.installmentOperations = exports.saleItemOperations = exports.saleOperations = exports.productOperations = exports.customerOperations = void 0;
 // Database operations for the sales management system
 const database_1 = require("./database");
+// Normalize legacy/variant payment window values to the canonical union
+function normalizePaymentWindow(value) {
+    if (!value)
+        return undefined;
+    // Legacy English range
+    if (value === '10 to 20')
+        return '1 to 10';
+    // Common Spanish label variants
+    if (value === '10 a 20' || value === '10-20' || value === '10–20')
+        return '1 to 10';
+    if (value === '1 a 10' || value === '1 al 10')
+        return '1 to 10';
+    if (value === '20 a 30' || value === '20 al 30')
+        return '20 to 30';
+    if (value === '1 to 10' || value === '20 to 30')
+        return value;
+    return undefined;
+}
+function normalizeCustomer(c) {
+    const normalized = normalizePaymentWindow(c.payment_window);
+    return normalized ? { ...c, payment_window: normalized } : c;
+}
 // Database operation implementations
 exports.customerOperations = {
     getAll: () => {
         const db = (0, database_1.getDatabase)();
         const stmt = db.prepare('SELECT * FROM customers ORDER BY name');
-        return stmt.all();
+        const rows = stmt.all();
+        return rows.map(normalizeCustomer);
     },
     getPaginated: (page = 1, pageSize = 10, searchTerm = '') => {
         const db = (0, database_1.getDatabase)();
@@ -34,7 +57,7 @@ exports.customerOperations = {
       ORDER BY name 
       LIMIT ? OFFSET ?
     `);
-        const customers = stmt.all(...params, pageSize, offset);
+        const customers = stmt.all(...params, pageSize, offset).map(normalizeCustomer);
         return {
             customers,
             total,
@@ -72,7 +95,8 @@ exports.customerOperations = {
         const searchPattern = `%${searchTerm.trim()}%`;
         const exactPattern = `${searchTerm.trim()}%`;
         const exactMatch = searchTerm.trim();
-        return stmt.all(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, exactMatch, exactPattern, exactPattern, exactPattern, exactPattern, limit);
+        const rows = stmt.all(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, exactMatch, exactPattern, exactPattern, exactPattern, exactPattern, limit);
+        return rows.map(normalizeCustomer);
     },
     getById: (id) => {
         const db = (0, database_1.getDatabase)();
@@ -81,15 +105,15 @@ exports.customerOperations = {
         if (!result) {
             throw new Error(`Customer with id ${id} not found`);
         }
-        return result;
+        return normalizeCustomer(result);
     },
     create: (customer) => {
         const db = (0, database_1.getDatabase)();
         const stmt = db.prepare(`
-      INSERT INTO customers (name, dni, email, phone, address, company, notes, tags, contact_info) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO customers (name, dni, email, phone, address, company, notes, tags, payment_window, contact_info) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-        const result = stmt.run(customer.name, customer.dni || null, customer.email || null, customer.phone || null, customer.address || null, customer.company || null, customer.notes || null, customer.tags || null, customer.contact_info || null);
+        const result = stmt.run(customer.name, customer.dni || null, customer.email || null, customer.phone || null, customer.address || null, customer.company || null, customer.notes || null, customer.tags || null, normalizePaymentWindow(customer.payment_window) || null, customer.contact_info || null);
         return result.lastInsertRowid;
     },
     update: (id, customer) => {
@@ -127,6 +151,10 @@ exports.customerOperations = {
         if (customer.tags !== undefined) {
             fields.push('tags = ?');
             values.push(customer.tags);
+        }
+        if (customer.payment_window !== undefined) {
+            fields.push('payment_window = ?');
+            values.push(normalizePaymentWindow(customer.payment_window) || null);
         }
         if (customer.contact_info !== undefined) {
             fields.push('contact_info = ?');
@@ -170,7 +198,8 @@ exports.customerOperations = {
     getRecent: (limit = 5) => {
         const db = (0, database_1.getDatabase)();
         const stmt = db.prepare('SELECT * FROM customers ORDER BY created_at DESC LIMIT ?');
-        return stmt.all(limit);
+        const rows = stmt.all(limit);
+        return rows.map(normalizeCustomer);
     },
     getMonthlyComparison: () => {
         const db = (0, database_1.getDatabase)();
@@ -189,8 +218,48 @@ exports.customerOperations = {
     },
     deleteAll: () => {
         const db = (0, database_1.getDatabase)();
-        const stmt = db.prepare('DELETE FROM customers');
-        stmt.run();
+        try {
+            db.exec('BEGIN');
+            // Eliminar ventas primero para evitar violaciones de claves foráneas
+            db.prepare('DELETE FROM sales').run();
+            // Luego eliminar clientes
+            db.prepare('DELETE FROM customers').run();
+            db.exec('COMMIT');
+        }
+        catch (e) {
+            try {
+                db.exec('ROLLBACK');
+            }
+            catch (_) { }
+            throw e;
+        }
+    },
+    // Insertar cliente preservando su ID desde un backup
+    insertFromBackup: (customer) => {
+        const db = (0, database_1.getDatabase)();
+        if (customer.id === undefined || customer.id === null) {
+            // Fallback: crear sin ID explícito si falta
+            return exports.customerOperations.create({
+                name: customer.name,
+                dni: customer.dni,
+                email: customer.email,
+                phone: customer.phone,
+                address: customer.address,
+                company: customer.company,
+                notes: customer.notes,
+                tags: customer.tags,
+                contact_info: customer.contact_info,
+                payment_window: normalizePaymentWindow(customer.payment_window),
+            });
+        }
+        const stmt = db.prepare(`
+      INSERT INTO customers (
+        id, name, dni, email, phone, address, company, notes, tags, contact_info, payment_window,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
+    `);
+        const result = stmt.run(customer.id, customer.name, customer.dni || null, customer.email || null, customer.phone || null, customer.address || null, customer.company || null, customer.notes || null, customer.tags || null, customer.contact_info || null, normalizePaymentWindow(customer.payment_window) || null, customer.created_at || null, customer.updated_at || null);
+        return result.lastInsertRowid;
     }
 };
 exports.productOperations = {
@@ -268,7 +337,7 @@ exports.productOperations = {
     },
     create: (product) => {
         const db = (0, database_1.getDatabase)();
-        const stmt = db.prepare('INSERT INTO products (name, price, description, category, stock, is_active) VALUES (?, ?, ?, ?, ?, ?)');
+        const stmt = db.prepare("INSERT INTO products (name, price, description, category, stock, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))");
         const result = stmt.run(product.name, product.price, product.description || null, product.category || null, product.stock || null, product.is_active ? 1 : 0);
         return result.lastInsertRowid;
     },
@@ -300,6 +369,8 @@ exports.productOperations = {
             fields.push('is_active = ?');
             values.push(product.is_active ? 1 : 0);
         }
+        // Always update the timestamp when modifying a product
+        fields.push("updated_at = datetime('now')");
         if (fields.length === 0)
             return;
         values.push(id);
@@ -321,17 +392,44 @@ exports.productOperations = {
     },
     getMonthlyComparison: () => {
         const db = (0, database_1.getDatabase)();
-        // Since products table doesn't have created_at column, return total active products
-        // This is a placeholder implementation - in a real scenario, you'd need to add created_at to products
-        const totalStmt = db.prepare('SELECT COUNT(*) as count FROM products WHERE is_active = 1');
-        const total = totalStmt.get().count;
-        // Return same count for both months as placeholder
-        return { current: total, previous: total, change: 0 };
+        const currentMonthStmt = db.prepare(`
+      SELECT COUNT(*) as count FROM products 
+      WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')
+    `);
+        const previousMonthStmt = db.prepare(`
+      SELECT COUNT(*) as count FROM products 
+      WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now', '-1 month')
+    `);
+        const current = currentMonthStmt.get().count;
+        const previous = previousMonthStmt.get().count;
+        const change = previous === 0 ? 0 : ((current - previous) / previous) * 100;
+        return { current, previous, change };
     },
     deleteAll: () => {
         const db = (0, database_1.getDatabase)();
         const stmt = db.prepare('DELETE FROM products');
         stmt.run();
+    },
+    // Insertar producto preservando su ID desde un backup
+    insertFromBackup: (product) => {
+        const db = (0, database_1.getDatabase)();
+        if (product.id === undefined || product.id === null) {
+            return exports.productOperations.create({
+                name: product.name,
+                price: product.price,
+                description: product.description,
+                category: product.category,
+                stock: product.stock,
+                is_active: product.is_active,
+            });
+        }
+        const stmt = db.prepare(`
+      INSERT INTO products (
+        id, name, price, description, category, stock, is_active, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))
+    `);
+        const result = stmt.run(product.id, product.name, product.price, product.description || null, product.category || null, product.stock ?? null, product.is_active ? 1 : 0, product.created_at || null, product.updated_at || null);
+        return result.lastInsertRowid;
     }
 };
 exports.saleOperations = {
@@ -478,23 +576,75 @@ exports.saleOperations = {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
         for (const item of saleData.items) {
-            const product = exports.productOperations.getById(item.product_id);
             const lineTotal = (item.quantity * item.unit_price) - (item.discount_per_item || 0);
-            itemStmt.run(saleId, item.product_id, item.quantity, item.unit_price, item.discount_per_item || 0, lineTotal, product.name, 'active', 0);
+            let productName = null;
+            if (item.product_id != null) {
+                try {
+                    const p = exports.productOperations.getById(item.product_id);
+                    productName = p?.name || null;
+                }
+                catch (_) {
+                    productName = null;
+                }
+            }
+            if (!productName) {
+                productName = item.product_name || (item.product_id != null ? `Producto ${item.product_id}` : 'Producto sin catálogo');
+            }
+            itemStmt.run(saleId, item.product_id, item.quantity, item.unit_price, item.discount_per_item || 0, lineTotal, productName, 'active', 0);
+            // Decrement product stock if the item references a catalog product
+            if (item.product_id != null) {
+                try {
+                    const product = exports.productOperations.getById(item.product_id);
+                    // Only update stock if it exists (not null/undefined)
+                    if (product && product.stock !== undefined && product.stock !== null) {
+                        const newStock = Math.max(0, product.stock - item.quantity);
+                        exports.productOperations.update(item.product_id, { stock: newStock });
+                    }
+                }
+                catch (e) {
+                    // If product lookup fails, skip stock update to avoid breaking sale creation
+                }
+            }
         }
         // Create installments if needed
         if (saleData.payment_type === 'installments' && saleData.number_of_installments) {
             const monthlyAmount = Math.round(totalAmount / saleData.number_of_installments);
             const advanceInstallments = saleData.advance_installments || 0;
+            // Determine customer's payment window anchor day (end of window)
+            const customerWindowRow = db.prepare('SELECT payment_window FROM customers WHERE id = ?').get(saleData.customer_id);
+            // Use customer's payment window if defined; otherwise fallback to saleData.payment_period
+            const fallbackPeriod = saleData.payment_period;
+            const anchorDay = customerWindowRow?.payment_window === '1 to 10' ? 10
+                : customerWindowRow?.payment_window === '20 to 30' ? 30
+                    : fallbackPeriod === '1 to 10' ? 10
+                        : fallbackPeriod === '20 to 30' ? 30
+                            : 30; // default to end-of-month window
+            // If customer has no defined window but sale provided a period, persist it for future sales
+            const needsCustomerWindowUpdate = (!customerWindowRow?.payment_window || (customerWindowRow.payment_window !== '1 to 10' && customerWindowRow.payment_window !== '20 to 30'))
+                && (fallbackPeriod === '1 to 10' || fallbackPeriod === '20 to 30');
+            if (needsCustomerWindowUpdate) {
+                try {
+                    exports.customerOperations.update(saleData.customer_id, { payment_window: fallbackPeriod });
+                }
+                catch {
+                    // Do not block sale creation if updating the customer fails
+                }
+            }
             const installmentStmt = db.prepare(`
         INSERT INTO installments (
           sale_id, installment_number, due_date, amount, paid_amount,
           balance, status, days_overdue, late_fee, late_fee_applied
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
+            const nowDate = new Date();
             for (let i = 1; i <= saleData.number_of_installments; i++) {
-                const dueDate = new Date();
-                dueDate.setMonth(dueDate.getMonth() + i);
+                // Compute due date anchored to the customer's window within the target month
+                const targetMonthIndex = nowDate.getMonth() + i;
+                const targetYear = nowDate.getFullYear() + Math.floor(targetMonthIndex / 12);
+                const normalizedMonth = ((targetMonthIndex % 12) + 12) % 12;
+                const lastDayOfTargetMonth = new Date(targetYear, normalizedMonth + 1, 0).getDate();
+                const day = Math.min(anchorDay, lastDayOfTargetMonth);
+                const dueDate = new Date(targetYear, normalizedMonth, day);
                 // Mark advance installments as paid
                 const isPaid = i <= advanceInstallments;
                 installmentStmt.run(saleId, i, dueDate.toISOString().split('T')[0], monthlyAmount, isPaid ? monthlyAmount : 0, isPaid ? 0 : monthlyAmount, isPaid ? 'paid' : 'pending', 0, 0, 0);
@@ -515,6 +665,131 @@ exports.saleOperations = {
         `).all(saleId, advanceInstallments);
                 installmentIds.forEach((installment) => {
                     paymentStmt.run(saleId, installment.id, monthlyAmount, 'cash', 'Pago adelantado', new Date().toISOString(), 'completed');
+                });
+            }
+        }
+        return saleId;
+    },
+    // Import a sale from backup data that may not include items
+    importFromBackup: (sale) => {
+        const db = (0, database_1.getDatabase)();
+        // Ensure referenced customer exists; if not, create a stub to satisfy FK
+        if (sale.customer_id == null) {
+            throw new Error('customer_id es requerido para importar una venta');
+        }
+        const customerCheck = db.prepare('SELECT 1 FROM customers WHERE id = ?').get(sale.customer_id);
+        if (!customerCheck) {
+            exports.customerOperations.insertFromBackup({
+                id: sale.customer_id,
+                name: sale.customer_name || `Cliente ${sale.customer_id}`,
+            });
+        }
+        const saleNumber = sale.sale_number || (() => {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const todayStart = `${year}-${month}-${day}`;
+            const todayCountStmt = db.prepare(`
+        SELECT COUNT(*) as count FROM sales 
+        WHERE date(date) = date(?)
+      `);
+            const todayCount = todayCountStmt.get(todayStart).count + 1;
+            const sequentialNumber = String(todayCount).padStart(3, '0');
+            return `VENTA-${sequentialNumber}-${year}${month}${day}`;
+        })();
+        const date = sale.date || new Date().toISOString();
+        const subtotal = typeof sale.subtotal === 'number' ? sale.subtotal : 0;
+        const taxAmount = typeof sale.tax_amount === 'number' ? sale.tax_amount : 0;
+        const discountAmount = typeof sale.discount_amount === 'number' ? sale.discount_amount : 0;
+        const totalAmount = typeof sale.total_amount === 'number' ? sale.total_amount : (subtotal + taxAmount - discountAmount);
+        const paymentType = sale.payment_type || 'cash';
+        const paymentStatus = sale.payment_status || (paymentType === 'cash' ? 'paid' : 'unpaid');
+        const numberOfInstallments = sale.number_of_installments || null;
+        const installmentAmount = typeof sale.installment_amount === 'number'
+            ? sale.installment_amount
+            : (numberOfInstallments ? Math.round(totalAmount / numberOfInstallments) : null);
+        const advanceInstallments = sale.advance_installments || 0;
+        const status = sale.status || 'completed';
+        const transactionType = sale.transaction_type || 'sale';
+        const notes = sale.notes || null;
+        // Insert sale row
+        const saleStmt = db.prepare(`
+      INSERT INTO sales (
+        customer_id, sale_number, date, due_date, subtotal, tax_amount,
+        discount_amount, total_amount, payment_type, payment_status,
+        number_of_installments, installment_amount, advance_installments,
+        transaction_type, status, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+        const saleResult = saleStmt.run(sale.customer_id, saleNumber, date, sale.due_date || null, subtotal, taxAmount, discountAmount, totalAmount, paymentType, paymentStatus, numberOfInstallments, installmentAmount, advanceInstallments, transactionType, status, notes);
+        const saleId = saleResult.lastInsertRowid;
+        // Insert sale items if provided in backup
+        if (sale.items && Array.isArray(sale.items) && sale.items.length > 0) {
+            const itemStmt = db.prepare(`
+        INSERT INTO sale_items (
+          sale_id, product_id, quantity, unit_price, discount_per_item,
+          line_total, product_name, status, returned_quantity
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+            for (const item of sale.items) {
+                const lineTotal = (item.quantity * item.unit_price) - (item.discount_per_item || 0);
+                let productName = item.product_name || null;
+                if (!productName) {
+                    try {
+                        const p = exports.productOperations.getById(item.product_id);
+                        productName = p?.name || null;
+                    }
+                    catch (_) {
+                        productName = null;
+                    }
+                }
+                if (!productName) {
+                    productName = `Producto ${item.product_id}`;
+                }
+                itemStmt.run(saleId, item.product_id, item.quantity, item.unit_price, item.discount_per_item || 0, lineTotal, productName, 'active', 0);
+            }
+        }
+        // Recreate installments if needed based on sale fields
+        if (paymentType === 'installments' && numberOfInstallments) {
+            const monthlyAmount = installmentAmount || Math.round(totalAmount / numberOfInstallments);
+            const installmentStmt = db.prepare(`
+        INSERT INTO installments (
+          sale_id, installment_number, due_date, amount, paid_amount,
+          balance, status, days_overdue, late_fee, late_fee_applied
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+            // Determine customer's payment window anchor day (end of window)
+            const customerWindowRow = db.prepare('SELECT payment_window FROM customers WHERE id = ?').get(sale.customer_id);
+            const anchorDay = customerWindowRow?.payment_window === '1 to 10' ? 10
+                : customerWindowRow?.payment_window === '20 to 30' ? 30
+                    : 30;
+            const baseDate = new Date(date);
+            for (let i = 1; i <= numberOfInstallments; i++) {
+                const targetMonthIndex = baseDate.getMonth() + i;
+                const targetYear = baseDate.getFullYear() + Math.floor(targetMonthIndex / 12);
+                const normalizedMonth = ((targetMonthIndex % 12) + 12) % 12;
+                const lastDayOfTargetMonth = new Date(targetYear, normalizedMonth + 1, 0).getDate();
+                const day = Math.min(anchorDay, lastDayOfTargetMonth);
+                const dueDate = new Date(targetYear, normalizedMonth, day);
+                const isPaid = i <= advanceInstallments;
+                installmentStmt.run(saleId, i, dueDate.toISOString().split('T')[0], monthlyAmount, isPaid ? monthlyAmount : 0, isPaid ? 0 : monthlyAmount, isPaid ? 'paid' : 'pending', 0, 0, 0);
+            }
+            // Create payment transactions for advance installments
+            if (advanceInstallments > 0) {
+                const paymentStmt = db.prepare(`
+           INSERT INTO payment_transactions (
+             sale_id, installment_id, amount, payment_method, payment_reference,
+             transaction_date, status
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)
+         `);
+                const installmentIds = db.prepare(`
+          SELECT id FROM installments 
+          WHERE sale_id = ? AND installment_number <= ?
+          ORDER BY installment_number
+        `).all(saleId, advanceInstallments);
+                installmentIds.forEach((installment) => {
+                    paymentStmt.run(saleId, installment.id, monthlyAmount, 'cash', 'Pago adelantado (import)', new Date().toISOString(), 'completed');
                 });
             }
         }
@@ -654,6 +929,23 @@ exports.saleItemOperations = {
         const result = stmt.run(saleItem.sale_id, saleItem.product_id, saleItem.quantity, saleItem.unit_price, saleItem.discount_per_item, saleItem.line_total, saleItem.product_name, saleItem.product_description || null, saleItem.status, saleItem.returned_quantity);
         return result.lastInsertRowid;
     },
+    getSalesForProduct: (productId) => {
+        const db = (0, database_1.getDatabase)();
+        const stmt = db.prepare(`
+      SELECT DISTINCT 
+        s.id AS sale_id,
+        s.sale_number AS sale_number,
+        s.date AS date,
+        s.customer_id AS customer_id,
+        c.name AS customer_name
+      FROM sale_items si
+      INNER JOIN sales s ON si.sale_id = s.id
+      LEFT JOIN customers c ON s.customer_id = c.id
+      WHERE si.product_id = ?
+      ORDER BY s.date DESC
+    `);
+        return stmt.all(productId);
+    },
     deleteAll: () => {
         const db = (0, database_1.getDatabase)();
         const stmt = db.prepare('DELETE FROM sale_items');
@@ -681,7 +973,8 @@ exports.installmentOperations = {
       SELECT 
         i.*,
         c.name as customer_name,
-        s.sale_number
+        s.sale_number,
+        s.customer_id as customer_id
       FROM installments i
       JOIN sales s ON i.sale_id = s.id
       JOIN customers c ON s.customer_id = c.id

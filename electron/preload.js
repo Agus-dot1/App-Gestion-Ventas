@@ -62,10 +62,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       deleteAll: () => ipcRenderer.invoke('installments:deleteAll')
     },
     saleItems: {
-      getBySale: (saleId) => ipcRenderer.invoke('saleItems:getBySale', saleId),
-      create: (saleItem) => ipcRenderer.invoke('saleItems:create', saleItem),
-      deleteAll: () => ipcRenderer.invoke('saleItems:deleteAll')
-    },
+        getBySale: (saleId) => ipcRenderer.invoke('saleItems:getBySale', saleId),
+        create: (saleItem) => ipcRenderer.invoke('saleItems:create', saleItem),
+        getSalesForProduct: (productId) => ipcRenderer.invoke('saleItems:getSalesForProduct', productId),
+        deleteAll: () => ipcRenderer.invoke('saleItems:deleteAll')
+      },
     payments: {
       getBySale: (saleId) => ipcRenderer.invoke('payments:getBySale', saleId),
       create: (payment) => ipcRenderer.invoke('payments:create', payment),

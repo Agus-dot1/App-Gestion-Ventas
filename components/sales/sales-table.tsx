@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +17,7 @@ import { SalesBulkOperations } from './sales-bulk-operations';
 import { SalesColumnToggle, type ColumnVisibility } from './sales-column-toggle';
 import { SaleDetailModal } from './sale-detail-modal';
 import { ButtonGroup } from '../ui/button-group';
+import { SalesFilters, SalesFiltersComponent, applySalesFilters } from './sales-filters';
 
 interface SalesTableProps {
   sales: Sale[];
@@ -42,18 +43,27 @@ export function SalesTable({
   onBulkDelete,
   onBulkStatusUpdate, 
   isLoading = false,
-  searchTerm: externalSearchTerm,
-  onSearchChange,
+  searchTerm: _externalSearchTerm,
+  onSearchChange: _onSearchChange,
   currentPage,
   onPageChange,
   paginationInfo,
   serverSidePagination = false
 }: SalesTableProps) {
-  const [internalSearchTerm, setInternalSearchTerm] = useState('');
-  const searchTerm = serverSidePagination ? (externalSearchTerm || '') : internalSearchTerm;
+  // Filters state controls filtering and sorting
+  const [salesFilters, setSalesFilters] = useState<SalesFilters>({
+    search: '',
+    sortBy: 'date',
+    sortOrder: 'desc',
+    paymentStatus: [],
+    paymentType: [],
+    minAmount: null,
+    maxAmount: null,
+    dateAfter: null,
+    dateBefore: null
+  });
   const [deleteSale, setDeleteSale] = useState<Sale | null>(null);
   const [selectedSales, setSelectedSales] = useState<Set<number>>(new Set());
-  const [sortConfig, setSortConfig] = useState<{ key: keyof Sale; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>({
     sale_number: true,
     customer_name: true,
@@ -65,56 +75,71 @@ export function SalesTable({
   const [detailSale, setDetailSale] = useState<Sale | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
-  const filteredSales = serverSidePagination ? sales : sales.filter(sale =>
-    sale.sale_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    sale.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    sale.notes?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  // Sort sales (only for client-side)
-  const sortedSales = useMemo(() => {
-    if (serverSidePagination) return filteredSales;
-    
-    const sorted = [...filteredSales];
+  // Apply sorting consistently. For client-side, use filters helper; for server-side, sort current page.
+  const visibleSales = useMemo(() => {
+    if (!serverSidePagination) {
+      return applySalesFilters(sales, salesFilters);
+    }
+    const sorted = [...sales];
     sorted.sort((a, b) => {
-      let aValue, bValue;
-      
-      // Map sort keys to actual object properties
-      switch (sortConfig.key) {
+      let aValue: any;
+      let bValue: any;
+
+      switch (salesFilters.sortBy) {
+        case 'sale_number':
+          aValue = a.sale_number;
+          bValue = b.sale_number;
+          break;
+        case 'customer_name':
+          aValue = a.customer_name || '';
+          bValue = b.customer_name || '';
+          break;
         case 'date':
-          aValue = a.date;
-          bValue = b.date;
+          aValue = new Date(a.date || 0);
+          bValue = new Date(b.date || 0);
+          break;
+        case 'total_amount':
+          aValue = a.total_amount;
+          bValue = b.total_amount;
+          break;
+        case 'payment_status':
+          aValue = a.payment_status;
+          bValue = b.payment_status;
+          break;
+        case 'payment_type':
+          aValue = a.payment_type;
+          bValue = b.payment_type;
           break;
         default:
-          aValue = a[sortConfig.key] || '';
-          bValue = b[sortConfig.key] || '';
+          aValue = a.date;
+          bValue = b.date;
       }
-      
-      // Handle different data types
-      if (sortConfig.key === 'total_amount' || sortConfig.key === 'advance_installments') {
-        const aNum = Number(aValue);
-        const bNum = Number(bValue);
-        return sortConfig.direction === 'asc' ? aNum - bNum : bNum - aNum;
-      }
-      
-      if (sortConfig.key === 'date') {
-        const aDate = new Date(aValue as string);
-        const bDate = new Date(bValue as string);
-        return sortConfig.direction === 'asc' ? aDate.getTime() - bDate.getTime() : bDate.getTime() - aDate.getTime();
-      }
-      
-      // String comparison for other fields
-      const aStr = aValue.toString().toLowerCase();
-      const bStr = bValue.toString().toLowerCase();
-      
-      if (sortConfig.direction === 'asc') {
-        return aStr.localeCompare(bStr);
-      } else {
-        return bStr.localeCompare(aStr);
-      }
+
+      if (aValue < bValue) return salesFilters.sortOrder === 'asc' ? -1 : 1;
+      if (aValue > bValue) return salesFilters.sortOrder === 'asc' ? 1 : -1;
+      return 0;
     });
     return sorted;
-  }, [filteredSales, sortConfig, serverSidePagination]);
+  }, [sales, salesFilters, serverSidePagination]);
+
+  // Client-side pagination state (10 per page)
+  const [clientPage, setClientPage] = useState(1);
+  const clientPageSize = 10;
+
+  // Reset client-side page when filters or data change
+  useEffect(() => {
+    setClientPage(1);
+  }, [salesFilters, sales]);
+
+  const totalClientPages = useMemo(() => {
+    return Math.max(1, Math.ceil(visibleSales.length / clientPageSize));
+  }, [visibleSales.length]);
+
+  const paginatedSales = useMemo(() => {
+    if (serverSidePagination) return visibleSales;
+    const start = (clientPage - 1) * clientPageSize;
+    return visibleSales.slice(start, start + clientPageSize);
+  }, [visibleSales, clientPage, serverSidePagination]);
 
   const handleDelete = async () => {
     if (deleteSale?.id) {
@@ -142,29 +167,72 @@ export function SalesTable({
   };
 
   const handleSelectAll = (checked: boolean) => {
+    const list = serverSidePagination ? visibleSales : paginatedSales;
     if (checked) {
-      setSelectedSales(new Set(sortedSales.map(s => s.id).filter(id => id !== undefined) as number[]));
+      setSelectedSales(new Set(list.map(s => s.id).filter(id => id !== undefined) as number[]));
     } else {
       setSelectedSales(new Set());
     }
   };
 
-  const isAllSelected = sortedSales.length > 0 && selectedSales.size === sortedSales.filter(s => s.id !== undefined).length;
+  const isAllSelected = (() => {
+    const list = serverSidePagination ? visibleSales : paginatedSales;
+    return list.length > 0 && selectedSales.size === list.filter(s => s.id !== undefined).length;
+  })();
 
   // Sort function
   const handleSort = (key: keyof Sale) => {
-    setSortConfig(prev => ({
-      key,
-      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    const mapKeyToFilterSortBy = (k: keyof Sale): SalesFilters['sortBy'] => {
+      switch (k) {
+        case 'sale_number':
+          return 'sale_number';
+        case 'customer_name':
+          return 'customer_name';
+        case 'date':
+          return 'date';
+        case 'payment_type':
+          return 'payment_type';
+        case 'total_amount':
+          return 'total_amount';
+        case 'payment_status':
+          return 'payment_status';
+        default:
+          return 'date';
+      }
+    };
+    const targetSortBy = mapKeyToFilterSortBy(key);
+    setSalesFilters(prev => ({
+      ...prev,
+      sortBy: targetSortBy,
+      sortOrder: prev.sortBy === targetSortBy && prev.sortOrder === 'asc' ? 'desc' : 'asc'
     }));
   };
 
   // Get sort icon
   const getSortIcon = (key: keyof Sale) => {
-    if (sortConfig.key !== key) {
+    const mapKeyToFilterSortBy = (k: keyof Sale): SalesFilters['sortBy'] => {
+      switch (k) {
+        case 'sale_number':
+          return 'sale_number';
+        case 'customer_name':
+          return 'customer_name';
+        case 'date':
+          return 'date';
+        case 'payment_type':
+          return 'payment_type';
+        case 'total_amount':
+          return 'total_amount';
+        case 'payment_status':
+          return 'payment_status';
+        default:
+          return 'date';
+      }
+    };
+    const targetSortBy = mapKeyToFilterSortBy(key);
+    if (salesFilters.sortBy !== targetSortBy) {
       return <ArrowUpDown className="h-4 w-4" />;
     }
-    return sortConfig.direction === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />;
+    return salesFilters.sortOrder === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />;
   };
 
   const handleBulkDelete = async (saleIds: number[]) => {
@@ -231,13 +299,11 @@ export function SalesTable({
     const colors = {
       cash: 'bg-blue-100 text-blue-800',
       installments: 'bg-purple-100 text-purple-800',
-      credit: 'bg-orange-100 text-orange-800',
     } as const;
 
     const typeLabels = {
       cash: 'Efectivo',
       installments: 'Cuotas',
-      credit: 'Crédito',
     } as const;
 
     return (
@@ -252,21 +318,17 @@ export function SalesTable({
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <CreditCard className="h-5 w-5" />
-                Ventas
-              </CardTitle>
-              <CardDescription>
-                Lista de todas las ventas registradas.
-              </CardDescription>
-            </div>
             <div className="flex items-center gap-2">
+              <SalesFiltersComponent
+                filters={salesFilters}
+                onFiltersChange={setSalesFilters}
+                sales={sales}
+              />
               <SalesColumnToggle
                 columnVisibility={columnVisibility}
                 onColumnVisibilityChange={setColumnVisibility}
               />
-              {selectedSales.size > 0 && onBulkDelete && onBulkStatusUpdate && (
+                            {selectedSales.size > 0 && onBulkDelete && onBulkStatusUpdate && (
                 <SalesBulkOperations
                   selectedSales={selectedSales}
                   sales={sales}
@@ -275,7 +337,7 @@ export function SalesTable({
                   onClearSelection={clearSelection}
                   isLoading={isLoading}
                 />
-              )}
+              )}  
             </div>
           </div>
         </CardHeader>
@@ -422,12 +484,12 @@ export function SalesTable({
                 </TableBody>
               </Table>
             </div>
-          ) : sortedSales.length === 0 ? (
+          ) : visibleSales.length === 0 ? (
             <div className="text-center py-12">
               <CreditCard className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-semibold mb-2">No se encontraron ventas</h3>
               <p className="text-muted-foreground mb-4">
-                {searchTerm ? 'No se encontraron ventas con esos criterios.' : '¡Crea tu primera venta!'}
+                {salesFilters.search ? 'No se encontraron ventas con esos criterios.' : '¡Crea tu primera venta!'}
               </p>
             </div>
           ) : (
@@ -521,7 +583,7 @@ export function SalesTable({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedSales.map((sale) => (
+                  {(serverSidePagination ? visibleSales : paginatedSales).map((sale) => (
                     <TableRow 
                       key={sale.id} 
                       id={`venta-${sale.id}`}
@@ -576,12 +638,14 @@ export function SalesTable({
                       )}
                       {columnVisibility.payment_type && (
                         <TableCell>
+                          <div className="flex items-center gap-1">
                           {getPaymentTypeBadge(sale.payment_type)}
                           {sale.payment_type === 'installments' && (
-                            <div className="text-xs text-muted-foreground mt-1">
+                            <div className="text-xs text-muted-foreground">
                               {sale.number_of_installments} pagos
                             </div>
                           )}
+                          </div>
                         </TableCell>
                       )}
                       {columnVisibility.total_amount && (
@@ -648,6 +712,42 @@ export function SalesTable({
                 className="h-8 w-8 p-0"
                 onClick={() => onPageChange && onPageChange(paginationInfo.currentPage + 1)}
                 disabled={paginationInfo.currentPage >= paginationInfo.totalPages}
+              >
+                <span className="sr-only">Ir a la página siguiente</span>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Client-side Pagination Controls */}
+      {!serverSidePagination && visibleSales.length > 0 && totalClientPages > 1 && (
+        <div className="flex items-center justify-between px-2">
+          <div className="flex-1 text-sm text-muted-foreground">
+            Mostrando {((clientPage - 1) * clientPageSize) + 1} a{' '}
+            {Math.min(clientPage * clientPageSize, visibleSales.length)} de{' '}
+            {visibleSales.length} ventas
+          </div>
+          <div className="flex items-center space-x-6 lg:space-x-8">
+            <div className="flex items-center space-x-2">
+              <Button
+                variant="outline"
+                className="h-8 w-8 p-0"
+                onClick={() => setClientPage(p => Math.max(1, p - 1))}
+                disabled={clientPage <= 1}
+              >
+                <span className="sr-only">Ir a la página anterior</span>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div className="flex w-[100px] items-center justify-center text-sm font-medium">
+                Página {clientPage} de {totalClientPages}
+              </div>
+              <Button
+                variant="outline"
+                className="h-8 w-8 p-0"
+                onClick={() => setClientPage(p => Math.min(totalClientPages, p + 1))}
+                disabled={clientPage >= totalClientPages}
               >
                 <span className="sr-only">Ir a la página siguiente</span>
                 <ChevronRight className="h-4 w-4" />

@@ -9,11 +9,12 @@ import { SaleForm } from '@/components/sales/sale-form';
 import { SalesTable } from '@/components/sales/sales-table';
 import { InstallmentDashboard, InstallmentDashboardRef } from '@/components/sales/installments-dashboard/installment-dashboard';
 import { SalesSkeleton } from '@/components/skeletons/sales-skeleton';
-import { SalesFiltersComponent, applySalesFilters, type SalesFilters } from '@/components/sales/sales-filters';
+// Filters moved into SalesTable; page no longer imports filter components
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, CreditCard, TrendingUp, DollarSign, Calendar, Database, AlertTriangle } from 'lucide-react';
 import type { Sale, Product, SaleFormData } from '@/lib/database-operations';
 import { useDataCache, usePrefetch } from '@/hooks/use-data-cache';
+import { toast } from 'sonner';
 
 
 export default function SalesPage() {
@@ -29,17 +30,6 @@ export default function SalesPage() {
   const [activeTab, setActiveTab] = useState(() => tabParam || 'sales');
   const [isLoading, setIsLoading] = useState(false); // Start with false for optimistic navigation
   const [searchTerm, setSearchTerm] = useState('');
-  const [salesFilters, setSalesFilters] = useState<SalesFilters>({
-    search: '',
-    sortBy: 'date',
-    sortOrder: 'desc',
-    paymentStatus: [],
-    paymentType: [],
-    minAmount: null,
-    maxAmount: null,
-    dateAfter: null,
-    dateBefore: null
-  });
   const [currentPage, setCurrentPage] = useState(1);
   const [paginationInfo, setPaginationInfo] = useState<{ total: number; totalPages: number; currentPage: number; pageSize: number } | undefined>(undefined);
   const [refreshCounter, setRefreshCounter] = useState(0);
@@ -98,13 +88,7 @@ export default function SalesPage() {
     }
   }, [currentPage]);
 
-  // Apply filters to sales data
-  const filteredSales = applySalesFilters(sales, salesFilters);
-
-  // Update search term when filters change
-  useEffect(() => {
-    setSearchTerm(salesFilters.search);
-  }, [salesFilters.search]);
+  // Client-side filters live inside SalesTable now
 
   // Highlight sale if specified in URL
   const highlightedSale = useMemo(() => {
@@ -226,13 +210,17 @@ export default function SalesPage() {
           notes: saleData.notes
         };
         await window.electronAPI.database.sales.update(editingSale.id, updateData);
+        toast.success('Venta actualizada correctamente');
       } else {
         // Create new sale
         await window.electronAPI.database.sales.create(saleData);
+        toast.success('Venta creada correctamente');
       }
 
       // Clear cache and force refresh to ensure fresh data is loaded
       dataCache.invalidateCache('sales');
+      // Also invalidate products so stock updates are reflected
+      dataCache.invalidateCache('products');
       await loadSales(true);
       await loadOverdueSales();
 
@@ -246,6 +234,7 @@ export default function SalesPage() {
       setIsFormOpen(false);
     } catch (error) {
       console.error('Error guardando venta:', error);
+      toast.error('Error guardando la venta');
       throw error; // Re-throw to let the form handle the error
     }
   };
@@ -259,26 +248,17 @@ export default function SalesPage() {
     try {
       await window.electronAPI.database.sales.delete(saleId);
       // Clear cache to ensure fresh data is loaded
+       setSales(prev => prev.filter(p => p.id !== saleId));
       dataCache.invalidateCache('sales');
-      await loadSales();
-      await loadOverdueSales();
 
       // Refresh installment dashboard if it exists
       if (installmentDashboardRef.current) {
         installmentDashboardRef.current.refreshData();
       }
-
-      // Refresh installment dashboard if it exists
-      if (installmentDashboardRef.current) {
-        installmentDashboardRef.current.refreshData();
-      }
-
-      // Refresh installment dashboard if it exists
-      if (installmentDashboardRef.current) {
-        installmentDashboardRef.current.refreshData();
-      }
+      toast.success('Venta eliminada correctamente');
     } catch (error) {
       console.error('Error eliminando venta:', error);
+      toast.error('Error eliminando la venta');
     }
   };
 
@@ -287,13 +267,14 @@ export default function SalesPage() {
       // Delete each sale individually
       for (const saleId of saleIds) {
         await window.electronAPI.database.sales.delete(saleId);
+        setSales(prev => prev.filter(p => p.id !== saleId));
       }
       // Clear cache to ensure fresh data is loaded
       dataCache.invalidateCache('sales');
-      await loadSales();
-      await loadOverdueSales();
+      toast.success(`Ventas eliminadas: ${saleIds.length}`);
     } catch (error) {
       console.error('Error eliminando ventas:', error);
+      toast.error('Error eliminando las ventas seleccionadas');
       throw error;
     }
   };
@@ -314,8 +295,11 @@ export default function SalesPage() {
       dataCache.invalidateCache('sales');
       await loadSales();
       await loadOverdueSales();
+      const statusLabel = status === 'paid' ? 'Pagadas' : status === 'partial' ? 'Parcial' : 'Pendientes';
+      toast.success(`Estado actualizado a ${statusLabel}`);
     } catch (error) {
       console.error('Error actualizando estado de ventas:', error);
+      toast.error('Error actualizando el estado de las ventas');
       throw error;
     }
   };
@@ -509,10 +493,10 @@ export default function SalesPage() {
       dataCache.invalidateCache('sales');
       await loadSales(true);
       await loadOverdueSales();
-
-      console.log('Mock sales added successfully');
+      toast.success('Datos de prueba cargados correctamente');
     } catch (error) {
       console.error('Error adding mock sales:', error);
+      toast.error('Error al cargar datos de prueba');
     }
   };
 
@@ -561,7 +545,7 @@ export default function SalesPage() {
                 <div>
                   <h1 className="text-3xl font-bold tracking-tight">Ventas</h1>
                   <p className="text-muted-foreground">
-                    Acá podes gestionar todas tus ventas, crear nuevas, editar o eliminar las existentes. Ademas de seguir el estado de los pagos y planes de cuotas.
+                    Acá podes gestionar todas tus ventas, crear nuevas, editar o eliminar las existentes.
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -649,22 +633,15 @@ export default function SalesPage() {
                 </CardContent>
               </Card>
             </div>
-            <SalesFiltersComponent
-              filters={salesFilters}
-              onFiltersChange={setSalesFilters}
-              sales={sales}
-            />
             <SalesTable
               key={refreshCounter}
-              sales={filteredSales}
+              sales={sales}
               highlightId={highlightId}
               onEdit={handleEditSale}
               onDelete={handleDeleteSale}
               onBulkDelete={handleBulkDeleteSales}
               onBulkStatusUpdate={handleBulkStatusUpdate}
               isLoading={isLoading}
-              searchTerm={searchTerm}
-              onSearchChange={(value) => setSalesFilters(prev => ({ ...prev, search: value }))}
               currentPage={currentPage}
               onPageChange={(page) => setCurrentPage(page)}
               paginationInfo={paginationInfo}

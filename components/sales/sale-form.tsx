@@ -10,7 +10,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { AlertCircle, Plus, Trash2, ShoppingCart, User, CreditCard, Calculator, DollarSign } from 'lucide-react';
+import { AlertCircle, Plus, Trash2, ShoppingCart, User, CreditCard, Calculator, DollarSign, Search, Users, List } from 'lucide-react';
+import { CustomerForm } from '@/components/customers/customer-form';
+import { useDataCache } from '@/hooks/use-data-cache';
 import type { Sale, Customer, Product, SaleFormData } from '@/lib/database-operations';
 import { SelectLabel } from '@radix-ui/react-select';
 
@@ -22,7 +24,7 @@ interface SaleFormProps {
 }
 
 interface SaleItem {
-  product_id: number;
+  product_id: number | null;
   product_name: string;
   quantity: number;
   unit_price: number;
@@ -31,6 +33,7 @@ interface SaleItem {
 }
 
 export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
+  const dataCache = useDataCache();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [formData, setFormData] = useState({
@@ -47,6 +50,11 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
   const [items, setItems] = useState<SaleItem[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [productDialogOpen, setProductDialogOpen] = useState(false);
+  const [productQuery, setProductQuery] = useState('');
+  const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
+  const [customerQuery, setCustomerQuery] = useState('');
+  const [fullCustomerFormOpen, setFullCustomerFormOpen] = useState(false);
 
   useEffect(() => {
     if (open && typeof window !== 'undefined' && window.electronAPI) {
@@ -122,19 +130,89 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
     }
   };
 
-  const addItem = () => {
-    if (products.length === 0) return;
-    
-    const firstProduct = products[0];
+  const openProductDialog = () => {
+    setProductQuery('');
+    setProductDialogOpen(true);
+  };
+
+  const addItemFromProduct = (product: Product) => {
     const newItem: SaleItem = {
-      product_id: firstProduct.id!,
-      product_name: firstProduct.name,
+      product_id: product.id ?? null,
+      product_name: product.name,
       quantity: 1,
-      unit_price: firstProduct.price,
+      unit_price: product.price,
       discount_per_item: 0,
-      line_total: firstProduct.price
+      line_total: product.price
     };
-    setItems([...items, newItem]);
+    setItems(prev => [...prev, newItem]);
+    setProductDialogOpen(false);
+  };
+
+  const addCustomProductByName = (name: string) => {
+    const cleanName = name.trim();
+    if (!cleanName) return;
+    const newItem: SaleItem = {
+      product_id: null,
+      product_name: cleanName,
+      quantity: 1,
+      unit_price: 0,
+      discount_per_item: 0,
+      line_total: 0
+    };
+    setItems(prev => [...prev, newItem]);
+    setProductDialogOpen(false);
+  };
+
+  // Customer selection helpers (inside component scope)
+  const openCustomerDialog = () => {
+    setCustomerQuery('');
+    setCustomerDialogOpen(true);
+  };
+
+  const selectCustomer = (customer: Customer) => {
+    setFormData(prev => ({ ...prev, customer_id: customer.id! }));
+    setCustomerDialogOpen(false);
+  };
+
+  const createCustomerQuick = async (name: string) => {
+    const clean = name.trim();
+    if (!clean) return;
+    const existing = customers.find(c => c.name.toLowerCase() === clean.toLowerCase());
+    if (existing) {
+      selectCustomer(existing);
+      return;
+    }
+    try {
+      const id = await window.electronAPI.database.customers.create({ name: clean });
+      const newCustomer: Customer = { id, name: clean } as Customer;
+      setCustomers(prev => [...prev, newCustomer]);
+      setFormData(prev => ({ ...prev, customer_id: id }));
+      // Invalidate global customers cache so the Customers page refreshes
+      dataCache.invalidateCache('customers');
+    } catch (e) {
+      console.error('Error creando cliente rápido:', e);
+    } finally {
+      setCustomerDialogOpen(false);
+    }
+  };
+
+  const openFullCustomerForm = () => {
+    setFullCustomerFormOpen(true);
+  };
+
+  const handleFullCustomerSave = async (payload: Omit<Customer, 'id' | 'created_at' | 'updated_at'>) => {
+    try {
+      const id = await window.electronAPI.database.customers.create(payload);
+      const newCustomer: Customer = { id, ...payload } as Customer;
+      setCustomers(prev => [...prev, newCustomer]);
+      setFormData(prev => ({ ...prev, customer_id: id }));
+      setFullCustomerFormOpen(false);
+      setCustomerDialogOpen(false);
+      // Invalidate global customers cache so the Customers page refreshes
+      dataCache.invalidateCache('customers');
+    } catch (e) {
+      console.error('Error guardando cliente desde formulario:', e);
+    }
   };
 
   const removeItem = (index: number) => {
@@ -151,6 +229,8 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
       if (product) {
         updatedItems[index].product_name = product.name;
         updatedItems[index].unit_price = product.price;
+      } else if (value == null) {
+        // If product_id set to null, keep existing custom name and unit price
       }
     }
     
@@ -163,7 +243,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
 
   const calculateTotals = () => {
     const subtotal = items.reduce((sum, item) => sum + item.line_total, 0);
-    const total = subtotal + formData.tax_amount - formData.discount_amount;
+    const total = subtotal - formData.discount_amount;
     return { subtotal, total };
   };
 
@@ -211,9 +291,11 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
           product_id: item.product_id,
           quantity: item.quantity,
           unit_price: item.unit_price,
-          discount_per_item: item.discount_per_item
+          discount_per_item: item.discount_per_item,
+          product_name: item.product_name
         })),
         payment_type,
+        payment_period: payment_type === 'installments' ? formData.payment_period : undefined,
         number_of_installments: payment_type === 'installments' ? formData.number_of_installments : undefined,
         advance_installments: payment_type === 'installments' ? formData.advance_installments : undefined,
         tax_amount: formData.tax_amount,
@@ -271,24 +353,38 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
             <CardContent>
               <div className="space-y-2">
                 <Label htmlFor="customer">Cliente *</Label>
-                <Select
-                  value={formData.customer_id.toString()}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, customer_id: parseInt(value) }))}
-                >
-                  <SelectTrigger className={errors.customer_id ? 'border-red-500' : ''}>
-                    <SelectValue placeholder="Selecciona un cliente" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customers.map((customer) => (
-                      <SelectItem key={customer.id} value={customer.id!.toString()}>
-                        <div className="flex items-center gap-2">
-                          <User className="h-4 w-4" />
-                          {customer.name}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    {formData.customer_id ? (
+                      <div className={`p-2 border rounded-md ${errors.customer_id ? 'border-red-500' : ''}`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <User className="h-4 w-4" />
+                            {customers.find(c => c.id === formData.customer_id)?.name || `ID ${formData.customer_id}`}
+                          </div>
+                          <Button type="button" variant="ghost" size="sm" onClick={openCustomerDialog}>
+                            Cambiar
+                          </Button>
                         </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                      </div>
+                    ) : (
+                      <div className="w-full">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={openCustomerDialog}
+                          className={`${errors.customer_id ? 'border-red-500' : ''} w-full justify-between`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <Search className="h-4 w-4" />
+                            Seleccionar cliente
+                          </span>
+                          <List className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
                 {errors.customer_id && (
                   <div className="flex items-center gap-1 text-sm text-red-600">
                     <AlertCircle className="h-3 w-3" />
@@ -307,7 +403,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                   <ShoppingCart className="h-4 w-4" />
                   Productos en la venta
                 </CardTitle>
-                <Button type="button" onClick={addItem} size="sm" disabled={products.length === 0}>
+                <Button type="button" onClick={openProductDialog} size="sm">
                   <Plus className="h-4 w-4 mr-1" />
                   Añadir Producto
                 </Button>
@@ -325,21 +421,29 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                     <div key={index} className="flex items-end gap-4 p-4 border rounded-lg">
                       <div className="flex-1">
                         <Label>Producto</Label>
-                        <Select
-                          value={item.product_id.toString()}
-                          onValueChange={(value) => updateItem(index, 'product_id', parseInt(value))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {products.map((product) => (
-                              <SelectItem key={product.id} value={product.id!.toString()}>
-                                {product.name} - ${product.price}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        {item.product_id != null ? (
+                          <Select
+                            value={item.product_id.toString()}
+                            onValueChange={(value) => updateItem(index, 'product_id', parseInt(value))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {products.map((product) => (
+                                <SelectItem key={product.id} value={product.id!.toString()}>
+                                  {product.name} - ${product.price}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Input
+                            placeholder="Nombre del producto"
+                            value={item.product_name}
+                            onChange={(e) => updateItem(index, 'product_name', e.target.value)}
+                          />
+                        )}
                       </div>
                       
                       <div className="w-24">
@@ -402,8 +506,131 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                   {errors.items}
                 </div>
               )}
-            </CardContent>
+              </CardContent>
           </Card>
+
+          {/* Product Search Dialog */}
+          <Dialog open={productDialogOpen} onOpenChange={setProductDialogOpen}>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Search className="h-5 w-5" />
+                  Buscar producto
+                </DialogTitle>
+                <DialogDescription>
+                  Busca en el catálogo o crea un producto personalizado.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Escribe para buscar..."
+                    value={productQuery}
+                    onChange={(e) => setProductQuery(e.target.value)}
+                  />
+                </div>
+                <div className="max-h-64 overflow-y-auto border rounded-md">
+                  {products
+                    .filter(p => p.name.toLowerCase().includes(productQuery.toLowerCase()))
+                    .map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className="w-full text-left px-4 py-2 hover:bg-muted flex items-center justify-between"
+                        onClick={() => addItemFromProduct(p)}
+                      >
+                        <span>{p.name}</span>
+                        <span className="text-muted-foreground">${p.price}</span>
+                      </button>
+                    ))}
+                  {products.filter(p => p.name.toLowerCase().includes(productQuery.toLowerCase())).length === 0 && (
+                    <div className="px-4 py-6 text-center text-muted-foreground">
+                      No hay resultados.
+                    </div>
+                  )}
+                </div>
+                {productQuery.trim() && (
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm text-muted-foreground">
+                      ¿No encuentras el producto?
+                    </div>
+                    <Button type="button" onClick={() => addCustomProductByName(productQuery)}>
+                      Usar "{productQuery}" como producto
+                    </Button>
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setProductDialogOpen(false)}>Cerrar</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Customer Search Dialog */}
+          <Dialog open={customerDialogOpen} onOpenChange={setCustomerDialogOpen}>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Buscar cliente
+                </DialogTitle>
+                <DialogDescription>
+                  Busca y selecciona un cliente existente, crea uno por nombre o abre el formulario completo.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Escribe para buscar..."
+                    value={customerQuery}
+                    onChange={(e) => setCustomerQuery(e.target.value)}
+                  />
+                </div>
+                <div className="max-h-64 overflow-y-auto border rounded-md">
+                  {customers
+                    .filter(c => c.name.toLowerCase().includes(customerQuery.toLowerCase()))
+                    .map(c => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className="w-full text-left px-4 py-2 hover:bg-muted flex items-center justify-between"
+                        onClick={() => selectCustomer(c)}
+                      >
+                        <span className="flex items-center gap-2">
+                          <User className="h-4 w-4" /> {c.name}
+                        </span>
+                        {c.dni && <span className="text-muted-foreground text-sm">DNI: {c.dni}</span>}
+                      </button>
+                    ))}
+                  {customers.filter(c => c.name.toLowerCase().includes(customerQuery.toLowerCase())).length === 0 && (
+                    <div className="px-4 py-6 text-center text-muted-foreground">
+                      No hay resultados.
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <Button type="button" variant="outline" onClick={openFullCustomerForm}>
+                    Abrir formulario completo
+                  </Button>
+                  {customerQuery.trim() && (
+                    <Button type="button" onClick={() => createCustomerQuick(customerQuery)}>
+                      Usar "{customerQuery}" como cliente
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setCustomerDialogOpen(false)}>Cerrar</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Full Customer Form */}
+          <CustomerForm
+            open={fullCustomerFormOpen}
+            onOpenChange={setFullCustomerFormOpen}
+            onSave={handleFullCustomerSave}
+          />
 
           {/* Payment Information */}
           <Card>
@@ -425,7 +652,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="cash">Al contado</SelectItem>
+                      <SelectItem value="cash">Efectivo</SelectItem>
                       <SelectItem value="installments">
                         <div className="flex items-center gap-2">
                           Cuotas

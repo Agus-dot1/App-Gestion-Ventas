@@ -6,8 +6,22 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertCircle, Users, Phone, Mail, MapPin, User, Building, Tag, CreditCard } from 'lucide-react';
 import type { Customer } from '@/lib/database-operations';
+
+type PaymentWindow = '1 to 10' | '20 to 30';
+
+interface CustomerFormState {
+  name: string;
+  dni: string;
+  phone: string;
+  email: string;
+  address: string;
+  notes: string;
+  tags: string;
+  payment_window?: PaymentWindow;
+}
 
 interface CustomerFormProps {
   customer?: Customer;
@@ -17,14 +31,15 @@ interface CustomerFormProps {
 }
 
 export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerFormProps) {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<CustomerFormState>({
     name: customer?.name || '',
     dni: customer?.dni || '',
     phone: customer?.phone || '',
     email: customer?.email || '',
     address: customer?.address || '',
     notes: customer?.notes || '',
-    tags: customer?.tags || ''
+    tags: customer?.tags || '',
+    payment_window: customer?.payment_window ?? undefined
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -39,7 +54,8 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
         email: customer.email || '',
         address: customer.address || '',
         notes: customer.notes || '',
-        tags: customer.tags || ''
+        tags: customer.tags || '',
+        payment_window: customer.payment_window ?? undefined
       });
     } else {
       setFormData({
@@ -49,7 +65,8 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
         email: '',
         address: '',  
         notes: '',
-        tags: ''
+        tags: '',
+        payment_window: undefined
       });
     }
   }, [customer]);
@@ -108,6 +125,7 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
         address: formData.address.trim() || undefined,
         notes: formData.notes.trim() || undefined,
         tags: formData.tags.trim() || undefined,
+        payment_window: formData.payment_window,
         contact_info: buildContactInfo() // Keep for backward compatibility
       });
       
@@ -119,7 +137,8 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
         email: '',
         address: '',
         notes: '',
-        tags: ''
+        tags: '',
+        payment_window: undefined
       });
       setErrors({});
     } catch (error) {
@@ -135,6 +154,10 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
+  };
+
+  const handlePaymentWindowChange = (value: PaymentWindow) => {
+    setFormData(prev => ({ ...prev, payment_window: value }));
   };
 
   return (
@@ -269,6 +292,26 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
                       className="pl-10"
                     />
                   </div>
+                </div>
+
+                {/* Payment Window */}
+                <div className="space-y-2">
+                  <Label htmlFor="payment_window">Ventana de pago</Label>
+                  <Select
+                    value={formData.payment_window ?? ''}
+                    onValueChange={(value) => handlePaymentWindowChange(value as PaymentWindow)}
+                  >
+                    <SelectTrigger id="payment_window">
+                      <SelectValue placeholder="Selecciona una ventana" />
+                    </SelectTrigger>
+                    <SelectContent>
+        <SelectItem value="1 to 10">1 al 10</SelectItem>
+        <SelectItem value="20 to 30">20 al 30</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Define el rango de días del mes en el que suele pagar.
+                  </p>
                 </div>
 
                 {/* Notes */}

@@ -8,16 +8,14 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, MoreHorizontal, Edit, Trash2, Eye, EyeOff, Package, Download, FileText, Filter, X } from 'lucide-react';
+import { Search, MoreHorizontal, Edit, Trash2, Eye, EyeOff, Package, Download, FileText, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Product } from '@/lib/database-operations';
 import { cn } from '@/lib/utils';
-import { DropdownMenuSeparator } from '@radix-ui/react-dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ButtonGroup } from '../ui/button-group';
+import { ProductsColumnToggle, ColumnVisibility as ProductColumnVisibility } from './products-column-toggle';
 import { Toggle } from '../ui/toggle';
 
 interface ProductsTableProps {
@@ -52,47 +50,98 @@ export function ProductsTable({
   serverSidePagination = false
 }: ProductsTableProps) {
   const [internalSearchTerm, setInternalSearchTerm] = useState('');
+  const [internalCurrentPage, setInternalCurrentPage] = useState(1);
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [priceFilter, setPriceFilter] = useState<string>('all');
-  const [showFilters, setShowFilters] = useState(false);
+  const [columnVisibility, setColumnVisibility] = useState<ProductColumnVisibility>({
+    name: true,
+    category: true,
+    price: true,
+    stock: true,
+    description: true,
+    status: true,
+  });
+
+  const [sortConfig, setSortConfig] = useState<{ key: 'name' | 'category' | 'price' | 'stock' | 'is_active' | null; direction: 'asc' | 'desc' }>({
+    key: null,
+    direction: 'asc'
+  });
 
   // Use external state for server-side pagination, internal state for client-side
   const searchTerm = serverSidePagination ? (externalSearchTerm || '') : internalSearchTerm;
   const setSearchTerm = serverSidePagination ? (onSearchChange || (() => {})) : setInternalSearchTerm;
 
   const filteredProducts = serverSidePagination ? products : products.filter(product => {
-    // Text search filter
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.description?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    // Status filter
-    const matchesStatus = statusFilter === 'all' || 
-      (statusFilter === 'active' && product.is_active) ||
-      (statusFilter === 'inactive' && !product.is_active);
-    
-    // Price filter
-    let matchesPrice = true;
-    if (priceFilter !== 'all') {
-      const price = product.price;
-      switch (priceFilter) {
-        case 'low':
-          matchesPrice = price < 50000;
-          break;
-        case 'medium':
-          matchesPrice = price >= 50000 && price < 150000;
-          break;
-        case 'high':
-          matchesPrice = price >= 150000;
-          break;
-      }
-    }
-    
-    return matchesSearch && matchesStatus && matchesPrice;
+    return matchesSearch;
   });
+
+  const handleSort = (key: 'name' | 'category' | 'price' | 'stock' | 'is_active') => {
+    setSortConfig(prev => {
+      if (prev.key === key) {
+        return { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
+      }
+      return { key, direction: 'asc' };
+    });
+  };
+
+  const getSortIcon = (key: 'name' | 'category' | 'price' | 'stock' | 'is_active') => {
+    if (sortConfig.key !== key) return <ArrowUpDown className="ml-1 h-4 w-4" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="ml-1 h-4 w-4" /> : <ArrowDown className="ml-1 h-4 w-4" />;
+  };
+
+  const sortedProducts = (() => {
+    // Always sort the currently visible dataset. When server-side pagination is on,
+    // the parent provides the current page's array in `products`, and `filteredProducts`
+    // equals `products`. We sort that array to reflect header clicks.
+    const base = filteredProducts;
+    if (!sortConfig.key) return base;
+    const sorted = [...base].sort((a, b) => {
+      const key = sortConfig.key!;
+      let aVal: any = (a as any)[key];
+      let bVal: any = (b as any)[key];
+      if (key === 'name' || key === 'category') {
+        aVal = (aVal ?? '').toString().toLowerCase();
+        bVal = (bVal ?? '').toString().toLowerCase();
+        const cmp = aVal.localeCompare(bVal);
+        return sortConfig.direction === 'asc' ? cmp : -cmp;
+      } else if (key === 'is_active') {
+        const aBool = !!aVal;
+        const bBool = !!bVal;
+        const cmp = (aBool === bBool) ? 0 : (aBool ? 1 : -1);
+        return sortConfig.direction === 'asc' ? cmp : -cmp;
+      } else {
+        // price or stock
+        aVal = Number(aVal ?? 0);
+        bVal = Number(bVal ?? 0);
+        const cmp = aVal - bVal;
+        return sortConfig.direction === 'asc' ? cmp : -cmp;
+      }
+    });
+    return sorted;
+  })();
+
+  // Pagination (10 items per page)
+  const PAGE_SIZE = 10;
+  const currentPage = serverSidePagination ? (externalCurrentPage || 1) : internalCurrentPage;
+  const clientTotal = sortedProducts.length;
+  const totalPages = serverSidePagination
+    ? (paginationInfo?.totalPages || 1)
+    : Math.max(1, Math.ceil(clientTotal / PAGE_SIZE));
+  const visibleProducts = serverSidePagination
+    ? sortedProducts // parent provides current page data server-side
+    : sortedProducts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  const changePage = (page: number) => {
+    if (serverSidePagination) {
+      onPageChange && onPageChange(page);
+    } else {
+      setInternalCurrentPage(page);
+    }
+  };
 
   const handleDelete = async () => {
     if (deleteProduct?.id) {
@@ -180,35 +229,34 @@ export function ProductsTable({
   };
 
 
-  const clearFilters = () => {
-    setSearchTerm('');
-    setStatusFilter('all');
-    setPriceFilter('all');
-    setShowFilters(false);
-  };
-
-  const hasActiveFilters = searchTerm || statusFilter !== 'all' || priceFilter !== 'all';
+  // No additional filters; search bar only.
 
   return (
     <>
-      <Card className="animate-in fade-in-0 duration-500">
+      <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Package className="h-5 w-5" />
-                Productos
-              </CardTitle>
-              <CardDescription>
-                Acá podés ver y gestionar todos tus productos.
-              </CardDescription>
-            </div>
+          <div className="flex items-center">
             <div className="flex items-center gap-2">
-                {selectedProducts.size > 0 && (
-                  <div className="flex items-center gap-2 mr-4">
-                    <Badge variant="secondary" className="bg-primary/10 text-primary">
-                      {selectedProducts.size} seleccionado{selectedProducts.size !== 1 ? 's' : ''}
-                    </Badge>
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar productos..."
+                      value={searchTerm}
+                      onChange={(e) => {
+                        setSearchTerm(e.target.value);
+                        if (!serverSidePagination) setInternalCurrentPage(1);
+                      }}
+                      className="pl-8 w-64 transition-all duration-200 focus:w-72"
+                      disabled={isLoading}
+                    />
+                  </div>
+                  <ProductsColumnToggle
+                    columnVisibility={columnVisibility}
+                    onColumnVisibilityChange={setColumnVisibility}
+                  />
+                  {selectedProducts.size > 0 && (
+                  <div className="flex items-center gap-2 mr-4 animate-in fade-in">
                     <Button
                       variant="outline"
                       size="sm"
@@ -227,83 +275,15 @@ export function ProductsTable({
                       <Trash2 className="h-4 w-4 mr-1" />
                       Eliminar
                     </Button>
+                                        <Badge variant="secondary" className="bg-primary/10 text-primary">
+                      {selectedProducts.size} seleccionado{selectedProducts.size !== 1 ? 's' : ''}
+                    </Badge>
                   </div>
                 )}
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Buscar productos..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-8 w-64 transition-all duration-200 focus:w-72"
-                      disabled={isLoading}
-                    />
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowFilters(!showFilters)}
-                    className={cn(
-                      "h-10 transition-all duration-200",
-                      showFilters && "bg-primary/10 text-primary"
-                    )}
-                    disabled={isLoading}
-                  >
-                    <Filter className="h-4 w-4 mr-1" />
-                    Filtros
-                  </Button>
-                  {hasActiveFilters && (
-                     <Button
-                       variant="ghost"
-                       size="sm"
-                       onClick={clearFilters}
-                       className="h-10 text-muted-foreground hover:text-foreground"
-                     >
-                       <X className="h-4 w-4 mr-1" />
-                       Limpiar
-                     </Button>
-                   )}
                  </div>
               </div>
           </div>
         </CardHeader>
-          {showFilters && (
-            <div className="px-6 pb-4 border-b animate-in slide-in-from-top-2 duration-300">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium text-muted-foreground">Estado:</label>
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-32">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      <SelectItem value="active">Activos</SelectItem>
-                      <SelectItem value="inactive">Inactivos</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium text-muted-foreground">Precio:</label>
-                  <Select value={priceFilter} onValueChange={setPriceFilter}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos los precios</SelectItem>
-                      <SelectItem value="low">Menos de $50,000</SelectItem>
-                      <SelectItem value="medium">$50,000 - $150,000</SelectItem>
-                      <SelectItem value="high">Más de $150,000</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  {filteredProducts.length} producto{filteredProducts.length !== 1 ? 's' : ''} encontrado{filteredProducts.length !== 1 ? 's' : ''}
-                </div>
-              </div>
-            </div>
-          )}
           <CardContent>
           {isLoading ? (
             <div className="rounded-md border">
@@ -374,21 +354,62 @@ export function ProductsTable({
                         disabled={isLoading}
                       />
                     </TableHead>
-                    <TableHead>Nombre</TableHead>
-                    <TableHead>Categoría</TableHead>
-                    <TableHead>Precio</TableHead>
-                    <TableHead>Stock</TableHead>
-                    <TableHead>Descripción</TableHead>
+                    {columnVisibility.name && (
+                      <TableHead>
+                        <Button 
+                          variant="ghost" 
+                          className="h-auto p-0 font-semibold hover:bg-transparent" 
+                          onClick={() => handleSort('name')}
+                        >
+                          Nombre {getSortIcon('name')}
+                        </Button>
+                      </TableHead>
+                    )}
+                    {columnVisibility.category && (<TableHead>Categoría</TableHead>)}
+                    {columnVisibility.price && (
+                      <TableHead>
+                        <Button 
+                          variant="ghost" 
+                          className="h-auto p-0 font-semibold hover:bg-transparent" 
+                          onClick={() => handleSort('price')}
+                        >
+                          Precio {getSortIcon('price')}
+                        </Button>
+                      </TableHead>
+                    )}
+                    {columnVisibility.stock && (
+                      <TableHead>
+                        <Button 
+                          variant="ghost" 
+                          className="h-auto p-0 font-semibold hover:bg-transparent" 
+                          onClick={() => handleSort('stock')}
+                        >
+                          Stock {getSortIcon('stock')}
+                        </Button>
+                      </TableHead>
+                    )}
+                    {columnVisibility.description && <TableHead>Descripción</TableHead>}
+                    {columnVisibility.status && (
+                      <TableHead>
+                        <Button 
+                          variant="ghost" 
+                          className="h-auto p-0 font-semibold hover:bg-transparent" 
+                          onClick={() => handleSort('is_active')}
+                        >
+                          Estado {getSortIcon('is_active')}
+                        </Button>
+                      </TableHead>
+                    )}
                     <TableHead className="w-[70px]">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredProducts.map((product, index) => (
+                  {visibleProducts.map((product, index) => (
                     <TableRow 
                       key={product.id} 
                       id={`product-${product.id}`}
                       className={cn(
-                        "transition-all duration-200 hover:bg-muted/50 animate-in slide-in-from-bottom-2",
+                        "transition-all duration-200 hover:bg-muted/50 ",
                         highlightId === product.id?.toString() && 'bg-muted/50 ring-2 ring-primary/20',
                         `animation-delay-${Math.min(index * 100, 500)}ms`
                       )}
@@ -400,49 +421,68 @@ export function ProductsTable({
                           aria-label={`Seleccionar ${product.name}`}
                         />
                       </TableCell>
-                      <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
-                          <div className="flex flex-col">
-                            <span className="font-semibold text-foreground">{product.name}</span>
-                            {highlightId === product.id?.toString() && (
-                              <Badge variant="outline" className="bg-primary/10 text-primary w-fit mt-1">
-                                Coincidencia
-                              </Badge>
+                      {columnVisibility.name && (
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-foreground">{product.name}</span>
+                              {highlightId === product.id?.toString() && (
+                                <Badge variant="outline" className="bg-primary/10 text-primary w-fit mt-1">
+                                  Coincidencia
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                      )}
+                      {columnVisibility.category && (
+                        <TableCell>
+                          {product.category && product.category !== 'sin-categoria' ? (
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                              {product.category}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground italic text-sm">Sin categoría</span>
+                          )}
+                        </TableCell>
+                      )}
+                      {columnVisibility.price && (
+                        <TableCell>
+                          <span className="font-semibold text-lg text-white">
+                            {formatPrice(product.price)}
+                          </span>
+                        </TableCell>
+                      )}
+                      {columnVisibility.stock && (
+                        <TableCell>
+                           {typeof product.stock === 'number' ? (
+                             <div className="flex items-center gap-1">
+                               <span className="font-medium">{product.stock}</span>
+                               <span className="text-muted-foreground text-sm">unidades</span>
+                             </div>
+                           ) : (
+                             <span className="text-muted-foreground italic text-sm">No especificado</span>
+                           )}
+                         </TableCell>
+                      )}
+                      {columnVisibility.description && (
+                        <TableCell className="max-w-[300px]">
+                          <div className="truncate text-sm">
+                            {product.description || (
+                              <span className="text-muted-foreground italic">Sin descripción</span>
                             )}
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {product.category && product.category !== 'sin-categoria' ? (
-                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                            {product.category}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground italic text-sm">Sin categoría</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-semibold text-lg text-white">
-                          {formatPrice(product.price)}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                         {typeof product.stock === 'number' ? (
-                           <div className="flex items-center gap-1">
-                             <span className="font-medium">{product.stock}</span>
-                             <span className="text-muted-foreground text-sm">unidades</span>
-                           </div>
-                         ) : (
-                           <span className="text-muted-foreground italic text-sm">No especificado</span>
-                         )}
-                       </TableCell>
-                      <TableCell className="max-w-[300px]">
-                        <div className="truncate text-sm">
-                          {product.description || (
-                            <span className="text-muted-foreground italic">Sin descripción</span>
+                        </TableCell>
+                      )}
+                      {columnVisibility.status && (
+                        <TableCell>
+                          {product.is_active ? (
+                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Activo</Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">Inactivo</Badge>
                           )}
-                        </div>
-                      </TableCell>
+                        </TableCell>
+                      )}
                       <TableCell>
                           <ButtonGroup>
                             <Toggle
@@ -525,6 +565,53 @@ export function ProductsTable({
                   size="sm"
                   onClick={() => onPageChange && onPageChange(paginationInfo.currentPage + 1)}
                   disabled={paginationInfo.currentPage === paginationInfo.totalPages}
+                >
+                  Siguiente
+                </Button>
+              </div>
+            </div>
+          )}
+          {!serverSidePagination && totalPages > 1 && (
+            <div className="flex items-center justify-between px-2 py-4">
+              <div className="text-sm text-muted-foreground">
+                Mostrando {(currentPage - 1) * PAGE_SIZE + 1} a {Math.min(currentPage * PAGE_SIZE, clientTotal)} de {clientTotal} productos
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => changePage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                >
+                  Anterior
+                </Button>
+                <div className="flex items-center space-x-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                    const showPage = page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1);
+                    if (!showPage) {
+                      if (page === currentPage - 2 || page === currentPage + 2) {
+                        return <span key={page} className="px-2 text-muted-foreground">...</span>;
+                      }
+                      return null;
+                    }
+                    return (
+                      <Button
+                        key={page}
+                        variant={currentPage === page ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => changePage(page)}
+                        className="w-8 h-8 p-0"
+                      >
+                        {page}
+                      </Button>
+                    );
+                  })}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => changePage(currentPage + 1)}
+                  disabled={currentPage === totalPages}
                 >
                   Siguiente
                 </Button>

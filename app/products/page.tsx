@@ -34,9 +34,9 @@ export default function ProductsPage() {
     total: 0,
     totalPages: 0,
     currentPage: 1,
-    pageSize: 25
+    pageSize: 10
   });
-  const pageSize = 25; // Load 25 products per page for better performance
+  const pageSize = 10; // Load 10 products per page for easier browsing
 
   // Initial data load - optimistic approach
   useEffect(() => {
@@ -280,8 +280,8 @@ export default function ProductsPage() {
     try {
       await window.electronAPI.database.products.delete(productId);
       // Clear cache to ensure fresh data is loaded
-      dataCache.invalidateCache('products');
-      await loadProducts();
+        setProducts(prev => prev.filter(p => p.id !== productId));
+        dataCache.invalidateCache('products');
     } catch (error: any) {
       console.error('Error eliminando product:', error);
       // Display error message to user
@@ -365,7 +365,7 @@ export default function ProductsPage() {
                 disabled={!isElectron}
               >
                 <Database className="mr-2 h-4 w-4" />
-                Add Mock Data
+                Añadir Productos de Prueba
               </Button>
               <Button onClick={handleAddProduct} disabled={!isElectron}>
                 <Plus className="mr-2 h-4 w-4" />
@@ -375,74 +375,7 @@ export default function ProductsPage() {
           </div>
         </div>
 
-        {/* Statistics Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          <Card className="animate-in slide-in-from-left-5 duration-300">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Productos totales</CardTitle>
-                <Package className="h-4 w-4 text-muted-foreground" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.total}</div>
-              <div className="flex items-center text-xs text-muted-foreground">
-                <Package className="h-3 w-3 mr-1 text-blue-500" />
-                Total de productos en inventario
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="animate-in slide-in-from-left-5 duration-500">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Productos activos</CardTitle>
-                <Eye className="h-4 w-4 text-muted-foreground" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.active}</div>
-              <div className="flex items-center text-xs text-muted-foreground">
-                <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
-                Productos disponibles para la venta
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="animate-in slide-in-from-left-5 duration-700">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Productos inactivos</CardTitle>
-                <Package className="h-4 w-4 text-muted-foreground" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.inactive}</div>
-              <div className="flex items-center text-xs text-muted-foreground">
-                <Package className="h-3 w-3 mr-1 text-gray-500" />
-                Productos no disponibles
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="animate-in slide-in-from-left-5 duration-1000">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">Valor de inventario</CardTitle>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                ${(products.reduce((sum, p) => sum + p.price, 0)).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </div>
-              <div className="flex items-center text-xs text-muted-foreground">
-                <Package className="h-3 w-3 mr-1 text-blue-500" />
-                Valor total de todos los productos
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+      
 
         {/* Products Table */}
         {isElectron ? (

@@ -11,7 +11,7 @@
     "node_modules/**/*",
     "package.json"
   ],
-  "asar": false,
+  "asar": true,
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true

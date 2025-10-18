@@ -22,6 +22,8 @@ import {
 import { cn } from '@/lib/utils';
 import type { Customer, Sale, Product } from '@/lib/database-operations';
 
+type ProductBuyer = { sale_id: number; sale_number: string; date: string; customer_id: number; customer_name: string };
+
 // Translation functions
 const translatePaymentType = (type: string) => {
   const translations: Record<string, string> = {
@@ -82,7 +84,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-
+  const [productBuyers, setProductBuyers] = useState<Record<number, ProductBuyer[]>>({});
   // Debounce search query
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -258,17 +260,19 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
         product.name.toLowerCase().includes(searchTerm) ||
         product.description?.toLowerCase().includes(searchTerm)
       ) {
-        const productSales = sales.filter(sale => 
-          sale.items?.some(item => item.product_id === product.id)
-        );
+        let buyers: ProductBuyer[] = [];
+        if (product.id != null) {
+          buyers = productBuyers[product.id] ?? [];
+        }
+        const customerNames = Array.from(new Set(buyers.map((b: ProductBuyer) => b.customer_name)));
 
         results.push({
           id: `product-${product.id}`,
           type: 'product',
           title: product.name,
-          subtitle: `${formatCurrency(product.price)} • ${productSales.length} ventas`,
+          subtitle: `${formatCurrency(product.price)} • ${buyers.length} ventas`,
           description: product.description || 'Sin descripción',
-          metadata: { product, salesCount: productSales.length },
+          metadata: { product, salesCount: buyers.length, customerNames, moreCount: Math.max(0, customerNames.length - Math.min(3, customerNames.length)) },
           action: () => {
             router.push(`/products?highlight=${product.id}`);
             onOpenChange(false);
@@ -313,7 +317,30 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
     });
 
     return results.slice(0, 20); // Limit results
-  }, [debouncedQuery, customers, sales, products, router, onOpenChange]);
+  }, [debouncedQuery, customers, sales, products, productBuyers, router, onOpenChange]);
+
+  useEffect(() => {
+    if (!isElectron) return;
+    const productResults = searchResults.filter(r => r.type === 'product');
+    productResults.forEach(async (r) => {
+      const product = r.metadata?.product as Product | undefined;
+      if (
+        product &&
+        product.id != null &&
+        !productBuyers[product.id] &&
+        typeof window !== 'undefined' &&
+        window.electronAPI?.database?.saleItems?.getSalesForProduct
+      ) {
+        try {
+          const buyers: ProductBuyer[] = await window.electronAPI.database.saleItems.getSalesForProduct(product.id);
+          const pid = product.id!;
+          setProductBuyers(prev => ({ ...prev, [pid]: buyers }));
+        } catch (error) {
+          console.error('Error obteniendo compradores del producto:', error);
+        }
+      }
+    });
+  }, [searchResults, productBuyers, isElectron]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
@@ -679,9 +706,6 @@ function SearchResultItem({ result, isSelected, onClick }: SearchResultItemProps
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
                 <h4 className="font-medium text-sm truncate">{result.title}</h4>
-                <Badge variant="outline" className={cn('text-xs', getResultTypeColor(result.type))}>
-                  {result.type}
-                </Badge>
               </div>
               
               {result.subtitle && (

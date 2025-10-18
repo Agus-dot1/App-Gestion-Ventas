@@ -58,7 +58,7 @@ export default function Home() {
   });
   const [recentSales, setRecentSales] = useState<Sale[]>([]);
   const [recentCustomers, setRecentCustomers] = useState<Customer[]>([]);
-  const [upcomingInstallments, setUpcomingInstallments] = useState<Array<Installment & { customer_name: string; sale_number: string; status: string }>>([]);
+  const [upcomingInstallments, setUpcomingInstallments] = useState<Array<Installment & { customer_name: string; sale_number: string; status: string; customer_id: number }>>([]);
   const [chartData, setChartData] = useState<Array<{date: string, sales: number, revenue: number}>>([]);
   const [statsComparison, setStatsComparison] = useState<{
     sales: {current: number, previous: number, percentage: number},
@@ -90,7 +90,8 @@ export default function Home() {
            window.electronAPI.database.sales.getTotalRevenue(),
            window.electronAPI.database.sales.getRecent(5),
            window.electronAPI.database.customers.getRecent(5),
-           window.electronAPI.database.installments.getUpcoming(5),
+           // Fetch a larger set, we will dedupe by customer below
+           window.electronAPI.database.installments.getUpcoming(50),
            window.electronAPI.database.sales.getSalesChartData(30),
            window.electronAPI.database.sales.getStatsComparison(),
            window.electronAPI.database.customers.getMonthlyComparison(),
@@ -105,7 +106,16 @@ export default function Home() {
          });
          setRecentSales(recentSalesData);
          setRecentCustomers(recentCustomersData);
-         setUpcomingInstallments(upcomingInstallmentsData);
+         // Keep only the next installment per customer (earliest by due_date)
+         const seenCustomerIds = new Set<number>();
+         const dedupedByCustomer = upcomingInstallmentsData.filter((inst) => {
+           const cid = (inst as any).customer_id as number | undefined;
+           if (!cid) return true; // keep if unknown
+           if (seenCustomerIds.has(cid)) return false;
+           seenCustomerIds.add(cid);
+           return true;
+         }).slice(0, 5);
+         setUpcomingInstallments(dedupedByCustomer);
          setChartData(salesChartData);
          
          // Calculate percentage changes
@@ -181,7 +191,7 @@ export default function Home() {
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+              <h1 className="text-3xl font-bold tracking-tight">Panel de control</h1>
               <p className="text-muted-foreground">
                 Bienvenido a tu panel de control. Acá podes ver un resumen de tus ventas, clientes y productos.
               </p>
@@ -200,7 +210,7 @@ export default function Home() {
             )}
           </div>
           {isElectron && (
-            <div className="flex items-center gap-2 mt-3 text-sm text-green-600">
+            <div className="flex items-center gap-2 mt-3 text-sm text-green-500">
               <Database className="h-4 w-4" />
               <span>Base de datos conectada!</span>
             </div>
@@ -208,13 +218,13 @@ export default function Home() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8 animate-in fade-in-50 duration-500">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
           <Card >
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium">Ganancia total</CardTitle>
                 <div className="p-2 bg-green-100 rounded-lg">
-                  <DollarSign className="h-4 w-4 text-green-600" />
+                  <DollarSign className="h-4 w-4 text-green-500" />
                 </div>
               </div>
             </CardHeader>
@@ -245,7 +255,7 @@ export default function Home() {
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium">Clientes</CardTitle>
                 <div className="p-2 bg-blue-100 rounded-lg">
-                  <Users className="h-4 w-4 text-blue-600" />
+                  <Users className="h-4 w-4 text-blue-500" />
                 </div>
               </div>
             </CardHeader>
@@ -303,7 +313,7 @@ export default function Home() {
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium">Productos</CardTitle>
                 <div className="p-2 bg-purple-100 rounded-lg">
-                  <Package className="h-4 w-4 text-purple-600" />
+                  <Package className="h-4 w-4 text-purple-500" />
                 </div>
               </div>
             </CardHeader>
@@ -330,7 +340,7 @@ export default function Home() {
 
       
         {/* Recent Activity */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7 animate-in slide-in-from-left-4 duration-700">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
           <Card className="col-span-full lg:col-span-4 hover:shadow-lg transition-shadow duration-300">
             <CardHeader>
               <CardTitle>Actividad reciente</CardTitle>
@@ -358,7 +368,7 @@ export default function Home() {
                       <Link 
                         href={`/sales?highlight=${sale.id}`}
                         key={sale.id} 
-                        className="flex items-center gap-4 p-3 rounded-lg cursor-pointer hover:bg-muted/50 transition-all duration-200 animate-in fade-in-50 slide-in-from-left-4"
+                        className="flex items-center gap-4 p-3 rounded-lg cursor-pointer hover:bg-muted/50 transition-all"
                         style={{ animationDelay: `${index * 100}ms` }}
                       >
                         <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></div>
@@ -389,24 +399,25 @@ export default function Home() {
                   )}
                   {recentCustomers.length > 0 && (
                     recentCustomers.slice(0, 2).map((customer, index) => (
-                      <div 
+                      <Link 
+                        href={customer.id ? `/customers?highlight=${customer.id}` : '/customers'}
                         key={customer.id || `customer-${index}`} 
-                        className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted/50 transition-all duration-200 animate-in fade-in-50 slide-in-from-left-4"
+                        className="flex items-center gap-3 sm:gap-4 p-2 sm:p-3 rounded-lg hover:bg-muted/50 transition-all"
                         style={{ animationDelay: `${(index + 3) * 100}ms` }}
                       >
                         <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">
                             Nuevo cliente: {customer.name}
                           </p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-xs text-muted-foreground truncate">
                             {customer.email || 'Sin contacto'}
                           </p>
                         </div>
                         <p className="text-xs text-muted-foreground">
                           {customer.created_at ? new Date(customer.created_at).toLocaleDateString('es-ES') : 'Fecha no disponible'}
                         </p>
-                      </div>
+                      </Link>
                     ))
                   )}
                 </div>
@@ -437,14 +448,15 @@ export default function Home() {
                 <div className="space-y-4">
                   {upcomingInstallments.length > 0 ? (
                     upcomingInstallments.map((installment, index) => (
-                      <div 
-                        key={installment.id} 
-                        className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted/50 transition-all duration-200 animate-in fade-in-50 slide-in-from-left-4"
+                      <Link
+                        href={`/sales?tab=installments&highlight=i-${installment.id}`}
+                        key={installment.id}
+                        className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted/50 transition-all"
                         style={{ animationDelay: `${index * 100}ms` }}
                       >
                         <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
                           new Date(installment.due_date) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) 
-                            ? 'bg-orange-500' 
+                            ? 'bg-orange-700' 
                             : 'bg-blue-500'
                         }`}></div>
                         <div className="flex-1">
@@ -469,7 +481,7 @@ export default function Home() {
                         <p className="text-xs text-muted-foreground">
                           {new Date(installment.due_date).toLocaleDateString('es-ES')}
                         </p>
-                      </div>
+                      </Link>
                     ))
                   ) : (
                     <div className="text-center py-4 text-muted-foreground">

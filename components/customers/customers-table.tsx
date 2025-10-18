@@ -12,12 +12,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, MoreHorizontal, Edit, Trash2, Users, Phone, Calendar, Loader2, Mail, Building, Tag, Eye, Download, X, ChevronUp, ChevronDown, FileText, MoreHorizontalIcon } from 'lucide-react';
+import { Search, MoreHorizontal, Edit, Trash2, Users, Phone, Calendar, Loader2, Mail, Building, Tag, Eye, Download, X, ArrowUpDown, ArrowUp, ArrowDown, FileText, MoreHorizontalIcon } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { Customer, Sale } from '@/lib/database-operations';
 import { cn } from '@/lib/utils';
 import { ButtonGroup } from "@/components/ui/button-group";
 import { DropdownMenuGroup } from '@radix-ui/react-dropdown-menu';
+import { CustomersColumnToggle, ColumnVisibility as CustomerColumnVisibility } from '@/components/customers/customers-column-toggle';
 
 interface EnhancedCustomersTableProps {
   customers: Customer[];
@@ -72,6 +73,13 @@ export function EnhancedCustomersTable({
   const [selectedCustomers, setSelectedCustomers] = useState<Set<number>>(new Set());
   const [deleteCustomer, setDeleteCustomer] = useState<Customer | null>(null);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
+  const [columnVisibility, setColumnVisibility] = useState<CustomerColumnVisibility>({
+    name: true,
+    dni: true,
+    contact: true,
+    address: true,
+    created_at: true,
+  });
 
   // Bulk delete handler
   const handleBulkDelete = async () => {
@@ -115,6 +123,11 @@ export function EnhancedCustomersTable({
     }));
   };
 
+  const getSortIcon = (key: keyof Customer) => {
+    if (sortConfig.key !== key) return <ArrowUpDown className="ml-1 h-4 w-4" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="ml-1 h-4 w-4" /> : <ArrowDown className="ml-1 h-4 w-4" />;
+  };
+
   // Client-side filtering and sorting (only when not using server-side pagination)
   const filteredCustomers = serverSidePagination ? customers : customers.filter(customer =>
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -123,29 +136,37 @@ export function EnhancedCustomersTable({
     customer.tags?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Sort customers (only for client-side)
+  // Sort customers (apply to visible dataset; for server-side, sort current page)
   const sortedCustomers = useMemo(() => {
-    if (serverSidePagination) return filteredCustomers;
-    
-    const sorted = [...filteredCustomers];
+    const base = serverSidePagination ? customers : filteredCustomers;
+    const sorted = [...base];
     sorted.sort((a, b) => {
-      const aValue = a[sortConfig.key] || '';
-      const bValue = b[sortConfig.key] || '';
-      
-      if (sortConfig.direction === 'asc') {
-        return aValue.toString().localeCompare(bValue.toString());
-      } else {
-        return bValue.toString().localeCompare(aValue.toString());
+      const key = sortConfig.key;
+      let aValue: any = (a as any)[key];
+      let bValue: any = (b as any)[key];
+
+      // Date sorting for created_at
+      if (key === 'created_at') {
+        const aTime = aValue ? new Date(aValue).getTime() : 0;
+        const bTime = bValue ? new Date(bValue).getTime() : 0;
+        const cmp = aTime - bTime;
+        return sortConfig.direction === 'asc' ? cmp : -cmp;
       }
+
+      // Default string compare
+      aValue = (aValue ?? '').toString().toLowerCase();
+      bValue = (bValue ?? '').toString().toLowerCase();
+      const cmp = aValue.localeCompare(bValue);
+      return sortConfig.direction === 'asc' ? cmp : -cmp;
     });
     return sorted;
-  }, [filteredCustomers, sortConfig, serverSidePagination]);
+  }, [filteredCustomers, customers, sortConfig, serverSidePagination]);
 
   // Pagination logic
   const totalPages = serverSidePagination ? (paginationInfo?.totalPages || 1) : Math.ceil(sortedCustomers.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedCustomers = serverSidePagination ? customers : sortedCustomers.slice(startIndex, endIndex);
+  const paginatedCustomers = serverSidePagination ? sortedCustomers : sortedCustomers.slice(startIndex, endIndex);
 
   // Clear selections when changing pages
   const handlePageChangeWithClear = (page: number) => {
@@ -268,22 +289,24 @@ export function EnhancedCustomersTable({
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                Clientes
-              </CardTitle>
-              <CardDescription>
-                Aquí puedes ver y gestionar todos tus clientes.
-              </CardDescription>
-            </div>
+          <div className="flex items-center">
             <div className="flex items-center gap-2">
+              <div className="relative w-64">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar cliente..."
+                  value={searchTerm}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="pl-8"
+                  disabled={isLoading}
+                />
+              </div>
+              <CustomersColumnToggle
+                columnVisibility={columnVisibility}
+                onColumnVisibilityChange={setColumnVisibility}
+              />
               {selectedCustomers.size > 0 && (
-                <div className="flex items-center gap-2 mr-4 animate-in slide-in-from-bottom-2 duration-300">
-                  <Badge variant="secondary" className="bg-primary/10 text-primary">
-                    {selectedCustomers.size} seleccionado{selectedCustomers.size !== 1 ? 's' : ''}
-                  </Badge>
+                <div className="flex items-center gap-2 mr-4 animate-in fade-in">
                   <Button
                     variant="outline"
                     size="sm"
@@ -314,18 +337,11 @@ export function EnhancedCustomersTable({
                     <Trash2 className="h-4 w-4 mr-1" />
                     Eliminar
                   </Button>
+                  <Badge variant="secondary" className="bg-primary/10 text-primary">
+                    {selectedCustomers.size} seleccionado{selectedCustomers.size !== 1 ? 's' : ''}
+                  </Badge>
                 </div>
               )}
-              <div className="relative w-64">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar..."
-                  value={searchTerm}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  className="pl-8"
-                  disabled={isLoading}
-                />
-              </div>
             </div>
           </div>
         </CardHeader>
@@ -343,30 +359,37 @@ export function EnhancedCustomersTable({
                         disabled={isLoading}
                       />
                     </TableHead>
-                    <TableHead>
-                      <Button variant="ghost" onClick={() => handleSort('name')} className="h-auto p-0 font-semibold" disabled={isLoading}>
-                        Nombre
-                        {sortConfig.key === 'name' && (
-                          sortConfig.direction === 'asc' ? <ChevronUp className="ml-1 h-4 w-4" /> : <ChevronDown className="ml-1 h-4 w-4" />
-                        )}
-                      </Button>
-                    </TableHead>
-                    <TableHead>
-                      <Button variant="ghost" onClick={() => handleSort('email')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                    {columnVisibility.name && (
+                      <TableHead>
+                        <Button variant="ghost" onClick={() => handleSort('name')} className="h-auto p-0 font-semibold hover:bg-transparent" disabled={isLoading}>
+                          Nombre
+                          {getSortIcon('name')}
+                        </Button>
+                      </TableHead>
+                    )}
+                    {columnVisibility.dni && (
+                      <TableHead className="font-semibold">
+                        DNI
+                      </TableHead>
+                    )}
+                    {columnVisibility.contact && (
+                      <TableHead className="font-semibold">
                         Contacto
-                        {sortConfig.key === 'email' && (
-                          sortConfig.direction === 'asc' ? <ChevronUp className="ml-1 h-4 w-4" /> : <ChevronDown className="ml-1 h-4 w-4" />
-                        )}
-                      </Button>
-                    </TableHead>
-                    <TableHead>
-                      <Button variant="ghost" onClick={() => handleSort('address')} className="h-auto p-0 font-semibold" disabled={isLoading}>
+                      </TableHead>
+                    )}
+                    {columnVisibility.address && (
+                      <TableHead className="font-semibold">
                         Dirección
-                        {sortConfig.key === 'address' && (
-                          sortConfig.direction === 'asc' ? <ChevronUp className="ml-1 h-4 w-4" /> : <ChevronDown className="ml-1 h-4 w-4" />
-                        )}
-                      </Button>
-                    </TableHead>
+                      </TableHead>
+                    )}
+                    {columnVisibility.created_at && (
+                      <TableHead>
+                        <Button variant="ghost" onClick={() => handleSort('created_at')} className="h-auto p-0 font-semibold hover:bg-transparent" disabled={isLoading}>
+                          Fecha de alta
+                          {getSortIcon('created_at')}
+                        </Button>
+                      </TableHead>
+                    )}
                     <TableHead className="w-[70px]">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -396,7 +419,7 @@ export function EnhancedCustomersTable({
                     ))
                   ) : paginatedCustomers.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground w-full">
                         {sortedCustomers.length === 0 ? 'No se encontraron clientes' : 'No hay clientes en esta página'}
                       </TableCell>
                     </TableRow>
@@ -419,29 +442,43 @@ export function EnhancedCustomersTable({
                             aria-label={`Seleccionar ${customer.name}`}
                           />
                         </TableCell>
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            {customer.name}
-                            {highlightId === customer.id?.toString() && (
-                              <Badge variant="outline" className="bg-primary/10 text-primary">
-                                Coincidencia
-                              </Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1">
-                              <Mail className="h-3 w-3 text-muted-foreground" />
-                              <span className="text-sm">{customer.email || '-'}</span>
+                        {columnVisibility.name && (
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              {customer.name}
+                              {highlightId === customer.id?.toString() && (
+                                <Badge variant="outline" className="bg-primary/10 text-primary">
+                                  Coincidencia
+                                </Badge>
+                              )}
                             </div>
-                            <div className="flex items-center gap-1">
-                              <Phone className="h-3 w-3 text-muted-foreground" />
-                              <span className="text-sm">{customer.phone || '-'}</span>
+                          </TableCell>
+                        )}
+                        {columnVisibility.dni && (
+                          <TableCell>
+                            {customer.dni || '-'}
+                          </TableCell>
+                        )}
+                        {columnVisibility.contact && (
+                          <TableCell>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1">
+                                <Mail className="h-3 w-3 text-muted-foreground" />
+                                <span className="text-sm">{customer.email || '-'}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Phone className="h-3 w-3 text-muted-foreground" />
+                                <span className="text-sm">{customer.phone || '-'}</span>
+                              </div>
                             </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>{customer.address || '-'}</TableCell>
+                          </TableCell>
+                        )}
+                        {columnVisibility.address && (
+                          <TableCell>{customer.address || '-'}</TableCell>
+                        )}
+                        {columnVisibility.created_at && (
+                          <TableCell>{customer.created_at ? formatDate(customer.created_at) : '-'}</TableCell>
+                        )}
                         <TableCell className="flex">
                           <ButtonGroup>
                             <Button variant="outline" size="sm"  onClick={() => onView(customer)}>Ver detalles</Button>

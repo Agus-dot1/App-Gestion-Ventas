@@ -332,7 +332,7 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
       }
 
       // Save the PDF
-      doc.save(`venta-${sale?.sale_number ?? 'unknown'}-${new Date().toISOString().split('T')[0]}.pdf`);
+      doc.save(`${sale?.sale_number ?? 'unknown'}-${new Date().toISOString().split('T')[0]}.pdf`);
     } catch (error) {
       console.error('Error al exportar:', error);
       alert('Error al exportar los datos de la venta');
@@ -392,7 +392,7 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
       }
 
       // Save the Excel file
-      XLSX.writeFile(workbook, `venta-${sale?.sale_number ?? 'unknown'}-${new Date().toISOString().split('T')[0]}.xlsx`);
+      XLSX.writeFile(workbook, `${sale?.sale_number ?? 'unknown'}-${new Date().toISOString().split('T')[0]}.xlsx`);
     } catch (error) {
       console.error('Error al exportar a Excel:', error);
       alert('Error al exportar los datos de la venta a Excel');
@@ -408,7 +408,7 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] p-0">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden p-0 pt-4">
         <DialogHeader className="px-6 pt-6 pb-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -443,17 +443,11 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
                   Excel
                 </Button>
               </div>
-              {onEdit && (
-                <Button variant="outline" size="sm" onClick={() => onEdit(sale)}>
-                  <Edit className="w-4 h-4 mr-2" />
-                  Editar
-                </Button>
-              )}
             </div>
           </div>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 px-6 pb-6">
+        <ScrollArea className="max-h-[calc(90vh-120px)] px-6 pb-6">
           <div className="space-y-6">
             {/* Status and Summary Cards */}
             <div className="grid gap-4 md:grid-cols-3">

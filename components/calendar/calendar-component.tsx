@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, MoreHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CalendarEvent, CalendarDay, CalendarWeek } from '@/lib/calendar-types';
-import { isSameDay, isSameMonth, isToday, getMonthName, getShortDayName, getEventTypeColor, getEventStatusColor } from '@/lib/calendar-types';
+import { isSameDay, isSameMonth, isToday, getEventTypeColor, getEventStatusColor } from '@/lib/calendar-types';
 
 interface CalendarComponentProps {
   events: CalendarEvent[];
@@ -30,6 +30,8 @@ export function CalendarComponent({
   onEventClick
 }: CalendarComponentProps) {
   const [calendarDays, setCalendarDays] = useState<CalendarWeek[]>([]);
+  // Nombres cortos de días en español
+  const spanishShortWeekdays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
   // Generate calendar days for the current month
   const generateCalendarDays = useCallback(() => {
@@ -183,7 +185,7 @@ export function CalendarComponent({
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <CalendarIcon className="h-5 w-5" />
-            {getMonthName(currentMonth.getMonth())} {currentMonth.getFullYear()}
+            {currentMonth.toLocaleString('es-ES', { month: 'long' })} {currentMonth.getFullYear()}
             <span className="text-sm font-normal text-muted-foreground">({timeZone})</span>
           </CardTitle>
           <div className="flex items-center gap-2">
@@ -215,13 +217,13 @@ export function CalendarComponent({
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-7 gap-1 mb-4">
-          {/* Day headers */}
+          {/* Encabezados de días */}
           {[0, 1, 2, 3, 4, 5, 6].map(day => (
             <div
               key={day}
               className="p-2 text-center text-sm font-medium text-muted-foreground"
             >
-              {getShortDayName(day)}
+              {spanishShortWeekdays[day]}
             </div>
           ))}
         </div>
@@ -246,10 +248,10 @@ export function CalendarComponent({
                 onKeyDown={(e) => handleKeyDown(e, day.date, weekIndex, dayIndex)}
                 tabIndex={0}
                 role="button"
-                aria-label={`${day.date.toLocaleDateString()}, ${day.events.length} eventos`}
+                aria-label={`${day.date.toLocaleDateString('es-ES')}, ${day.events.length} eventos`}
               >
                 <div className="flex flex-col h-full">
-                  {/* Date number */}
+                  {/* Número de día */}
                   <div className={cn(
                     'text-sm font-medium mb-1',
                     {

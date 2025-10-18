@@ -33,10 +33,10 @@ let mainWindow;
 function createWindow() {
     // Create the browser window
     mainWindow = new electron_1.BrowserWindow({
-        width: 1200,
+        width: 1600,
         height: 800,
-        minWidth: 800,
-        minHeight: 600,
+        minWidth: 1600,
+        minHeight: 800,
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -45,8 +45,11 @@ function createWindow() {
                 : path.join(__dirname, '../preload.js')
         },
         titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-        show: false
+        show: false,
+        autoHideMenuBar: true // hide menu bar by default (prevents it from showing)
     });
+    // Remove any menu (ensures "File Edit View..." bar is gone on Windows/Linux)
+    mainWindow.removeMenu();
     // Load the app
     if (isDev) {
         const devUrl = process.env.ELECTRON_DEV_URL || 'http://localhost:3001';
@@ -124,6 +127,7 @@ function setupIpcHandlers() {
     // Sale item operations
     electron_1.ipcMain.handle('saleItems:getBySale', (_, saleId) => database_operations_1.saleItemOperations.getBySale(saleId));
     electron_1.ipcMain.handle('saleItems:create', (_, saleItem) => database_operations_1.saleItemOperations.create(saleItem));
+    electron_1.ipcMain.handle('saleItems:getSalesForProduct', (_, productId) => database_operations_1.saleItemOperations.getSalesForProduct(productId));
     electron_1.ipcMain.handle('saleItems:deleteAll', () => database_operations_1.saleItemOperations.deleteAll());
     // Payment operations
     electron_1.ipcMain.handle('payments:getBySale', (_, saleId) => database_operations_1.paymentOperations.getBySale(saleId));
@@ -187,8 +191,7 @@ function setupIpcHandlers() {
             }
             // Import new customers
             for (const customer of customers) {
-                const { id, ...customerData } = customer;
-                await database_operations_1.customerOperations.create(customerData);
+                await database_operations_1.customerOperations.insertFromBackup(customer);
             }
             return { success: true };
         }
@@ -208,8 +211,7 @@ function setupIpcHandlers() {
             }
             // Import new products
             for (const product of products) {
-                const { id, ...productData } = product;
-                await database_operations_1.productOperations.create(productData);
+                await database_operations_1.productOperations.insertFromBackup(product);
             }
             return { success: true };
         }
@@ -227,10 +229,10 @@ function setupIpcHandlers() {
                     await database_operations_1.saleOperations.delete(sale.id);
                 }
             }
-            // Import new sales
+            // Import new sales using a tolerant import that doesn’t require items
             for (const sale of sales) {
                 const { id, ...saleData } = sale;
-                await database_operations_1.saleOperations.create(saleData);
+                await database_operations_1.saleOperations.importFromBackup(saleData);
             }
             return { success: true };
         }
@@ -299,10 +301,11 @@ function setupIpcHandlers() {
     // Database deletion handler
     electron_1.ipcMain.handle('db:deleteAll', async () => {
         try {
-            // Clear all tables
+            // Clear all tables in FK-safe order
+            await database_operations_1.saleOperations.deleteAll();
             await database_operations_1.customerOperations.deleteAll();
             await database_operations_1.productOperations.deleteAll();
-            await database_operations_1.saleOperations.deleteAll();
+            // The following are cascaded by sales but safe to run
             await database_operations_1.installmentOperations.deleteAll();
             await database_operations_1.saleItemOperations.deleteAll();
             await database_operations_1.paymentOperations.deleteAll();
@@ -324,6 +327,8 @@ electron_1.app.whenReady().then(() => {
     catch (error) {
         console.error('Failed to initialize database:', error);
     }
+    // Remove the application menu globally so the top menu bar is not shown
+    electron_1.Menu.setApplicationMenu(null);
     // Set up IPC handlers
     setupIpcHandlers();
     // Register protocol handler globally before creating windows
@@ -391,21 +396,26 @@ electron_1.app.whenReady().then(() => {
         const hasExtension = path.extname(filePath) !== '';
         const isDirectoryPath = filePath.endsWith('/') || !hasExtension;
         if (isDirectoryPath || (!hasExtension && !fs.existsSync(filePath))) {
-            // This is likely a Next.js route, serve the main index.html
-            const indexPath = path.join(__dirname, '../../../', 'out', 'index.html');
-            console.log('Navigation request detected, serving index.html for:', url);
+            // Try to serve a route-specific index.html from the exported out directory
+            const outDir = path.join(__dirname, '../../../', 'out');
+            // Derive route from rootPathCandidate (e.g., "/ajustes" -> "ajustes/index.html")
+            let routeRelative = rootPathCandidate.replace(/^\//, '').replace(/\/$/, '');
+            const candidateRouteIndex = routeRelative
+                ? path.join(outDir, routeRelative, 'index.html')
+                : path.join(outDir, 'index.html');
+            const fallbackIndex = path.join(outDir, 'index.html');
+            const indexToServe = fs.existsSync(candidateRouteIndex) ? candidateRouteIndex : fallbackIndex;
+            console.log('Navigation request detected, serving index for:', url, '->', indexToServe);
             try {
-                if (fs.existsSync(indexPath)) {
-                    const indexContent = fs.readFileSync(indexPath);
-                    callback({
-                        mimeType: 'text/html',
-                        data: indexContent
-                    });
-                    return;
-                }
+                const indexContent = fs.readFileSync(indexToServe);
+                callback({
+                    mimeType: 'text/html',
+                    data: indexContent
+                });
+                return;
             }
             catch (error) {
-                console.error('Error serving index.html:', error);
+                console.error('Error serving route index.html:', error);
             }
         }
         // For static file requests, read from filesystem

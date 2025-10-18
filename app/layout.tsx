@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Toaster } from "@/components/ui/toaster";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { DataCacheProvider } from "@/hooks/use-data-cache";
 import { Suspense } from "react";
+import { Sidebar } from "@/components/sidebar";
 
 export const metadata: Metadata = {
   title: "Electro Gestión - Sistema de Gestión de Ventas",
@@ -18,11 +19,17 @@ export default function RootLayout({
     <html lang="es">
       <body className="antialiased">
         <DataCacheProvider>
-          <Suspense fallback={<div>Loading...</div>}>
-            {children}
-          </Suspense>
+          <div className="flex h-screen bg-background">
+            <Sidebar />
+            <main className="flex-1 overflow-auto bg-muted/10">
+              <Suspense fallback={<div>Loading...</div>}>
+                {children}
+              </Suspense>
+            </main>
+          </div>
         </DataCacheProvider>
-        <Toaster />
+
+        <SonnerToaster position="bottom-right" />
       </body>
     </html>
   );

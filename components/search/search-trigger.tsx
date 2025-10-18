@@ -34,7 +34,7 @@ export function SearchTrigger({ onOpenSearch, collapsed }: SearchTriggerProps) {
           <span className="flex-1 text-left">Buscar</span>
           <div className="flex items-center gap-1 text-xs bg-muted px-2 py-1 rounded">
             {isMac ? <Command className="w-3 h-3" /> : <span>{shortcutKey}</span>}
-            <span>K</span>
+            <span>B</span>
           </div>
         </>
       )}

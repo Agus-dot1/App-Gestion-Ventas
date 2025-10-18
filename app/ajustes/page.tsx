@@ -18,6 +18,8 @@ import {
   Info
 } from 'lucide-react'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
 
 interface BackupData {
   customers: any[]
@@ -46,10 +48,14 @@ export default function AjustesPage() {
   const [cacheSize, setCacheSize] = useState<string>('0 MB')
   const [lastBackup, setLastBackup] = useState<string | null>(null)
   const [migrationInfo, setMigrationInfo] = useState<MigrationInfo | null>(null)
+  const [reduceAnimations, setReduceAnimations] = useState<boolean>(false)
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setIsElectron(!!window.electronAPI)
+      // Cargar preferencia de animaciones
+      const savedReduce = localStorage.getItem('reduceAnimations')
+      setReduceAnimations(savedReduce === 'true')
       loadCacheInfo()
       loadLastBackupInfo()
       checkMigrationStatus()
@@ -76,7 +82,11 @@ export default function AjustesPage() {
 
   const handleExportBackup = async () => {
     if (!isElectron) {
-      toast.error('Esta función solo está disponible en la aplicación de escritorio')
+      toast.error('Esta función solo está disponible en la aplicación de escritorio', {
+        description: 'Usa la versión de escritorio para esta operación',
+        position: 'top-center',
+        duration: 1000,
+      })
       return
     }
 
@@ -107,13 +117,25 @@ export default function AjustesPage() {
       if (result.success) {
         localStorage.setItem('lastBackupDate', new Date().toISOString())
         setLastBackup(new Date().toLocaleString('es-ES'))
-        toast.success('Respaldo exportado exitosamente')
+        toast.success('Respaldo exportado exitosamente', {
+          description: 'Archivo de respaldo creado correctamente',
+          position: 'top-center',
+          duration: 1000,
+        })
       } else {
-        toast.error('Error al exportar respaldo: ' + result.error)
+        toast.error('Error al exportar respaldo: ' + result.error, {
+          description: 'No se pudo crear el archivo de respaldo',
+          position: 'top-center',
+          duration: 1000,
+        })
       }
     } catch (error) {
       console.error('Error exporting backup:', error)
-      toast.error('Error al exportar respaldo')
+      toast.error('Error al exportar respaldo', {
+        description: 'Ocurrió un problema al exportar datos',
+        position: 'top-center',
+        duration: 1000,
+      })
     } finally {
       setIsExporting(false)
     }
@@ -121,7 +143,11 @@ export default function AjustesPage() {
 
   const handleImportBackup = async () => {
     if (!isElectron) {
-      toast.error('Esta función solo está disponible en la aplicación de escritorio')
+      toast.error('Esta función solo está disponible en la aplicación de escritorio', {
+        description: 'Usa la versión de escritorio para esta operación',
+        position: 'top-center',
+        duration: 1000,
+      })
       return
     }
 
@@ -133,7 +159,11 @@ export default function AjustesPage() {
         
         // Validar estructura del respaldo
         if (!backupData.customers || !backupData.products || !backupData.sales) {
-          toast.error('Archivo de respaldo inválido')
+          toast.error('Archivo de respaldo inválido', {
+            description: 'Falta estructura de clientes, productos o ventas',
+            position: 'top-center',
+            duration: 1000,
+          })
           return
         }
 
@@ -147,7 +177,11 @@ export default function AjustesPage() {
         // Verificar si todas las importaciones fueron exitosas
         const failedImports = importResults.filter(result => !result.success)
         if (failedImports.length > 0) {
-          toast.error('Error en algunas importaciones: ' + failedImports.map(r => r.error).join(', '))
+          toast.error('Error en algunas importaciones: ' + failedImports.map(r => r.error).join(', '), {
+            description: 'Revisa el detalle de importaciones fallidas',
+            position: 'top-center',
+            duration: 1000,
+          })
           return
         }
 
@@ -158,13 +192,27 @@ export default function AjustesPage() {
           })
         }
 
-        toast.success('Respaldo importado exitosamente. Recarga la página para ver los cambios.')
+        toast.success('Respaldo importado exitosamente.', {
+          description: 'Datos restaurados desde el archivo de respaldo',
+          position: 'top-center',
+          duration: 1000,
+        })
+        await new Promise(resolve => setTimeout(resolve, 1200))
+        window.location.reload()
       } else {
-        toast.error('Error al importar respaldo: ' + (result.error || 'Archivo no seleccionado'))
+        toast.error('Error al importar respaldo: ' + (result.error || 'Archivo no seleccionado'), {
+          description: 'No se pudo leer el archivo seleccionado',
+          position: 'top-center',
+          duration: 1000,
+        })
       }
     } catch (error) {
       console.error('Error importing backup:', error)
-      toast.error('Error al importar respaldo')
+      toast.error('Error al importar respaldo', {
+        description: 'Ocurrió un problema durante la importación',
+        position: 'top-center',
+        duration: 1000,
+      })
     } finally {
       setIsImporting(false)
     }
@@ -189,24 +237,44 @@ export default function AjustesPage() {
           if (result.message) {
             // Show message if there were warnings
             if (result.message.includes('warnings')) {
-              toast.warning(result.message)
+            toast.warning(result.message, {
+              description: 'Se encontraron advertencias al limpiar caché',
+              position: 'top-center',
+              duration: 1000,
+            })
             } else {
-              toast.success(result.message)
+              toast.success(result.message, {
+                description: 'Caché de Electron limpiada',
+                position: 'top-center',
+                duration: 1000,
+              })
             }
           } else {
-            toast.success('Caché limpiado exitosamente')
+            toast.success('Caché limpiado exitosamente', {
+              description: 'Se eliminaron archivos temporales',
+              position: 'top-center',
+              duration: 1000,
+            })
           }
         } else {
           throw new Error(result.error || 'Error al limpiar caché de Electron')
         }
       } else {
-        toast.success('Caché de navegador limpiado exitosamente')
+        toast.success('Caché de navegador limpiado exitosamente', {
+          description: 'Se limpiaron datos de navegador',
+          position: 'top-center',
+          duration: 1000,
+        })
       }
 
       setCacheSize('0 MB')
     } catch (error) {
       console.error('Error clearing cache:', error)
-      toast.error('Error al limpiar caché')
+      toast.error('Error al limpiar caché', {
+        description: 'No fue posible eliminar algunos archivos',
+        position: 'top-center',
+        duration: 1000,
+      })
     } finally {
       setIsClearingCache(false)
     }
@@ -246,32 +314,35 @@ export default function AjustesPage() {
     
     setIsMigrating(true)
     try {
-      // Simulate migration steps
       for (let i = 0; i < migrationInfo.migrationSteps.length; i++) {
         const step = migrationInfo.migrationSteps[i]
-        toast.info(`Ejecutando: ${step}`)
+        toast.info(`Ejecutando: ${step}`, {
+          description: 'Aplicando paso de migración de datos',
+          position: 'top-center',
+          duration: 1000,
+        })
         
-        // Simulate processing time
         await new Promise(resolve => setTimeout(resolve, 1000))
         
-        // Here you would implement actual migration logic
-        // For example:
-        // - Update database schema
-        // - Transform data structures
-        // - Update indexes
-        // - Validate data integrity
+      
       }
       
-      // Update data version
       localStorage.setItem('dataVersion', migrationInfo.latestVersion)
       
-      // Refresh migration status
       await checkMigrationStatus()
       
-      toast.success('Migración de datos completada exitosamente')
+      toast.success('Migración de datos completada exitosamente', {
+        description: 'Versión actualizada y verificada',
+        position: 'top-center',
+        duration: 1000,
+      })
     } catch (error) {
       console.error('Error during migration:', error)
-      toast.error('Error durante la migración de datos')
+      toast.error('Error durante la migración de datos', {
+        description: 'Revisa el log para más detalles',
+        position: 'top-center',
+        duration: 1000,
+      })
     } finally {
       setIsMigrating(false)
     }
@@ -279,25 +350,35 @@ export default function AjustesPage() {
 
   const handleCheckForUpdates = async () => {
     await checkMigrationStatus()
-    toast.info('Verificación de actualizaciones completada')
+    toast.info('Verificación de actualizaciones completada', {
+      description: 'Estado de migración actualizado',
+      position: 'top-center',
+      duration: 1000,
+    })
   }
 
   const handleDeleteDatabase = async () => {
     if (!isElectron) {
-      toast.error('Esta función solo está disponible en la aplicación de escritorio')
+      toast.error('Esta función solo está disponible en la aplicación de escritorio', {
+        description: 'Usa la versión de escritorio para esta operación',
+        position: 'top-center',
+        duration: 1000,
+      })
       return
     }
 
     setIsDeletingDatabase(true)
     try {
-      // Delete all data from all tables
-      await Promise.all([
-        window.electronAPI.database.customers.deleteAll?.() || Promise.resolve(),
-        window.electronAPI.database.products.deleteAll?.() || Promise.resolve(),
-        window.electronAPI.database.sales.deleteAll?.() || Promise.resolve()
-      ])
+      if (window.electronAPI?.database?.sales?.deleteAll) {
+        await window.electronAPI.database.sales.deleteAll();
+      }
+      if (window.electronAPI?.database?.customers?.deleteAll) {
+        await window.electronAPI.database.customers.deleteAll();
+      }
+      if (window.electronAPI?.database?.products?.deleteAll) {
+        await window.electronAPI.database.products.deleteAll();
+      }
 
-      // Clear local storage data related to the app
       const keysToKeep = ['theme', 'language', 'currency']
       const allKeys = Object.keys(localStorage)
       allKeys.forEach(key => {
@@ -306,19 +387,37 @@ export default function AjustesPage() {
         }
       })
 
-      toast.success('Base de datos eliminada exitosamente. La aplicación se reiniciará.')
+      toast.success('Base de datos eliminada exitosamente. La aplicación se reiniciará.', {
+        description: 'Se borraron clientes, productos y ventas',
+        position: 'top-center',
+        duration: 1000,
+      })
       
-      // Reload the page to refresh the app state
-      setTimeout(() => {
-        window.location.reload()
-      }, 2000)
+      await new Promise(resolve => setTimeout(resolve, 1200))
+      window.location.reload()
       
     } catch (error) {
       console.error('Error deleting database:', error)
-      toast.error('Error al eliminar la base de datos')
+      toast.error('Error al eliminar la base de datos', {
+        description: 'Revisa restricciones o dependencias',
+        position: 'top-center',
+        duration: 1000,
+      })
     } finally {
       setIsDeletingDatabase(false)
     }
+  }
+
+  const handleToggleReduceAnimations = (checked: boolean) => {
+    setReduceAnimations(checked)
+    localStorage.setItem('reduceAnimations', String(checked))
+    // Notificar a toda la app para que el layout se actualice inmediatamente
+    window.dispatchEvent(new CustomEvent('app:settings-changed', { detail: { reduceAnimations: checked } }))
+    toast.success('Preferencia guardada', {
+      description: checked ? 'Animaciones reducidas activadas' : 'Animaciones reducidas desactivadas',
+      position: 'top-center',
+      duration: 1000,
+    })
   }
 
   return (
@@ -328,6 +427,20 @@ export default function AjustesPage() {
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold tracking-tight">Ajustes</h1>
           <p className="text-muted-foreground">Gestiona la configuración y datos de tu aplicación</p>
+        </div>
+
+        {/* Preferencias de Interfaz */}
+        <div className="space-y-6">
+          <div className="p-4 border rounded-lg space-y-3">
+            <h2 className="text-lg font-medium">Preferencias de Interfaz</h2>
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label htmlFor="reduce-animations" className="font-medium">Reducir animaciones</Label>
+                <p className="text-sm text-muted-foreground">Desactiva la animación de navegación para una experiencia más fluida.</p>
+              </div>
+              <Switch id="reduce-animations" checked={reduceAnimations} onCheckedChange={handleToggleReduceAnimations} />
+            </div>
+          </div>
         </div>
 
         {/* Data Management Section */}
@@ -415,11 +528,11 @@ export default function AjustesPage() {
             </div>
           </div>
 
-          {/* Data Migration Section */}
+          {/* Data Migration Section
           <div className="space-y-6">
             <h2 className="text-lg font-medium">Migración y Actualización de Datos</h2>
             
-            {/* Migration Status */}
+            {/* Migration Status 
             <div className="p-4 border rounded-lg space-y-4">
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
@@ -464,7 +577,7 @@ export default function AjustesPage() {
                 </div>
               </div>
               
-              {/* Migration Steps */}
+              {/* Migration Steps
               {migrationInfo?.needsMigration && (
                 <div className="space-y-3">
                   <div className="text-sm font-medium text-amber-600 flex items-center gap-2">
@@ -501,12 +614,13 @@ export default function AjustesPage() {
               )}
             </div>
           </div>
+           */}
 
           {/* System Maintenance Section */}
           <div className="space-y-6">
             <h2 className="text-lg font-medium">Mantenimiento del Sistema</h2>
             
-            {/* Cache Management */}
+            {/* Cache Management 
             <div className="p-4 border rounded-lg space-y-4">
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
@@ -536,6 +650,7 @@ export default function AjustesPage() {
                 </div>
               </div>
             </div>
+            */}
 
             {/* Database Reset - DANGER ZONE */}
             <div className="p-4 border-2 border-red-900 rounded-lg space-y-4 bg-red-950">

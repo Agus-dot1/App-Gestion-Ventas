@@ -118,12 +118,10 @@ export default function CustomersPage() {
 
   const loadCustomers = async (forceRefresh = false) => {
     try {
-      // Check cache first and display immediately if available
       const cachedData = dataCache.getCachedCustomers(currentPage, pageSize, searchTerm);
       const isCacheExpired = dataCache.isCustomersCacheExpired(currentPage, pageSize, searchTerm);
       
       if (cachedData && !forceRefresh) {
-        // Show cached data immediately
         setCustomers(cachedData.items);
         setPaginationInfo({
           total: cachedData.total,
@@ -133,18 +131,15 @@ export default function CustomersPage() {
         });
         setIsLoading(false);
         
-        // If cache is not expired, we're done
         if (!isCacheExpired) {
-          // Prefetch other pages in background
           setTimeout(() => {
             prefetchProducts();
             prefetchSales();
           }, 100);
           return;
         }
-        // If expired, continue to refresh in background
+
       } else {
-        // No cache, show loading
         setIsLoading(true);
       }
       
@@ -288,10 +283,8 @@ export default function CustomersPage() {
   const handleDeleteCustomer = async (customerId: number) => {
     try {
       await window.electronAPI.database.customers.delete(customerId);
-      // Clear cache to ensure fresh data is loaded
+      setCustomers(prev => prev.filter(c => c.id !== customerId));
       dataCache.invalidateCache('customers');
-      await loadCustomers();
-      await loadAllCustomerIds(); // Refresh all customer IDs
     } catch (error: any) {
       console.error('Error eliminando cliente:', error);
       // Show error to user
