@@ -87,6 +87,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
     importProducts: (products) => ipcRenderer.invoke('backup:importProducts', products),
     importSales: (sales) => ipcRenderer.invoke('backup:importSales', sales)
   },
+  // Notifications API
+  notifications: {
+    list: (limit) => ipcRenderer.invoke('notifications:list', limit),
+    markRead: (id) => ipcRenderer.invoke('notifications:markRead', id),
+    markUnread: (id) => ipcRenderer.invoke('notifications:markUnread', id),
+    delete: (id) => ipcRenderer.invoke('notifications:delete', id),
+    // Nuevo: borrar por mensaje hoy
+    deleteByMessageToday: (message) => ipcRenderer.invoke('notifications:deleteByMessageToday', message),
+    // Nuevo: borrar por clave hoy
+    deleteByKeyToday: (key) => ipcRenderer.invoke('notifications:deleteByKeyToday', key),
+    // Nuevo: limpiar todas las notificaciones activas
+    clearAll: () => ipcRenderer.invoke('notifications:clearAll'),
+    create: (message, type, key) => ipcRenderer.invoke('notifications:create', message, type, key),
+    existsTodayWithMessage: (message) => ipcRenderer.invoke('notifications:existsTodayWithMessage', message),
+    existsTodayWithKey: (key) => ipcRenderer.invoke('notifications:existsTodayWithKey', key),
+    // Nuevo: listar archivadas
+    listArchived: (limit) => ipcRenderer.invoke('notifications:listArchived', limit),
+    // Nuevo: vaciar archivadas
+    purgeArchived: () => ipcRenderer.invoke('notifications:purgeArchived'),
+    onEvent: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on('notifications:event', handler);
+      return () => {
+        ipcRenderer.removeListener('notifications:event', handler);
+      };
+    },
+    emitTestEvent: (payload) => ipcRenderer.invoke('notifications:emitTestEvent', payload)
+  },
   // Utility functions
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),

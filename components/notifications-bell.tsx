@@ -1,0 +1,879 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { Bell, Clock, Filter, CheckCheck, Archive, BellOff, Inbox, Check, Wand2, Trash2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { useRouter } from 'next/navigation';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { loadPersisted, subscribeNotifications } from '@/notifications/renderer/controller';
+import { notificationsAdapter } from '@/notifications/renderer/adapter';
+import { useToast } from '@/hooks/use-toast';
+import type { NotificationItem } from '@/notifications/types'
+
+interface LegacyNotificationItem {
+  id?: number;
+  message: string;
+  type: 'attention' | 'alert' | 'info';
+  read_at?: string | null;
+  created_at: string;
+  meta?: {
+    category?: 'client' | 'system' | 'stock';
+    customerName?: string;
+    systemStatus?: string;
+    stockStatus?: string;
+    due_at?: string;
+    duration_ms?: number;
+    amount?: number;
+    actionLabel?: string;
+    customer?: string;
+    customerCount?: number;
+    customerPhone?: string; // número del cliente para WhatsApp
+    message_key?: string; // clave semántica para supresión/borrado por día
+    productId?: number; // id del producto para navegación desde notificación de stock
+    productName?: string;
+    productPrice?: number;
+    productCategory?: string;
+    currentStock?: number;
+  };
+}
+
+export function NotificationsBell() {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [archived, setArchived] = useState<NotificationItem[]>([]);
+  const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'read' | 'archived'>('all');
+  const [snoozeUntil, setSnoozeUntil] = useState<number | null>(null);
+  // Removed unused query state
+  // const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const scrollRef = useRef<any>(null);
+  const [visibleTypes, setVisibleTypes] = useState<{ alert: boolean; attention: boolean; info: boolean }>({ alert: true, attention: true, info: true });
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [renderCount, setRenderCount] = useState(30);
+  // Candado de cambios locales para evitar reversiones por polling
+  const pendingChangesRef = useRef<Map<number, { read: boolean; ts: number }>>(new Map());
+
+  // Persist and load visibleTypes from localStorage
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem('notifications:visibleTypes');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        setVisibleTypes({
+          alert: !!parsed.alert,
+          attention: !!parsed.attention,
+          info: !!parsed.info,
+        });
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('notifications:visibleTypes', JSON.stringify(visibleTypes));
+    } catch {}
+  }, [visibleTypes]);
+
+  // Lazy rendering: increase rendered items on scroll near bottom
+  useEffect(() => {
+    const root = scrollRef.current as HTMLElement | null;
+    const viewport = root?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null;
+    const el = viewport ?? root;
+    if (!el) return;
+    const onScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      const ratio = (scrollTop + clientHeight) / scrollHeight;
+      if (ratio > 0.8) {
+        const sourceLength = activeTab === 'archived' ? archived.length : notifications.length;
+        setRenderCount((rc) => Math.min(rc + 20, sourceLength));
+      }
+    };
+    el.addEventListener('scroll', onScroll);
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [notifications.length, archived.length, activeTab]);
+
+  useEffect(() => {
+    const sourceLength = activeTab === 'archived' ? archived.length : notifications.length;
+    setRenderCount(Math.min(30, sourceLength));
+  }, [notifications.length, archived.length, activeTab, visibleTypes]);
+
+  const scrollToBottom = useCallback(() => {
+    const root = scrollRef.current as HTMLElement | null;
+    if (!root) return;
+    const viewport = root.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null;
+    const el = viewport ?? root;
+    el.scrollTop = el.scrollHeight;
+  }, []);
+
+  // Suprimir reaparición por mensaje el mismo día (memoria local)
+  const suppressedTodayRef = useRef<Set<string>>(new Set());
+  const suppressedKeysRef = useRef<Set<string>>(new Set());
+  const loadedOnOpenRef = useRef<boolean>(false);
+  const filterSuppressed = useCallback((list: NotificationItem[]) => {
+    const today = new Date().toDateString();
+    const supMsgs = suppressedTodayRef.current;
+    const supKeys = suppressedKeysRef.current;
+    return list.filter(n => {
+      const sameDay = new Date(n.created_at).toDateString() === today;
+      const key = n.meta?.message_key;
+      if (key && supKeys.has(key)) return false;
+      return !(sameDay && !!n.message && supMsgs.has(n.message));
+    });
+  }, []);
+
+  // Reconcile DB refresh with local state to avoid reverting read/archive
+  const reconcileWithLocal = useCallback((prev: NotificationItem[], next: NotificationItem[]) => {
+    const now = Date.now();
+
+    const merged = next.map((n) => {
+      const p = prev.find(x => x.id === n.id);
+      let read_at = n.read_at ?? null;
+
+      // Prioriza estado local ya marcado leído
+      if (p && p.read_at) {
+        read_at = p.read_at;
+      }
+
+      // Aplica candado de cambios locales con expiración
+      if (typeof n.id === 'number') {
+        const lock = pendingChangesRef.current.get(n.id);
+        if (lock) {
+          const expired = now - lock.ts > 60000; // 60s de protección
+          if (!expired) {
+            read_at = lock.read ? (read_at || new Date().toISOString()) : null;
+          } else {
+            const backendIsRead = !!n.read_at;
+            if (backendIsRead === !!lock.read) {
+              pendingChangesRef.current.delete(n.id);
+            }
+          }
+        }
+      }
+
+      return { ...n, read_at } as NotificationItem;
+    });
+
+    return merged;
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const id = setTimeout(scrollToBottom, 0);
+    return () => clearTimeout(id);
+  }, [open, activeTab, notifications.length, archived.length, scrollToBottom]);
+
+  // Helper: build the 3 sample notifications
+  const sampleNotifications = (now: number): NotificationItem[] => [
+    {
+      id: now - 5 * 24 * 60 * 60 * 1000,
+      message: 'Backup de la base de datos creada',
+      type: 'info',
+      created_at: new Date(now - 5 * 24 * 60 * 60 * 1000).toISOString(),
+      meta: {
+        category: 'system',
+        systemStatus: 'realizado correctamente',
+        duration_ms: 1.2,
+        actionLabel: 'Revisar',
+      },
+    },
+    {
+      id: now - 3 * 24 * 60 * 60 * 1000,
+      message: 'Cuota próxima a vencer 25/10',
+      type: 'attention',
+      created_at: new Date(now - 3 * 24 * 60 * 60 * 1000).toISOString(),
+      meta: {
+        category: 'client',
+        customerName: 'Ulises Godoy',
+        due_at: new Date(now + 3 * 24 * 60 * 60 * 1000).toISOString(),
+        amount: 20000,
+        actionLabel: 'Revisar',
+      },
+    },
+    {
+      id: now - 12 * 60 * 60 * 1000,
+      message: 'Cuota vencida hoy',
+      type: 'alert',
+      created_at: new Date(now - 12 * 60 * 60 * 1000).toISOString(),
+      meta: {
+        category: 'client',
+        customerName: 'Agustín de Oliveira',
+        due_at: new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        amount: 20000,
+        actionLabel: 'Notificar cliente',
+      },
+    },
+  ];
+
+
+  const buildPaymentWindowStartNotification = useCallback(async (): Promise<NotificationItem | null> => {
+    try {
+      const allCustomers = await (window.electronAPI?.database?.customers?.getAll?.() ?? Promise.resolve([]));
+      const customers110 = Array.isArray(allCustomers)
+        ? allCustomers.filter((c: any) => c?.payment_window === '1 to 10')
+        : [];
+      const count = customers110.length;
+      const representativeCustomer = customers110[0] || allCustomers[0] || {};
+      const representative = representativeCustomer?.name || 'Cliente';
+
+      const now = new Date();
+      const next10th = new Date(now);
+      if (now.getDate() > 10) {
+        next10th.setMonth(now.getMonth() + 1);
+      }
+      next10th.setDate(10);
+      next10th.setHours(9, 0, 0, 0);
+
+      const notification: NotificationItem = {
+        id: Date.now(),
+        message: `Periodo de pago día 1 al 10 comenzado`,
+        type: 'attention',
+        created_at: new Date().toISOString(),
+        meta: {
+          category: 'client',
+          customerName: representative,
+          customerCount: count,
+          customerPhone: representativeCustomer?.phone,
+          due_at: next10th.toISOString(),
+          actionLabel: 'Revisar',
+        },
+      };
+      return notification;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const DEFAULT_CVU = '747382997471';
+
+  // Mensaje detallado y con saltos de línea
+  const buildWhatsAppMessage = (m: NotificationItem['meta'] = {}): string => {
+    const amountStr = typeof m.amount === 'number' ? formatAmountDesign(m.amount) : '';
+    const interest = (m as any)?.interest;
+    const interestStr = typeof interest === 'number' ? formatAmountDesign(interest) : '';
+    const totalStr = typeof interest === 'number' && typeof m.amount === 'number'
+      ? formatAmountDesign(m.amount + interest)
+      : '';
+
+    const hasDue = !!m.due_at;
+    let dueLine = '';
+    if (hasDue) {
+      const dueMs = new Date(m.due_at!).getTime();
+      const nowMs = Date.now();
+      const dayMs = 24 * 60 * 60 * 1000;
+      const days = Math.max(0, Math.floor(Math.abs(dueMs - nowMs) / dayMs));
+      const dueDateStr = new Date(m.due_at!).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+      dueLine = (dueMs < nowMs)
+        ? `La cuota venció el ${dueDateStr} (hace ${days} días).`
+        : `La cuota vence el ${dueDateStr} (en ${days} días).`;
+    }
+
+    const greeting = m.customerName ? `Hola ${m.customerName}, que tal?` : 'Hola, que tal?';
+    const lines = [
+      `${greeting}`,
+      'Te escribo para informarte sobre tu cuota.',
+      hasDue ? dueLine : undefined,
+      'Detalle:',
+      `• Importe de la cuota: ${amountStr || 'consultar'}`,
+      typeof interest === 'number' ? `• Interés aplicado: ${interestStr}` : '• Interés: según condiciones del acuerdo',
+      typeof interest === 'number' ? `• Total a pagar: ${totalStr}` : undefined,
+      `CVU para depósito: ${DEFAULT_CVU}`,
+      'Por favor, enviá el comprobante por este chat para acreditar el pago.',
+      'Gracias.',
+    ].filter(Boolean).join('\n');
+    return lines;
+  };
+
+  const openWhatsAppForCustomer = useCallback(async (m: NotificationItem['meta']) => {
+    if (!m) return;
+    const normalize = (s: string) => String(s || '').replace(/\D/g, '');
+    let digits = normalize(String(m.customerPhone ?? ''));
+    if (!digits && m.customerName) {
+      try {
+        const customers = await (window.electronAPI?.database?.customers?.getAll?.() ?? []);
+        const found = Array.isArray(customers)
+          ? customers.find((c: any) => String(c?.name || '').trim().toLowerCase() === String(m.customerName).trim().toLowerCase())
+          : null;
+        digits = found?.phone ? normalize(String(found.phone)) : '';
+      } catch { }
+    }
+    if (!digits) {
+      console.warn('No se encontró teléfono para el cliente');
+      return;
+    }
+    const body = buildWhatsAppMessage(m);
+    const text = encodeURIComponent(body);
+    const url = `https://wa.me/+54${digits}?text=${text}`;
+    try {
+      const ok = await (window as any)?.electronAPI?.openExternal?.(url);
+      if (ok === false) throw new Error('openExternal returned false');
+    } catch {
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+  }, []);
+
+  
+
+  const renderActions = (n: NotificationItem, m: NotificationItem['meta'] = {}, isRead: boolean) => {
+    // Base actions: mark read/unread and archive — shown for ALL notifications
+    const baseActions = (
+      <>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn("h-8 text-muted-foreground hover:bg-[#3C3C3C]", isRead ? "text-muted-foreground font-medium hover:bg-transparent" : "font-semibold")}
+          title={isRead ? "Marcar no leída" : "Marcar leído"}
+          onClick={(e) => { e.preventDefault(); toggleNotificationRead(n.id, isRead); }}
+        >
+          {isRead ? <CheckCheck className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn("h-8 text-muted-foreground hover:bg-[#3C3C3C]", isRead ? "text-muted-foreground font-medium hover:bg-transparent" : "font-semibold")}
+          title="Archivar"
+          onClick={(e) => { e.preventDefault(); archiveNotification(n.id); }}
+        >
+          <Archive className="h-4 w-4 mr-1" /> 
+        </Button>
+      </>
+    );
+
+    // Acción específica para stock: navegar al producto
+    if (m?.category === 'stock') {
+      const pid = m?.productId;
+      return (
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn("h-8 text-muted-foreground hover:bg-[#3C3C3C]", isRead ? "text-muted-foreground font-medium hover:bg-transparent" : "font-semibold")}
+            onClick={(e) => { e.preventDefault(); router.push(pid ? `/products?highlight=${pid}` : '/products'); }}
+            title="Revisar producto"
+          >
+            Revisar
+          </Button>
+          {baseActions}
+        </>
+      );
+    }
+
+    // Alerts keep their specific actions in addition to base actions
+    if (n.type === 'alert') {
+      return (
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn("h-8 text-muted-foreground hover:bg-[#3C3C3C]", isRead ? "text-muted-foreground font-medium hover:bg-transparent" : "font-semibold")}
+            onClick={(e) => { e.preventDefault(); router.push('/sales?tab=installments'); }}
+          >
+            Revisar
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn("h-8 text-muted-foreground hover:bg-[#3C3C3C]", isRead ? "text-muted-foreground font-medium hover:bg-transparent" : "font-semibold")}
+            onClick={(e) => { e.preventDefault(); openWhatsAppForCustomer(m); }}
+          >
+            Notificar cliente
+          </Button>
+          {baseActions}
+        </>
+      );
+    }
+
+    // For info/system/attention, we still show the base actions
+    return baseActions;
+  };
+
+  const formatExpirationLine = (m: NotificationItem['meta'] = {}) => {
+
+    if (m.category === 'system' && typeof m.duration_ms === 'number') {
+      const ms = m.duration_ms;
+      const pretty = ms < 1 ? `${(ms * 1000).toFixed(1)}µs` : ms < 1000 ? `${ms.toFixed(1)}ms` : `${(ms / 1000).toFixed(2)}s`;
+      return `tiempo: ${pretty}`;
+    }
+
+    if (m.due_at) {
+      const now = Date.now();
+      const due = new Date(m.due_at).getTime();
+      const diff = due - now;
+      const dayMs = 24 * 60 * 60 * 1000;
+      const absDays = Math.max(0, Math.floor(Math.abs(diff) / dayMs));
+      if (Math.abs(diff) < dayMs && diff < 0) return 'Venció hoy';
+      if (Math.abs(diff) < dayMs && diff >= 0) return 'Vence hoy';
+      if (diff >= 0) return `Vencimiento en ${absDays} días`;
+      return `Venció hace ${absDays} días`;
+    }
+    return undefined;
+  };
+
+  const resetToSamples = useCallback(async () => {
+    try {
+      // Ensure demo mode is OFF and any prior seed flags are cleared
+      window.localStorage.removeItem('notifications:samplesOnly');
+      window.localStorage.removeItem('notifications:seed:init');
+      window.localStorage.removeItem('notifications:snoozeUntil');
+    } catch {}
+
+    // Reload persisted notifications from backend and apply suppression filters
+    try {
+      const refreshed = await loadPersisted(50);
+      setNotifications(filterSuppressed(refreshed));
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem('notifications:snoozeUntil');
+      if (stored) {
+        const ts = Number(stored);
+        if (!Number.isNaN(ts)) setSnoozeUntil(ts);
+      }
+    } catch { }
+  }, []);
+
+
+  const unreadCount = useMemo(() => notifications.filter(n => !n.read_at).length, [notifications]);
+
+  useEffect(() => {
+    (async () => {
+      // Always load persisted notifications; disable demo sample mode
+      const initial = await loadPersisted(50);
+      setNotifications(filterSuppressed(initial));
+
+      try {
+        const unsub = subscribeNotifications(() => notifications, (next) => {
+          if (typeof next === 'function') {
+            setNotifications(prev => filterSuppressed(next(prev)));
+          } else {
+            setNotifications(filterSuppressed(next));
+          }
+          // Auto-scroll to bottom when new notifications arrive and popover is open
+          if (open) {
+            setTimeout(scrollToBottom, 0);
+          }
+        });
+        (window as any).__notificationsUnsub = unsub;
+        const __loadPersisted = async () => {
+          const refreshed = await loadPersisted(50);
+          setNotifications(prev => filterSuppressed(reconcileWithLocal(prev, refreshed)));
+        };
+        (window as any).__loadPersisted = __loadPersisted;
+        // Remove periodic polling; only refresh once when the bell opens
+        if (open && !loadedOnOpenRef.current) {
+          __loadPersisted();
+          loadedOnOpenRef.current = true;
+        }
+
+      } catch {}
+    })();
+
+    return () => {
+      try {
+        const unsub = (window as any).__notificationsUnsub;
+        if (typeof unsub === 'function') unsub();
+      } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snoozeUntil, open]);
+
+  // Cargar archivadas cuando se selecciona la pestaña Archivadas
+  useEffect(() => {
+    const loadArchived = async () => {
+      try {
+        console.log('Loading archived notifications...');
+        const rows = await notificationsAdapter.listArchived(50);
+        console.log('Archived notifications loaded:', rows);
+        setArchived(rows || []);
+      } catch (e) {
+        console.error('Error loading archived notifications:', e);
+      }
+    };
+    if (activeTab === 'archived') {
+      loadArchived();
+    }
+  }, [activeTab]);
+
+  const markNotificationRead = useCallback(async (id?: number) => {
+    if (!id) return;
+    // Actualiza local y registra candado inmediatamente
+    setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read_at: new Date().toISOString() } : n)));
+    pendingChangesRef.current.set(id, { read: true, ts: Date.now() });
+    try {
+      await notificationsAdapter.markRead(id);
+    } catch (e) {
+      toast({ title: 'Error', description: 'No se pudo marcar como leída' });
+    }
+  }, [toast]);
+
+  const toggleNotificationRead = useCallback(async (id?: number, isRead?: boolean) => {
+    if (!id) return;
+    const nextRead = !isRead; // estado al que queremos ir
+    // Actualiza local y registra candado inmediatamente
+    setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read_at: nextRead ? new Date().toISOString() : null } : n)));
+    pendingChangesRef.current.set(id, { read: nextRead, ts: Date.now() });
+    try {
+      if (isRead) {
+        await notificationsAdapter.markUnread(id);
+      } else {
+        await notificationsAdapter.markRead(id);
+      }
+    } catch (e) {
+      toast({ title: 'Error', description: 'No se pudo cambiar el estado de lectura' });
+    }
+  }, [toast]);
+
+  const markAllRead = useCallback(async () => {
+    const ids = notifications.filter(n => !n.read_at && n.id).map(n => n.id!);
+    try {
+      for (const id of ids) {
+        await notificationsAdapter.markRead(id);
+      }
+    } catch (e) {
+      toast({ title: 'Error', description: 'No se pudieron marcar todas como leídas' });
+    }
+    setNotifications(prev => prev.map(n => (!n.read_at ? { ...n, read_at: new Date().toISOString() } : n)));
+  }, [notifications, toast]);
+
+  const openRelated = useCallback((n: NotificationItem) => {
+    // Basic routing based on type. Can be refined with IDs later.
+    const t = n.type;
+    if (t === 'attention') {
+      router.push('/calendar');
+    } else {
+      router.push('/sales');
+    }
+  }, [router]);
+
+  const snooze = useCallback((hours: number = 1) => {
+    const until = Date.now() + hours * 60 * 60 * 1000;
+    setSnoozeUntil(until);
+    try { window.localStorage.setItem('notifications:snoozeUntil', String(until)); } catch { }
+  }, []);
+
+  const clearSnooze = useCallback(() => {
+    setSnoozeUntil(null);
+    try { window.localStorage.removeItem('notifications:snoozeUntil'); } catch { }
+  }, []);
+
+  const clearAllNotifications = useCallback(async () => {
+    try {
+      // Tomar un snapshot actual para supresión por día
+      const snapshot = [...notifications];
+
+      // Marcar por mensaje/clave del día para evitar reaparición inmediata por scheduler
+      for (const n of snapshot) {
+        const key = n.meta?.message_key;
+        if (key) {
+          suppressedKeysRef.current.add(key);
+          await notificationsAdapter.deleteByKeyToday(key);
+        } else if (n.message) {
+          suppressedTodayRef.current.add(n.message);
+          await notificationsAdapter.deleteByMessageToday(n.message);
+        }
+      }
+
+      // Eliminar todas las notificaciones activas (soft delete)
+      await notificationsAdapter.clearAll();
+      
+      // Limpiar el estado local
+      setNotifications([]);
+      
+      toast({ title: 'Listo', description: 'Todas las notificaciones han sido eliminadas permanentemente' });
+    } catch (error) {
+      console.error('Error clearing notifications:', error);
+      toast({ 
+        title: 'Error', 
+        description: 'No se pudieron eliminar las notificaciones. Intenta de nuevo.' 
+      });
+    }
+  }, [notifications, toast]);
+
+  const emitTest = useCallback(async (type: 'info' | 'alert' | 'attention') => {
+    const payload = {
+      message: type === 'info' ? 'Backup de la base de datos creada'
+        : type === 'alert' ? 'Cuota vencida hoy'
+          : 'Cuota próxima a vencer 25/10',
+      type,
+    } as const;
+    const ok = await notificationsAdapter.emitTestEvent(payload);
+    if (!ok) {
+      setNotifications(prev => [
+        ...prev,
+        { message: payload.message, type: payload.type, created_at: new Date().toISOString() } as any,
+      ]);
+    }
+  }, []);
+
+  const emitStockTest = useCallback(async () => {
+    const payload = {
+      message: 'Stock bajo: Producto de prueba — quedó en 0 unidades — $10000 — Demostración',
+      type: 'attention',
+    } as const;
+    const ok = await notificationsAdapter.emitTestEvent(payload);
+    if (!ok) {
+      setNotifications(prev => [
+        ...prev,
+        { message: payload.message, type: payload.type, created_at: new Date().toISOString() } as any,
+      ]);
+    }
+  }, []);
+
+  const archiveNotification = useCallback(async (id?: number) => {
+    if (!id) return;
+    
+    console.log('Archiving notification with id:', id);
+    
+    // Remover de la UI inmediatamente
+    setNotifications(prev => prev.filter(n => n.id !== id));
+    
+    try {
+      // Solo archivar la notificación específica
+      await notificationsAdapter.delete(id);
+      console.log('Notification archived successfully:', id);
+
+      // Refrescar la lista de archivadas para que aparezcan inmediatamente en la pestaña
+      try {
+        const rows = await notificationsAdapter.listArchived(50);
+        console.log('Refreshed archived list after archiving:', rows);
+        setArchived(rows || []);
+      } catch (e) {
+        console.error('Error loading archived notifications:', e);
+      }
+    } catch (e) {
+      console.error('Error archiving notification:', e);
+      // En caso de error, recargar las notificaciones
+      try {
+        const normalized = await loadPersisted(50);
+        setNotifications(normalized);
+      } catch {}
+    }
+  }, []);
+
+  // Helpers para render y formato
+  const typeMeta = (t: NotificationItem['type']) => {
+    if (t === 'alert') return { label: 'Crítica', dot: 'bg-red-500', badge: 'text-red-500 border-red-500' };
+    if (t === 'attention') return { label: 'Atención', dot: 'bg-amber-500', badge: 'text-orange-500 border-orange-500' };
+    return { label: 'Sistema', dot: 'bg-blue-500', badge: 'text-blue-500 border-blue-500' };
+  };
+  const formatAmountDesign = (a?: number) => {
+    if (typeof a !== 'number') return '';
+    const base = Intl.NumberFormat('es-ES', { useGrouping: true, maximumFractionDigits: 0 }).format(a).replace(/,/g, '.');
+    return `$${base}0`;
+  };
+  const formatRelative = (iso: string) => {
+    const d = new Date(iso).getTime();
+    const diff = Math.max(0, Date.now() - d);
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return 'hace unos segundos';
+    if (m < 60) return `hace ${m} min`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `hace ${h} h`;
+    const days = Math.floor(h / 24);
+    return `hace ${days} d`;
+  };
+
+  const filtered = useMemo(() => {
+    const source = activeTab === 'archived' ? archived : notifications;
+    console.log(`Filtering for tab "${activeTab}":`, { source, archived, notifications });
+    const base = activeTab === 'unread'
+      ? source.filter(n => !n.read_at)
+      : activeTab === 'read'
+        ? source.filter(n => !!n.read_at)
+        : source;
+    const byType = base.filter(n => visibleTypes[n.type]);
+    const result = [...byType].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    console.log(`Filtered result for tab "${activeTab}":`, result);
+    return result;
+  }, [notifications, archived, activeTab, visibleTypes]);
+
+  const snoozeActive = snoozeUntil && Date.now() < snoozeUntil;
+  const snoozeLabel = snoozeActive ? `Silenciado hasta ${new Date(snoozeUntil!).toLocaleTimeString('es-ES')}` : undefined;
+
+  // Render principal
+  return (
+    <>
+      {open && <div className="fixed inset-0 bg-black/40 backdrop-blur-[1px] z-40 pointer-events-none" />}
+      <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 rounded-2xl">
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="icon" className="relative h-10 w-10 rounded-md shadow-md">
+              <Inbox className="h-5 w-5" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-sm px-1 min-w-[18px] text-center">
+                  {unreadCount}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="center" side="bottom" className="w-[42rem] p-0 rounded-3xl overflow-hidden flex flex-col max-h-[80vh]" onInteractOutside={(e) => { if (filtersOpen) e.preventDefault(); }} onEscapeKeyDown={(e) => { if (filtersOpen) e.preventDefault(); }}>
+            <div className="px-4 py-3 flex items-center justify-between gap-2">
+              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+                <TabsList className="rounded-3xl border border-[#3C3C3C] bg-[#202020]">
+                  <TabsTrigger className="rounded-3xl w-[100px]" value="all">Todas</TabsTrigger>
+                  <TabsTrigger className="rounded-3xl w-[100px]" value="unread">Nuevas</TabsTrigger>
+                  <TabsTrigger className="rounded-3xl w-[100px]" value="read">Leídas</TabsTrigger>
+                  <TabsTrigger className="rounded-3xl w-[120px]" value="archived">Archivadas</TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="h-9 px-2" title="Recargar notificaciones persistidas" onClick={() => resetToSamples()}>
+                  Recargar
+                </Button>
+                <DropdownMenu onOpenChange={setFiltersOpen}>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" className="h-9 w-9 rounded-full" title="Filtrar">
+                      <Filter className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44" data-dropdown-content>
+                    <DropdownMenuCheckboxItem checked={visibleTypes.alert} onCheckedChange={(v) => setVisibleTypes(s => ({ ...s, alert: !!v }))}>
+                      Críticas
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem checked={visibleTypes.attention} onCheckedChange={(v) => setVisibleTypes(s => ({ ...s, attention: !!v }))}>
+                      Atención
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem checked={visibleTypes.info} onCheckedChange={(v) => setVisibleTypes(s => ({ ...s, info: !!v }))}>
+                      Sistema
+                    </DropdownMenuCheckboxItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" className="h-9 w-9 rounded-full" title="Generar ejemplo">
+                      <Wand2 className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-52">
+                    <DropdownMenuItem onSelect={() => emitTest('info')}>Generar info</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => emitTest('attention')}>Generar atención</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => emitTest('alert')}>Generar crítica</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={emitStockTest}>Generar stock bajo</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button variant="outline" size="icon" className="h-9 w-9 rounded-full" title="Eliminar todas las notificaciones" onClick={clearAllNotifications}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="icon" className="h-9 w-9 rounded-full" title="Marcar todas como leídas" onClick={markAllRead}>
+                  <CheckCheck className="h-4 w-4" />
+                </Button>
+                {!snoozeActive ? (
+                  <Button variant="outline" size="icon" className="h-9 w-9 rounded-full" title="Snooze 1h" onClick={() => snooze(1)}>
+                    <BellOff className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button variant="outline" size="icon" className="h-9 w-9 rounded-full" title="Reactivar" onClick={clearSnooze}>
+                    <Bell className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
+            <Separator />
+            <ScrollArea className="h-[60vh]" ref={scrollRef}>
+              <div className="w-full h-44 absolute z-10 bg-gradient-to-b from-[#151515] to-transparent pointer-events-none"></div>
+              {filtered.length === 0 ? (
+                <div className="px-4 py-8 text-sm text-muted-foreground">Sin notificaciones</div>
+              ) : (
+                <ul className="p-4 space-y-3 flex flex-col justify-end min-h-[60vh]">
+                  {filtered.slice(Math.max(0, filtered.length - renderCount), filtered.length).map((n) => {
+                    const meta = typeMeta(n.type);
+                    const m = n.meta ?? {};
+                    const isRead = !!n.read_at;
+                    const secondaryLine = m.category === 'client'
+                      ? (() => {
+                        const extras = typeof m.customerCount === 'number' ? Math.max(0, m.customerCount - 1) : 0;
+                        return `Cliente: ${m.customerName ?? 'Cliente'}${extras > 0 ? ` y +${extras}` : ''}`;
+                      })()
+                      : m.category === 'system'
+                        ? `Sistema: ${m.systemStatus ?? 'realizado correctamente'}`
+                        : m.category === 'stock'
+                          ? (() => {
+                              const parts = [];
+                              if (m.stockStatus) parts.push(`Stock: ${m.stockStatus}`);
+                              if (m.productPrice) parts.push(`$${m.productPrice}`);
+                              if (m.productCategory) parts.push(m.productCategory);
+                              return parts.length > 0 ? parts.join(' • ') : 'Stock';
+                            })()
+                          : undefined;
+                    const uniqueKey = n.id ?? `${n.created_at}-${n.type}-${n.message}`;
+                    return (
+                      <li key={uniqueKey} className={cn("rounded-3xl border", isRead ? "bg-[#151515] border-[#2b2b2b] hover:bg-[#1a1a1a]" : "bg-[#202020] border-[#3C3C3C] hover:bg-[#262626]")}> 
+                        <div className="px-4 py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-3 min-w-0">
+                              <div className={cn(`mt-1 w-2.5 h-2.5 rounded-full ${meta.dot}`, isRead && "opacity-50")} />
+                              <div className="space-y-1 min-w-0">
+                                <div className={cn("text-sm", isRead ? "text-muted-foreground opacity-70 font-medium" : "font-semibold")}>
+                                    {formatTitle(n.message, m)}
+                                </div>
+                                {secondaryLine && (
+                                  <div className="text-xs text-muted-foreground font-bold">{secondaryLine}</div>
+                                )}
+                                {(() => {
+                                  const line = formatExpirationLine(m);
+                                  return line ? (
+                                    <div className="text-xs text-muted-foreground">{line}</div>
+                                  ) : null;
+                                })()}
+                                {typeof m.amount === 'number' && (
+                                  <div className={cn("text-lg mt-2", isRead ? "text-muted-foreground font-medium" : "font-semibold")}>{formatAmountDesign(m.amount)}</div>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className={cn(isRead ? "text-muted-foreground border-[#3C3C3C]" : meta.badge)}>{meta.label}</Badge>
+                            </div>
+                          </div>
+                        </div>
+                        <Separator className={cn("w-[calc(100%-30px)] mx-auto", isRead ? "bg-[#2b2b2b]" : "bg-[#3C3C3C] ")} />
+                        <div className="px-4 py-2 flex items-center justify-between gap-2">
+                          <span className="text-xs text-muted-foreground" title={new Date(n.created_at).toLocaleString('es-ES')}>
+                            {formatRelative(n.created_at)}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {renderActions(n, m, isRead)}
+                          </div>
+                            </div>
+                        </li>
+                      );
+                  })}
+                </ul>
+              )}
+            </ScrollArea>
+          </PopoverContent>
+        </Popover>
+      </div>
+    </>
+  );
+}
+
+function formatTitle(message: string, meta?: NotificationItem['meta']) {
+    const key = meta?.message_key ?? '';
+    if (key.startsWith('overdue|')) return 'Cuota vencida';
+  if (key.startsWith('upcoming|')) return 'Cuota próxima a vencer';
+  if (meta?.category === 'stock') {
+    if (meta?.productName) return `Producto ${meta.productName}`;
+    // Intento de fallback: extraer nombre desde el mensaje "Stock bajo: Nombre — ..."
+    const firstPart = message?.split(' — ')[0] ?? '';
+    const name = firstPart.replace(/^Stock bajo:\s*/i, '').trim();
+    return name ? `Producto ${name}` : 'Stock';
+  }
+  if (meta?.category === 'system') return 'Sistema';
+  // Fallback: toma solo la primera parte antes de " — "
+  const simplified = message?.split(' — ')[0] ?? message;
+  return simplified || message;
+}
+

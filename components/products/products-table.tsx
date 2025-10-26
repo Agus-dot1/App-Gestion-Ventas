@@ -59,15 +59,30 @@ export function ProductsTable({
     name: true,
     category: true,
     price: true,
+    cost: true,
     stock: true,
     description: true,
     status: true,
   });
 
-  const [sortConfig, setSortConfig] = useState<{ key: 'name' | 'category' | 'price' | 'stock' | 'is_active' | null; direction: 'asc' | 'desc' }>({
+  const [sortConfig, setSortConfig] = useState<{ key: 'name' | 'category' | 'price' | 'cost_price' | 'stock' | 'is_active' | null; direction: 'asc' | 'desc' }>({
     key: null,
     direction: 'asc'
   });
+
+  const handleSort = (key: 'name' | 'category' | 'price' | 'cost_price' | 'stock' | 'is_active') => {
+    setSortConfig(prev => {
+      if (prev.key === key) {
+        return { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
+      }
+      return { key, direction: 'asc' };
+    });
+  };
+
+  const getSortIcon = (key: 'name' | 'category' | 'price' | 'cost_price' | 'stock' | 'is_active') => {
+    if (sortConfig.key !== key) return <ArrowUpDown className="ml-1 h-4 w-4" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="ml-1 h-4 w-4" /> : <ArrowDown className="ml-1 h-4 w-4" />;
+  };
 
   // Use external state for server-side pagination, internal state for client-side
   const searchTerm = serverSidePagination ? (externalSearchTerm || '') : internalSearchTerm;
@@ -78,20 +93,6 @@ export function ProductsTable({
       product.description?.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesSearch;
   });
-
-  const handleSort = (key: 'name' | 'category' | 'price' | 'stock' | 'is_active') => {
-    setSortConfig(prev => {
-      if (prev.key === key) {
-        return { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
-      }
-      return { key, direction: 'asc' };
-    });
-  };
-
-  const getSortIcon = (key: 'name' | 'category' | 'price' | 'stock' | 'is_active') => {
-    if (sortConfig.key !== key) return <ArrowUpDown className="ml-1 h-4 w-4" />;
-    return sortConfig.direction === 'asc' ? <ArrowUp className="ml-1 h-4 w-4" /> : <ArrowDown className="ml-1 h-4 w-4" />;
-  };
 
   const sortedProducts = (() => {
     // Always sort the currently visible dataset. When server-side pagination is on,
@@ -195,36 +196,27 @@ export function ProductsTable({
 
   const exportSelectedProducts = () => {
     const selectedProductsData = products.filter(p => selectedProducts.has(p.id!));
-    
     const doc = new jsPDF();
-    
-    // Add title
     doc.setFontSize(20);
     doc.text('Productos Seleccionados', 14, 22);
-    
-    // Add date
     doc.setFontSize(12);
     doc.text(`Fecha: ${new Date().toLocaleDateString()}`, 14, 32);
     doc.text(`Total de productos: ${selectedProductsData.length}`, 14, 40);
-    
-    // Prepare data for table
     const tableData = selectedProductsData.map(product => [
       product.name,
       product.category,
       `$${product.price.toFixed(2)}`,
+      product.cost_price != null ? `$${Number(product.cost_price).toFixed(2)}` : '-',
       product.stock?.toString() ?? '0',
       product.description || '-'
     ]);
-    
-    // Add table
     autoTable(doc, {
-      head: [['Nombre', 'Categoría', 'Precio', 'Stock', 'Descripción']],
+      head: [['Nombre', 'Categoría', 'Precio', 'Costo', 'Stock', 'Descripción']],
       body: tableData,
       startY: 60,
       styles: { fontSize: 8 },
       headStyles: { fillColor: [41, 128, 185] }
     });
-    
     doc.save(`productos_seleccionados_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
@@ -296,6 +288,7 @@ export function ProductsTable({
                     <TableHead>Nombre</TableHead>
                     <TableHead>Categoría</TableHead>
                     <TableHead>Precio</TableHead>
+                    <TableHead>Costo</TableHead>
                     <TableHead>Stock</TableHead>
                     <TableHead>Descripción</TableHead>
                     <TableHead className="w-[70px]">Acciones</TableHead>
@@ -312,6 +305,9 @@ export function ProductsTable({
                       </TableCell>
                       <TableCell>
                         <Skeleton className="h-6 w-20 rounded-full" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-24" />
                       </TableCell>
                       <TableCell>
                         <Skeleton className="h-4 w-24" />
@@ -374,6 +370,17 @@ export function ProductsTable({
                           onClick={() => handleSort('price')}
                         >
                           Precio {getSortIcon('price')}
+                        </Button>
+                      </TableHead>
+                    )}
+                    {columnVisibility.cost && (
+                      <TableHead>
+                        <Button 
+                          variant="ghost" 
+                          className="h-auto p-0 font-semibold hover:bg-transparent" 
+                          onClick={() => handleSort('cost_price')}
+                        >
+                          Costo {getSortIcon('cost_price')}
                         </Button>
                       </TableHead>
                     )}
@@ -451,6 +458,15 @@ export function ProductsTable({
                           <span className="font-semibold text-lg text-white">
                             {formatPrice(product.price)}
                           </span>
+                        </TableCell>
+                      )}
+                      {columnVisibility.cost && (
+                        <TableCell>
+                          {typeof product.cost_price === 'number' ? (
+                            <span className="text-white">{formatPrice(product.cost_price)}</span>
+                          ) : (
+                            <span className="text-muted-foreground italic text-sm">Sin costo</span>
+                          )}
                         </TableCell>
                       )}
                       {columnVisibility.stock && (

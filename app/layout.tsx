@@ -4,6 +4,7 @@ import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { DataCacheProvider } from "@/hooks/use-data-cache";
 import { Suspense } from "react";
 import { Sidebar } from "@/components/sidebar";
+import { NotificationsBell } from "@/components/notifications-bell";
 
 export const metadata: Metadata = {
   title: "Electro Gestión - Sistema de Gestión de Ventas",
@@ -17,7 +18,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
-      <body className="antialiased">
+      <body className="antialiased overflow-hidden">
         <DataCacheProvider>
           <div className="flex h-screen bg-background">
             <Sidebar />
@@ -27,6 +28,7 @@ export default function RootLayout({
               </Suspense>
             </main>
           </div>
+          <NotificationsBell />
         </DataCacheProvider>
 
         <SonnerToaster position="bottom-right" />

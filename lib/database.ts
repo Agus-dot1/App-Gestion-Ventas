@@ -103,6 +103,7 @@ function createTables() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       price DECIMAL(10,2) NOT NULL,
+      cost_price DECIMAL(10,2),
       description TEXT,
       category TEXT,
       stock INTEGER,
@@ -116,6 +117,7 @@ function createTables() {
   const productsTableInfo = db.prepare("PRAGMA table_info(products)").all();
   const hasCategory = productsTableInfo.some((col: any) => col.name === 'category');
   const hasStock = productsTableInfo.some((col: any) => col.name === 'stock');
+  const hasCostPrice = productsTableInfo.some((col: any) => col.name === 'cost_price');
   const hasProductCreatedAt = productsTableInfo.some((col: any) => col.name === 'created_at');
   const hasProductUpdatedAt = productsTableInfo.some((col: any) => col.name === 'updated_at');
   
@@ -134,6 +136,15 @@ function createTables() {
       console.log('Successfully added stock column to products table');
     } catch (e) {
       console.error('Error adding stock column to products table:', e);
+    }
+  }
+  
+  if (!hasCostPrice) {
+    try {
+      db.exec('ALTER TABLE products ADD COLUMN cost_price DECIMAL(10,2)');
+      console.log('Successfully added cost_price column to products table');
+    } catch (e) {
+      console.error('Error adding cost_price column to products table:', e);
     }
   }
 
@@ -160,11 +171,33 @@ function createTables() {
     }
   }
 
+  // Partners table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS partners (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      is_active BOOLEAN DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Insert default partners if they don't exist
+  const existingPartners = db.prepare("SELECT COUNT(*) as count FROM partners").get() as { count: number };
+  if (existingPartners.count === 0) {
+    const insertPartner = db.prepare("INSERT INTO partners (name) VALUES (?)");
+    insertPartner.run("Cruz");
+    insertPartner.run("Gustavo");
+    insertPartner.run("Persona");
+    console.log('Default partners inserted successfully');
+  }
+
   // Sales table
   db.exec(`
     CREATE TABLE IF NOT EXISTS sales (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       customer_id INTEGER,
+      partner_id INTEGER,
       sale_number TEXT NOT NULL,
       date DATETIME DEFAULT CURRENT_TIMESTAMP,
       due_date DATETIME,
@@ -185,6 +218,7 @@ function createTables() {
       notes TEXT,
       parent_sale_id INTEGER,
       FOREIGN KEY (customer_id) REFERENCES customers(id),
+      FOREIGN KEY (partner_id) REFERENCES partners(id),
       FOREIGN KEY (parent_sale_id) REFERENCES sales(id)
     )
   `);
@@ -261,6 +295,30 @@ function createTables() {
     )
   `);
 
+  // Migración: agregar deleted_at si falta
+  try {
+    const notifInfo = db.prepare("PRAGMA table_info(notifications)").all();
+    const hasDeletedAt = notifInfo.some((col: any) => col.name === 'deleted_at');
+    if (!hasDeletedAt) {
+      db.exec('ALTER TABLE notifications ADD COLUMN deleted_at DATETIME');
+      console.log('Successfully added deleted_at column to notifications table');
+    }
+  } catch (e) {
+    console.error('Error adding deleted_at column to notifications table:', e);
+  }
+
+  // Migración: agregar message_key si falta
+  try {
+    const notifInfo2 = db.prepare("PRAGMA table_info(notifications)").all();
+    const hasMessageKey = notifInfo2.some((col: any) => col.name === 'message_key');
+    if (!hasMessageKey) {
+      db.exec('ALTER TABLE notifications ADD COLUMN message_key TEXT');
+      console.log('Successfully added message_key column to notifications table');
+    }
+  } catch (e) {
+    console.error('Error adding message_key column to notifications table:', e);
+  }
+
   // Reports table
   db.exec(`
     CREATE TABLE IF NOT EXISTS reports (
@@ -286,10 +344,32 @@ function createTables() {
   `);
 
   // Create indexes for better performance
+  // Deduplicate active notifications by message_key to allow unique index creation
+  try {
+    db.exec(`
+      UPDATE notifications SET deleted_at = datetime('now')
+      WHERE id IN (
+        SELECT n1.id FROM notifications n1
+        JOIN notifications n2
+          ON n1.message_key = n2.message_key
+         AND n1.id < n2.id
+        WHERE n1.deleted_at IS NULL AND n2.deleted_at IS NULL AND n1.message_key IS NOT NULL
+      );
+    `);
+  } catch (e) {
+    console.error('Error deduplicating notifications before index creation:', e);
+  }
+
   db.exec(`
     -- Customer table indexes for optimized search and queries
-    CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name);
-    CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email);
+     
+     -- Unique active notifications by message_key to prevent duplicates
+     CREATE UNIQUE INDEX IF NOT EXISTS uniq_notifications_message_key_active
+       ON notifications(message_key)
+       WHERE deleted_at IS NULL;
+ 
+     CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name);
+     CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email);
     CREATE INDEX IF NOT EXISTS idx_customers_company ON customers(company);
     CREATE INDEX IF NOT EXISTS idx_customers_created_at ON customers(created_at);
     CREATE INDEX IF NOT EXISTS idx_customers_updated_at ON customers(updated_at);
@@ -304,6 +384,7 @@ function createTables() {
     
     -- Sales and related table indexes
     CREATE INDEX IF NOT EXISTS idx_sales_customer_id ON sales(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_sales_partner_id ON sales(partner_id);
     CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(date);
     CREATE INDEX IF NOT EXISTS idx_sales_due_date ON sales(due_date);
     CREATE INDEX IF NOT EXISTS idx_sales_payment_status ON sales(payment_status);
@@ -316,6 +397,12 @@ function createTables() {
     CREATE INDEX IF NOT EXISTS idx_payment_transactions_sale_id ON payment_transactions(sale_id);
     CREATE INDEX IF NOT EXISTS idx_payment_transactions_transaction_date ON payment_transactions(transaction_date);
     CREATE INDEX IF NOT EXISTS idx_calendar_events_date ON calendar_events(date);
+
+    -- Notifications indexes
+    CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);
+    CREATE INDEX IF NOT EXISTS idx_notifications_deleted_at ON notifications(deleted_at);
+    CREATE INDEX IF NOT EXISTS idx_notifications_message ON notifications(message);
+    CREATE INDEX IF NOT EXISTS idx_notifications_message_key ON notifications(message_key);
   `);
 }
 
@@ -332,12 +419,15 @@ function runMigrations() {
   const requiredColumns = ['sale_number', 'subtotal', 'tax_amount', 'discount_amount', 'payment_status', 'advance_installments'];
   const missingColumns = requiredColumns.filter(col => !columnNames.includes(col));
   
+  // Check if partner_id column exists
+  const hasPartnerId = columnNames.includes('partner_id');
+  
   // Check if sale_items table needs to be migrated to allow NULL product_id
   const saleItemsTableInfo = db.prepare("PRAGMA table_info(sale_items)").all();
   const product_id_column = saleItemsTableInfo.find((col: any) => col.name === 'product_id');
   const needsProductIDMigration = product_id_column && (product_id_column as any).notnull === 1;
   
-  if (missingColumns.length > 0 || needsProductIDMigration) {
+  if (missingColumns.length > 0 || needsProductIDMigration || !hasPartnerId) {
     console.log('Missing columns detected or sale_items table needs migration:', missingColumns);
     
     // Backup existing data if any
@@ -370,6 +460,7 @@ function createSalesRelatedTables() {
     CREATE TABLE IF NOT EXISTS sales (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       customer_id INTEGER,
+      partner_id INTEGER,
       sale_number TEXT NOT NULL,
       date DATETIME DEFAULT CURRENT_TIMESTAMP,
       due_date DATETIME,
@@ -390,6 +481,7 @@ function createSalesRelatedTables() {
       notes TEXT,
       parent_sale_id INTEGER,
       FOREIGN KEY (customer_id) REFERENCES customers(id),
+      FOREIGN KEY (partner_id) REFERENCES partners(id),
       FOREIGN KEY (parent_sale_id) REFERENCES sales(id)
     )
   `);

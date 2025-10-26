@@ -6,15 +6,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
-import { AlertCircle, Plus, Trash2, ShoppingCart, User, CreditCard, Calculator, DollarSign, Search, Users, List } from 'lucide-react';
-import { CustomerForm } from '@/components/customers/customer-form';
-import { useDataCache } from '@/hooks/use-data-cache';
-import type { Sale, Customer, Product, SaleFormData } from '@/lib/database-operations';
-import { SelectLabel } from '@radix-ui/react-select';
+import { AlertCircle, Plus, Trash2, ShoppingCart, User, CreditCard, Calculator, Search, Users, List } from 'lucide-react';
+type Sale = any;
+type Customer = any;
+type Product = any;
+type SaleFormData = any;
 
 interface SaleFormProps {
   sale?: Sale;
@@ -33,18 +31,17 @@ interface SaleItem {
 }
 
 export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
-  const dataCache = useDataCache();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [formData, setFormData] = useState({
     customer_id: 0,
-    payment_type: 'cash' as 'cash' | 'installments' | 'credit',
+    payment_type: 'cash' as 'cash' | 'installments',
     payment_period: '1 to 10' as '1 to 10' | '20 to 30',
     period_type: 'monthly' as 'monthly' | 'weekly' | 'biweekly',
     number_of_installments: 6,
     advance_installments: 0,
     tax_amount: 0,
-    discount_amount: 0,
+    installment_payment_method: 'cash' as 'cash' | 'transfer',
     notes: ''
   });
   const [items, setItems] = useState<SaleItem[]>([]);
@@ -54,7 +51,6 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
   const [productQuery, setProductQuery] = useState('');
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [customerQuery, setCustomerQuery] = useState('');
-  const [fullCustomerFormOpen, setFullCustomerFormOpen] = useState(false);
 
   useEffect(() => {
     if (open && typeof window !== 'undefined' && window.electronAPI) {
@@ -73,13 +69,11 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         number_of_installments: sale.number_of_installments || 6,
         advance_installments: sale.advance_installments || 0,
         tax_amount: sale.tax_amount || 0,
-        discount_amount: sale.discount_amount || 0,
+        installment_payment_method: (sale.installment_payment_method as 'cash' | 'transfer') || 'cash',
         notes: sale.notes || ''
       });
-      // Load sale items when editing
       loadSaleItems(sale.id!);
     } else {
-      // Reset form for new sale
       setFormData({
         customer_id: 0,
         payment_type: 'cash',
@@ -88,7 +82,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         number_of_installments: 6,
         advance_installments: 0,
         tax_amount: 0,
-        discount_amount: 0,
+        installment_payment_method: 'cash',
         notes: ''
       });
       setItems([]);
@@ -97,6 +91,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
 
   const loadCustomers = async () => {
     try {
+      if (!window.electronAPI) return;
       const allCustomers = await window.electronAPI.database.customers.getAll();
       setCustomers(allCustomers);
     } catch (error) {
@@ -106,6 +101,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
 
   const loadProducts = async () => {
     try {
+      if (!window.electronAPI) return;
       const activeProducts = await window.electronAPI.database.products.getActive();
       setProducts(activeProducts);
     } catch (error) {
@@ -115,6 +111,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
 
   const loadSaleItems = async (saleId: number) => {
     try {
+      if (!window.electronAPI) return;
       const saleItems = await window.electronAPI.database.saleItems.getBySale(saleId);
       const formattedItems: SaleItem[] = saleItems.map(item => ({
         product_id: item.product_id,
@@ -163,7 +160,6 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
     setProductDialogOpen(false);
   };
 
-  // Customer selection helpers (inside component scope)
   const openCustomerDialog = () => {
     setCustomerQuery('');
     setCustomerDialogOpen(true);
@@ -183,12 +179,11 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
       return;
     }
     try {
+      if (!window.electronAPI) return;
       const id = await window.electronAPI.database.customers.create({ name: clean });
       const newCustomer: Customer = { id, name: clean } as Customer;
       setCustomers(prev => [...prev, newCustomer]);
       setFormData(prev => ({ ...prev, customer_id: id }));
-      // Invalidate global customers cache so the Customers page refreshes
-      dataCache.invalidateCache('customers');
     } catch (e) {
       console.error('Error creando cliente rápido:', e);
     } finally {
@@ -196,24 +191,6 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
     }
   };
 
-  const openFullCustomerForm = () => {
-    setFullCustomerFormOpen(true);
-  };
-
-  const handleFullCustomerSave = async (payload: Omit<Customer, 'id' | 'created_at' | 'updated_at'>) => {
-    try {
-      const id = await window.electronAPI.database.customers.create(payload);
-      const newCustomer: Customer = { id, ...payload } as Customer;
-      setCustomers(prev => [...prev, newCustomer]);
-      setFormData(prev => ({ ...prev, customer_id: id }));
-      setFullCustomerFormOpen(false);
-      setCustomerDialogOpen(false);
-      // Invalidate global customers cache so the Customers page refreshes
-      dataCache.invalidateCache('customers');
-    } catch (e) {
-      console.error('Error guardando cliente desde formulario:', e);
-    }
-  };
 
   const removeItem = (index: number) => {
     setItems(items.filter((_, i) => i !== index));
@@ -222,28 +199,24 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
   const updateItem = (index: number, field: keyof SaleItem, value: any) => {
     const updatedItems = [...items];
     updatedItems[index] = { ...updatedItems[index], [field]: value };
-    
-    // Update product name and price when product changes
+
     if (field === 'product_id') {
       const product = products.find(p => p.id === value);
       if (product) {
         updatedItems[index].product_name = product.name;
         updatedItems[index].unit_price = product.price;
-      } else if (value == null) {
-        // If product_id set to null, keep existing custom name and unit price
       }
     }
-    
-    // Recalculate line total
+
     const item = updatedItems[index];
     item.line_total = (item.quantity * item.unit_price) - item.discount_per_item;
-    
+
     setItems(updatedItems);
   };
 
   const calculateTotals = () => {
     const subtotal = items.reduce((sum, item) => sum + item.line_total, 0);
-    const total = subtotal - formData.discount_amount;
+    const total = subtotal; // no sale-level discount
     return { subtotal, total };
   };
 
@@ -279,7 +252,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateForm()) return;
 
     setIsSubmitting(true);
@@ -298,14 +271,13 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         payment_period: payment_type === 'installments' ? formData.payment_period : undefined,
         number_of_installments: payment_type === 'installments' ? formData.number_of_installments : undefined,
         advance_installments: payment_type === 'installments' ? formData.advance_installments : undefined,
+        installment_payment_method: payment_type === 'installments' ? formData.installment_payment_method : undefined,
         tax_amount: formData.tax_amount,
-        discount_amount: formData.discount_amount,
         notes: formData.notes
       };
-      
+
       await onSave(saleData);
-      
-      // Reset form - parent component will handle closing
+
       setFormData({
         customer_id: 0,
         payment_type: 'cash',
@@ -314,7 +286,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         number_of_installments: 6,
         advance_installments: 0,
         tax_amount: 0,
-        discount_amount: 0,
+        installment_payment_method: 'cash',
         notes: ''
       });
       setItems([]);
@@ -330,7 +302,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] max-h-[90vh] overflow-x-auto overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShoppingCart className="h-5 w-5" />
@@ -341,175 +313,314 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Customer Selection */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <User className="h-4 w-4" />
-                Información del Cliente
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <Label htmlFor="customer">Cliente *</Label>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1">
+        <form onSubmit={handleSubmit} className="space-y-6 min-w-[1200px]">
+          <div className="flex gap-6">
+            <div className="flex-1 space-y-6">
+              {/* Cliente y Pago lado a lado */}
+              <div className="grid grid-cols-2 gap-6">
+                <div className="border rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <User className="h-4 w-4" />
+                  <h3 className="font-semibold">Información del Cliente</h3>
+                </div>
+
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="col-span-2">
+                    <Label className="text-xs mb-1.5 block">Cliente *</Label>
                     {formData.customer_id ? (
-                      <div className={`p-2 border rounded-md ${errors.customer_id ? 'border-red-500' : ''}`}>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <User className="h-4 w-4" />
-                            {customers.find(c => c.id === formData.customer_id)?.name || `ID ${formData.customer_id}`}
-                          </div>
-                          <Button type="button" variant="ghost" size="sm" onClick={openCustomerDialog}>
-                            Cambiar
-                          </Button>
-                        </div>
+                      <div className={`h-10 px-3 border rounded-md flex items-center justify-between text-sm ${errors.customer_id ? 'border-red-500' : ''}`}>
+                        <span className="truncate flex-1">{customers.find(c => c.id === formData.customer_id)?.name || `ID ${formData.customer_id}`}</span>
+                        <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={openCustomerDialog}>
+                          Cambiar
+                        </Button>
                       </div>
                     ) : (
-                      <div className="w-full">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={openCustomerDialog}
-                          className={`${errors.customer_id ? 'border-red-500' : ''} w-full justify-between`}
-                        >
-                          <span className="flex items-center gap-2">
-                            <Search className="h-4 w-4" />
-                            Seleccionar cliente
-                          </span>
-                          <List className="h-4 w-4" />
-                        </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={openCustomerDialog}
+                        className={`${errors.customer_id ? 'border-red-500' : ''} w-full justify-between h-10 text-sm`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <Search className="h-3 w-3" />
+                          Seleccionar
+                        </span>
+                        <List className="h-3 w-3" />
+                      </Button>
+                    )}
+                    {errors.customer_id && (
+                      <div className="flex items-center gap-1 text-xs text-red-600 mt-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.customer_id}
                       </div>
                     )}
                   </div>
                 </div>
-                {errors.customer_id && (
-                  <div className="flex items-center gap-1 text-sm text-red-600">
+              </div>
+
+              {/* Pago */}
+              <div className="border rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <CreditCard className="h-4 w-4" />
+                  <h3 className="font-semibold">Información de pago</h3>
+                </div>
+
+                <div className="grid grid-cols-4 gap-4">
+                  <div>
+                    <Label className="text-xs mb-1.5 block">Método de pago</Label>
+                    <Select
+                      value={formData.payment_type}
+                      onValueChange={(value: any) => setFormData(prev => ({ ...prev, payment_type: value }))}
+                    >
+                      <SelectTrigger className="h-10">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cash">Al contado</SelectItem>
+                        <SelectItem value="installments">Cuotas</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {formData.payment_type === 'installments' && (
+                    <>
+                      <div>
+                        <Label className="text-xs mb-1.5 block">Cantidad de cuotas</Label>
+                        <Input
+                          type="number"
+                          min="2"
+                          max="60"
+                          value={formData.number_of_installments}
+                          onChange={(e) => setFormData(prev => ({ ...prev, number_of_installments: parseInt(e.target.value) || 6 }))}
+                          className={`h-10 ${errors.number_of_installments ? 'border-red-500' : ''}`}
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="text-xs mb-1.5 block">Periodo de pago</Label>
+                        <Select
+                          value={formData.payment_period}
+                          onValueChange={(value: any) => setFormData(prev => ({ ...prev, payment_period: value }))}
+                        >
+                          <SelectTrigger className="h-10">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1 to 10">1 al 10</SelectItem>
+                            <SelectItem value="20 to 30">20 al 30</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label className="text-xs mb-1.5 block">Método de pago de cuotas</Label>
+                        <Select
+                          value={formData.installment_payment_method}
+                          onValueChange={(value: any) => setFormData(prev => ({ ...prev, installment_payment_method: value }))}
+                        >
+                          <SelectTrigger className="h-10">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="cash">Efectivo</SelectItem>
+                            <SelectItem value="transfer">Transferencia</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+              </div>
+              <div className="border rounded-lg p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <ShoppingCart className="h-4 w-4" />
+                    <h3 className="font-semibold">Productos</h3>
+                  </div>
+                  <Button type="button" onClick={openProductDialog} size="sm">
+                    <Plus className="h-4 w-4 mr-1" />
+                    Añadir
+                  </Button>
+                </div>
+
+                {items.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
+                    <ShoppingCart className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p className="text-sm">No añadiste ningún producto.</p>
+                  </div>
+                ) : (
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-muted/50">
+                        <tr>
+                          <th className="text-left text-xs font-medium p-3 w-[35%]">Producto</th>
+                          <th className="text-left text-xs font-medium p-3 w-[12%]">Cantidad</th>
+                          <th className="text-left text-xs font-medium p-3 w-[15%]">Precio unit.</th>
+                          <th className="text-left text-xs font-medium p-3 w-[15%]">Descuento</th>
+                          <th className="text-left text-xs font-medium p-3 w-[15%]">Total</th>
+                          <th className="text-left text-xs font-medium p-3 w-[8%]"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((item, index) => (
+                          <tr key={index} className="border-t">
+                            <td className="p-2">
+                              {item.product_id != null ? (
+                                <Select
+                                  value={item.product_id.toString()}
+                                  onValueChange={(value) => updateItem(index, 'product_id', parseInt(value))}
+                                >
+                                  <SelectTrigger className="h-9 text-sm">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {products.map((product) => (
+                                      <SelectItem key={product.id} value={product.id!.toString()}>
+                                        {product.name} - ${product.price}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <Input
+                                  placeholder="Nombre del producto"
+                                  value={item.product_name}
+                                  onChange={(e) => updateItem(index, 'product_name', e.target.value)}
+                                  className="h-9 text-sm"
+                                />
+                              )}
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                type="number"
+                                min="1"
+                                value={item.quantity}
+                                onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                                className={`h-9 text-sm ${errors[`item_${index}_quantity`] ? 'border-red-500' : ''}`}
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                type="number"
+                                step="1"
+                                min="0"
+                                value={item.unit_price}
+                                onChange={(e) => updateItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
+                                className={`h-9 text-sm ${errors[`item_${index}_price`] ? 'border-red-500' : ''}`}
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                type="number"
+                                step="1"
+                                min="0"
+                                value={item.discount_per_item}
+                                onChange={(e) => updateItem(index, 'discount_per_item', parseFloat(e.target.value) || 0)}
+                                className="h-9 text-sm"
+                              />
+                            </td>
+                            <td className="p-2">
+                              <div className="h-9 px-3 py-2 border rounded-md bg-muted flex items-center text-sm font-medium">
+                                ${item.line_total}
+                              </div>
+                            </td>
+                            <td className="p-2">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => removeItem(index)}
+                                className="h-9 w-9 text-red-600 hover:text-red-700 hover:bg-red-50"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {errors.items && (
+                  <div className="flex items-center gap-1 text-sm text-red-600 mt-2">
                     <AlertCircle className="h-3 w-3" />
-                    {errors.customer_id}
+                    {errors.items}
                   </div>
                 )}
               </div>
-            </CardContent>
-          </Card>
 
-          {/* Items */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <ShoppingCart className="h-4 w-4" />
-                  Productos en la venta
-                </CardTitle>
-                <Button type="button" onClick={openProductDialog} size="sm">
-                  <Plus className="h-4 w-4 mr-1" />
-                  Añadir Producto
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {items.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <ShoppingCart className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No añadiste ningún producto.</p>
+            </div>
+
+            <div className="w-64 shrink-0 space-y-4">
+              <div className="border rounded-lg p-4 sticky top-0 bg-background">
+                <div className="flex items-center gap-2 mb-4">
+                  <Calculator className="h-4 w-4" />
+                  <h3 className="font-semibold">Resumen</h3>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {items.map((item, index) => (
-                    <div key={index} className="flex items-end gap-4 p-4 border rounded-lg">
-                      <div className="flex-1">
-                        <Label>Producto</Label>
-                        {item.product_id != null ? (
-                          <Select
-                            value={item.product_id.toString()}
-                            onValueChange={(value) => updateItem(index, 'product_id', parseInt(value))}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {products.map((product) => (
-                                <SelectItem key={product.id} value={product.id!.toString()}>
-                                  {product.name} - ${product.price}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <Input
-                            placeholder="Nombre del producto"
-                            value={item.product_name}
-                            onChange={(e) => updateItem(index, 'product_name', e.target.value)}
-                          />
-                        )}
-                      </div>
-                      
-                      <div className="w-24">
-                        <Label>Cantidad</Label>
-                        <Input
-                          type="number"
-                          min="1"
-                          value={item.quantity}
-                          onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
-                          className={errors[`item_${index}_quantity`] ? 'border-red-500' : ''}
-                        />
-                      </div>
-                      
-                      <div className="w-32">
-                        <Label>Precio unitario</Label>
-                        <Input
-                          type="number"
-                          step="1"
-                          min="0"
-                          value={item.unit_price}
-                          onChange={(e) => updateItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
-                          className={errors[`item_${index}_price`] ? 'border-red-500' : ''}
-                        />
-                      </div>
-                      
-                      <div className="w-32">
-                        <Label>Descuento</Label>
-                        <Input
-                          type="number"
-                          step="1"
-                          min="0"
-                          value={item.discount_per_item}
-                          onChange={(e) => updateItem(index, 'discount_per_item', parseFloat(e.target.value) || 0)}
-                        />
-                      </div>
-                      
-                      <div className="w-32">
-                        <Label>Total</Label>
-                        <div className="h-10 px-3 py-2 border rounded-md bg-muted flex items-center">
-                          ${item.line_total}
+
+                <div className="space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Subtotal:</span>
+                    <span className="font-medium">${Math.round(subtotal)}</span>
+                  </div>
+
+                  {/* Removed Descuento display */}
+
+                  <Separator />
+
+                  <div className="flex justify-between text-lg font-bold">
+                    <span>Total:</span>
+                    <span className="text-primary">${Math.round(total)}</span>
+                  </div>
+
+                  {formData.payment_type === 'installments' && formData.number_of_installments > 0 && (
+                    <>
+                      <Separator />
+                      <div className="space-y-2 pt-2">
+                        <div className="text-xs font-medium text-muted-foreground mb-2">Detalles de cuotas</div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Pago mensual:</span>
+                          <span className="font-semibold text-blue-600">${Math.round(total / formData.number_of_installments)}</span>
                         </div>
-                      </div>
-                      
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        onClick={() => removeItem(index)}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {errors.items && (
-                <div className="flex items-center gap-1 text-sm text-red-600 mt-2">
-                  <AlertCircle className="h-3 w-3" />
-                  {errors.items}
-                </div>
-              )}
-              </CardContent>
-          </Card>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Total cuotas:</span>
+                          <span className="font-medium">{formData.number_of_installments}</span>
+                        </div>
 
-          {/* Product Search Dialog */}
+                      </div>
+                    </>
+                  )}
+                </div>
+                
+
+              </div>
+                <div>
+                <Label className="text-xs mb-1.5 block">Notas</Label>
+                <Textarea
+                  value={formData.notes}
+                  onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Nota adicional para la venta..."
+                  rows={2}
+                  className="text-sm resize-none"
+                />
+              </div>
+              {formData.payment_type === 'installments' && (
+                  <div className="w-full">
+                    <div>
+                      <Label className="text-xs mb-1.5 block">Pago anticipado</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        placeholder="Monto"
+                        className="h-10"
+                      />
+                    </div>
+                  </div>
+                )}
+            </div>
+          </div>
+
           <Dialog open={productDialogOpen} onOpenChange={setProductDialogOpen}>
             <DialogContent className="sm:max-w-lg">
               <DialogHeader>
@@ -566,7 +677,6 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
             </DialogContent>
           </Dialog>
 
-          {/* Customer Search Dialog */}
           <Dialog open={customerDialogOpen} onOpenChange={setCustomerDialogOpen}>
             <DialogContent className="sm:max-w-lg">
               <DialogHeader>
@@ -608,16 +718,16 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                     </div>
                   )}
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <Button type="button" variant="outline" onClick={openFullCustomerForm}>
-                    Abrir formulario completo
-                  </Button>
-                  {customerQuery.trim() && (
+                {customerQuery.trim() && (
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm text-muted-foreground">
+                      ¿No encuentras el cliente?
+                    </div>
                     <Button type="button" onClick={() => createCustomerQuick(customerQuery)}>
                       Usar "{customerQuery}" como cliente
                     </Button>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setCustomerDialogOpen(false)}>Cerrar</Button>
@@ -625,178 +735,6 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
             </DialogContent>
           </Dialog>
 
-          {/* Full Customer Form */}
-          <CustomerForm
-            open={fullCustomerFormOpen}
-            onOpenChange={setFullCustomerFormOpen}
-            onSave={handleFullCustomerSave}
-          />
-
-          {/* Payment Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <CreditCard className="h-4 w-4" />
-                Información de pago
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Método de pago</Label>
-                  <Select
-                    value={formData.payment_type}
-                    onValueChange={(value: any) => setFormData(prev => ({ ...prev, payment_type: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="cash">Efectivo</SelectItem>
-                      <SelectItem value="installments">
-                        <div className="flex items-center gap-2">
-                          Cuotas
-                        </div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {formData.payment_type === 'installments' && (
-                  <>
-                    <div>
-                      <Label>Cantidad de cuotas</Label>
-                      <Input
-                        type="number"
-                        min="2"
-                        max="60"
-                        value={formData.number_of_installments}
-                        onChange={(e) => setFormData(prev => ({ ...prev, number_of_installments: parseInt(e.target.value) || 6 }))}
-                        className={errors.number_of_installments ? 'border-red-500' : ''}
-                      />
-                      {errors.number_of_installments && (
-                        <div className="flex items-center gap-1 text-sm text-red-600 mt-1">
-                          <AlertCircle className="h-3 w-3" />
-                          {errors.number_of_installments}
-                        </div>
-                      )}
-                    </div>
-                    
-
-                  </>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Descuento</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={formData.discount_amount}
-                    onChange={(e) => setFormData(prev => ({ ...prev, discount_amount: parseFloat(e.target.value) || 0 }))}
-                  />
-                </div>
-                 <div>
-                 {formData.payment_type === 'installments' && formData.number_of_installments > 0 && (
-                  <>
-                    <Label>Periodo de pago</Label>
-                    <Select
-                      value={formData.payment_period}
-                      onValueChange={(value: any) => setFormData(prev => ({ ...prev, payment_period: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1 to 10">1 al 10</SelectItem>
-                        <SelectItem value="20 to 30">20 al 30</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </>
-                )}
-              </div>
-              </div>
-
-
-                              {formData.payment_type === 'installments' && formData.number_of_installments > 0 && (
-                  <>
-                    <Separator />
-                    <div>
-                      <Label>Cuotas pagadas por adelantado</Label>
-                      <Select
-                        value={formData.advance_installments.toString()}
-                        onValueChange={(value) => setFormData(prev => ({ ...prev, advance_installments: parseInt(value) }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Array.from({ length: formData.number_of_installments + 1 }, (_, i) => (
-                            <SelectItem key={i} value={i.toString()}>
-                              {i === 0 ? 'Ninguna' : `${i} cuota${i > 1 ? 's' : ''}`}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                  </>
-                )}
-            </CardContent>
-          </Card>
-
-          {/* Totals */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Calculator className="h-4 w-4" />
-                Resumen de la venta
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span>Subtotal:</span>
-                  <span>${Math.round(subtotal)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Descuento:</span>
-                  <span>-${Math.round(formData.discount_amount)}</span>
-                </div>
-                <Separator />
-                <div className="flex justify-between font-bold text-lg">
-                  <span>Total:</span>
-                  <span>${Math.round(total)}</span>
-                </div>
-                
-                {formData.payment_type === 'installments' && formData.number_of_installments > 0 && (
-                  <>
-                    <Separator />
-                    <div className="space-y-1 text-sm text-muted-foreground">
-                      <div className="flex justify-between">
-                        <span>Pago mensual:</span>
-                        <span>${Math.round(total / formData.number_of_installments)}</span>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Notes */}
-          <div className="space-y-2">
-            <Label htmlFor="notes">Notas</Label>
-            <Textarea
-              id="notes"
-              value={formData.notes}
-              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-              placeholder="Nota adicional para la venta..."
-              rows={3}
-            />
-          </div>
 
           <DialogFooter>
             <Button

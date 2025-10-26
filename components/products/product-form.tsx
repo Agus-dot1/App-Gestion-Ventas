@@ -23,6 +23,7 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
   const [formData, setFormData] = useState({
     name: product?.name || '',
     price: product?.price?.toString() || '',
+    cost_price: product?.cost_price?.toString() || '',
     description: product?.description || '',
     category: product?.category || '',
     stock: product?.stock?.toString() || '',
@@ -61,6 +62,7 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
       await onSave({
         name: formData.name.trim(),
         price: parseFloat(formData.price),
+        cost_price: formData.cost_price ? parseFloat(formData.cost_price) : undefined,
         description: formData.description.trim() || undefined,
         category: formData.category.trim() || undefined,
         stock: formData.stock ? parseInt(formData.stock) : undefined,
@@ -71,6 +73,7 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
       setFormData({
         name: '',
         price: '',
+        cost_price: '',
         description: '',
         category: '',
         stock: '',
@@ -88,6 +91,7 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
     setFormData({
       name: product?.name || '',
       price: product?.price?.toString() || '',
+      cost_price: product?.cost_price?.toString() || '',
       description: product?.description || '',
       category: product?.category || '',
       stock: product?.stock?.toString() || '',
@@ -158,6 +162,25 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
                   {errors.price}
                 </div>
               )}
+            </div>
+
+            {/* Cost */}
+            <div className="space-y-2">
+              <Label htmlFor="cost_price">Costo</Label>
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="cost_price"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formData.cost_price}
+                  onChange={(e) => handleInputChange('cost_price', e.target.value)}
+                  placeholder="0.00"
+                  className="pl-10"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">Costo del producto (opcional)</p>
             </div>
 
             {/* Category */}

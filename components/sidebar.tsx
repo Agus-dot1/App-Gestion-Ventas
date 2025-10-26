@@ -11,6 +11,9 @@ import { SearchDialog } from '@/components/search/search-dialog';
 import { SearchTrigger } from '@/components/search/search-trigger';
 import { useSearchShortcut } from '@/hooks/use-search-shortcut';
 import { useRoutePrefetch } from '@/hooks/use-route-prefetch';
+import { notificationsAdapter } from '@/notifications/renderer/adapter';
+import type { NotificationItem } from '@/notifications/types';
+
 import {
   Home,
   BarChart3,
@@ -21,7 +24,8 @@ import {
   ChevronLeft,
   ChevronRight,
   CreditCard,
-  LayoutDashboard
+  LayoutDashboard,
+  Bell
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -34,9 +38,38 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
   // Initialize from server-provided cookie to align SSR and client
   const [collapsed, setCollapsed] = useState<boolean>(initialCollapsed);
   const [searchOpen, setSearchOpen] = useState(false);
+
   const pathname = usePathname();
   const [currentPath, setCurrentPath] = useState<string>('/');
   const { prefetchProducts, prefetchCustomers, prefetchSales, prefetchCalendar } = useRoutePrefetch();
+
+
+
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const unreadCount = notifications.filter(n => !n.read_at).length;
+
+  useEffect(() => {
+    try {
+      notificationsAdapter.list(25).then((list) => setNotifications(list ?? []));
+      const unsub = notificationsAdapter.subscribe((item) => {
+        setNotifications(prev => [item, ...prev]);
+      });
+      (window as any).__sidebarNotificationsUnsub = unsub;
+    } catch {}
+    return () => {
+      try {
+        const unsub = (window as any).__sidebarNotificationsUnsub;
+        if (typeof unsub === 'function') unsub();
+      } catch {}
+    }
+  }, []);
+
+  const markNotificationRead = useCallback(async (id: number) => {
+    try {
+      await notificationsAdapter.markRead(id);
+      setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read_at: new Date().toISOString() } : n)));
+    } catch {}
+  }, []);
 
   // After mount, restore collapsed state from localStorage (first load may briefly flicker)
   useEffect(() => {
@@ -164,17 +197,17 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
             </div>
           )}
           <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setCollapsed(!collapsed)}
-            className="h-8 w-8"
-          >
-            {collapsed ? (
-              <ChevronRight className="h-4 w-4" />
-            ) : (
-              <ChevronLeft className="h-4 w-4" />
-            )}
-          </Button>
+             variant="ghost"
+             size="icon"
+             onClick={() => setCollapsed(!collapsed)}
+             className="h-8 w-8"
+           >
+             {collapsed ? (
+               <ChevronRight className="h-4 w-4" />
+             ) : (
+               <ChevronLeft className="h-4 w-4" />
+             )}
+           </Button>
         </div>
 
         {/* Search Bar */}
@@ -188,16 +221,14 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
             {navigationItems.map((item) => {
               const Icon = item.icon;
               const isActive = isRouteActive(item.href);
+
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   className="block"
                   onMouseEnter={() => {
-                    // Prefetch data on hover for instant navigation
-                    if (item.prefetch) {
-                      item.prefetch();
-                    }
+                    if (item.prefetch) item.prefetch();
                   }}
                 >
                   <Button
@@ -210,9 +241,7 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
                     aria-current={isActive ? 'page' : undefined}
                   >
                     <Icon className="h-4 w-4 flex-shrink-0" />
-                    {!collapsed && (
-                      <span className="truncate">{item.title}</span>
-                    )}
+                    {!collapsed && <span className="truncate">{item.title}</span>}
                   </Button>
                 </Link>
               );

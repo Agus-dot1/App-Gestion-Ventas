@@ -1,0 +1,164 @@
+import { BrowserWindow } from 'electron'
+import { notificationOperations } from './repository'
+import { customerOperations, productOperations, saleOperations, installmentOperations } from '../lib/database-operations'
+import { IPC_NOTIFICATIONS } from './constants'
+
+const isDev = process.env.NODE_ENV === 'development'
+
+function cleanupOrphanedNotifications() {
+  try {
+    const all = notificationOperations.list(500)
+    const seen = new Set<string>()
+    for (const n of all) {
+      if (n.message_key) {
+        const key = `${n.message_key}|active` // distinct label for active
+        if (seen.has(key)) {
+          notificationOperations.delete(n.id as number)
+        } else {
+          seen.add(key)
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Error during notification cleanup:', e)
+  }
+}
+
+export function setupNotificationScheduler(getMainWindow: () => BrowserWindow | null, intervalMs: number = isDev ? 30_000 : 5 * 60_000) {
+  function tick() {
+    try {
+      cleanupOrphanedNotifications()
+      
+      const overdue = installmentOperations.getOverdue();
+      if (overdue && overdue.length > 0) {
+        overdue.forEach((inst: any) => {
+          try {
+            // Validar que la cuota tenga datos válidos
+            if (!inst.id || (!inst.customerName && !inst.customer_name) || !inst.balance || inst.balance <= 0) {
+              return;
+            }
+            const customer = inst.customerName || inst.customer_name
+            const msg = `Hay una cuota vencida — ${customer} — ${new Date(inst.due_date).toLocaleDateString('es-AR')} — $ ${inst.balance}`
+            const key = `overdue|${inst.id}`
+            // Dedup consistente basado solo en clave semántica
+            const existsActive = notificationOperations.existsActiveWithKey(key)
+            const existsToday = notificationOperations.existsTodayWithKey(key)
+            if (!existsActive && !existsToday) {
+              const dbType = 'alert'
+              const nid = notificationOperations.create(msg, dbType as any, key as any)
+              const win = getMainWindow()
+
+              if (win) {
+                const latest = notificationOperations.getLatestByKey(key)
+                const createdAt = latest?.created_at
+                win.webContents.send(IPC_NOTIFICATIONS.event, { id: nid, message: msg, type: 'alert', meta: { message_key: key, customerName: customer, due_at: inst.due_date ? new Date(inst.due_date).toISOString() : new Date().toISOString(), amount: inst.balance, ...(createdAt ? { created_at: createdAt } : {}) } })
+              }
+            }
+          } catch (e) {
+            console.error('Error processing overdue installment:', e)
+          }
+        })
+      }
+
+      // Notificación de cuotas próximas a vencer
+      const upcoming = installmentOperations.getUpcoming()
+      if (upcoming && upcoming.length > 0) {
+        upcoming.forEach((inst: any) => {
+          try {
+            // Validar que la cuota tenga datos válidos
+            if (!inst.id || (!inst.customerName && !inst.customer_name) || !inst.balance || inst.balance <= 0) {
+              return;
+            }
+            const customer = inst.customerName || inst.customer_name
+            const msg = `Cuota próxima a vencer — ${customer} — ${new Date(inst.due_date).toLocaleDateString('es-AR')} — ${inst.balance.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}`
+            const key = `upcoming|${inst.id}`
+            // Dedup consistente basado solo en clave semántica
+            const existsActive = notificationOperations.existsActiveWithKey(key)
+            const existsToday = notificationOperations.existsTodayWithKey(key)
+            if (!existsActive && !existsToday) {
+              const nid = notificationOperations.create(msg, 'reminder' as any, key as any)
+              const win = getMainWindow()
+              if (win) {
+                const latest = notificationOperations.getLatestByKey(key)
+                const createdAt = latest?.created_at
+                win.webContents.send(IPC_NOTIFICATIONS.event, {
+                  id: nid,
+                  message: msg,
+                  type: 'attention',
+                  meta: {
+                      message_key: key,
+                      customerName: customer,
+                      due_at: new Date(inst.due_date).toISOString(),
+                      amount: inst.balance,
+                      ...(createdAt ? { created_at: createdAt } : {}),
+                  }
+              })
+              }
+            }
+          } catch (e) {
+            console.error('Error processing upcoming installment:', e)
+          }
+        })
+      }
+    } catch (e) {
+      console.error('Scheduler error:', e)
+    }
+  }
+
+  tick()
+  setInterval(tick, intervalMs)
+}
+
+// Hook para notificaciones por stock bajo tras crear venta
+export function checkLowStockAfterSale(saleData: any, getMainWindow: () => BrowserWindow | null) {
+  try {
+    if (saleData && Array.isArray(saleData.items)) {
+      for (const item of saleData.items) {
+        if (item?.product_id != null) {
+          try {
+            const p = productOperations.getById(item.product_id)
+            if (p && typeof p.stock === 'number' && p.stock <= 1) {
+              const msg = `Stock bajo: ${p.name} — quedó en ${p.stock} unidad${p.stock === 1 ? '' : 'es'} — $${p.price}${p.category ? ` — ${p.category}` : ''}`
+              const key = `stock_low|${p.id}`
+              // State-aware dedupe: only suppress if an active exists and no restock since last
+              const existsActive = notificationOperations.existsActiveWithKey(key)
+              const latest = notificationOperations.getLatestByKey(key)
+              const productUpdatedAt = p.updated_at ? new Date(p.updated_at).getTime() : 0
+              const lastCreatedAt = latest?.created_at ? new Date(latest.created_at).getTime() : 0
+              const recoveredSinceLast = !!latest && productUpdatedAt > lastCreatedAt
+              const shouldNotify = !existsActive && (!latest || recoveredSinceLast)
+              if (shouldNotify) {
+                const dbType = 'reminder'
+                const nid = notificationOperations.create(msg, dbType as any, key as any)
+                const win = getMainWindow()
+                if (win) {
+                  const latestNew = notificationOperations.getLatestByKey(key)
+                  const createdAtNew = latestNew?.created_at
+                  win.webContents.send(IPC_NOTIFICATIONS.event, { 
+                    id: nid, 
+                    message: msg, 
+                    type: 'attention', 
+                    meta: { 
+                      message_key: key, 
+                      stockStatus: `${p.stock} unidad${p.stock === 1 ? '' : 'es'}`, 
+                      productId: p.id,
+                      productName: p.name,
+                      productPrice: p.price,
+                      productCategory: p.category || 'Sin categoría',
+                      currentStock: p.stock,
+                      ...(createdAtNew ? { created_at: createdAtNew } : {}),
+                    } 
+                  })
+                }
+              }
+            }
+          } catch (e) {
+            console.error('Error checking product stock:', e)
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Low stock notification error:', e)
+  }
+}

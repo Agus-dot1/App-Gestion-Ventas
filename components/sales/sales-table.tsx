@@ -8,8 +8,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, MoreHorizontal, Edit, Trash2, Eye, CreditCard, Calendar, DollarSign, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Search, MoreHorizontal, Edit, Trash2, Eye, CreditCard, Calendar, DollarSign, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Package, Plus } from 'lucide-react';
 import type { Sale } from '@/lib/database-operations';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -313,6 +314,69 @@ export function SalesTable({
     );
   };
 
+  const renderProductsCell = (sale: Sale) => {
+    const items = sale.items || [];
+    
+    if (items.length === 0) {
+      return (
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Package className="w-4 h-4" />
+          <span className="text-sm">Sin productos</span>
+        </div>
+      );
+    }
+
+    const firstProduct = items[0];
+    const hasMultipleItems = items.length > 1;
+
+    return (
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+          <Package className="w-4 h-4 text-primary" />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="font-medium">{firstProduct.product_name}</span>
+          {hasMultipleItems && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-6 px-2 text-xs"
+                >
+                  +{items.length - 1} más
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80" align="start">
+                <div className="space-y-2">
+                  <h4 className="font-medium text-sm">Productos en esta venta:</h4>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {items.map((item, index) => (
+                      <div key={index} className="flex items-center justify-between text-sm p-2 bg-muted/50 rounded">
+                        <div className="flex items-center gap-2">
+                          <Package className="w-3 h-3 text-muted-foreground" />
+                          <span>{item.product_name}</span>
+                        </div>
+                        <div className="text-muted-foreground">
+                          x{item.quantity}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+        </div>
+        {highlightId === sale.id?.toString() && (
+          <Badge variant="outline" className="bg-primary/10 text-primary">
+            Encontrado
+          </Badge>
+        )}
+      </div>
+    );
+  };
+
   return (
     <>
       <Card>
@@ -364,7 +428,7 @@ export function SalesTable({
                           onClick={() => handleSort('sale_number')}
                           className="h-auto p-0 font-semibold hover:bg-transparent"
                         >
-                          Venta #
+                          Productos
                           {getSortIcon('sale_number')}
                         </Button>
                       </TableHead>
@@ -444,7 +508,7 @@ export function SalesTable({
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <Skeleton className="w-8 h-8 rounded-full" />
-                            <Skeleton className="h-4 w-20" />
+                            <Skeleton className="h-4 w-32" />
                           </div>
                         </TableCell>
                       )}
@@ -603,17 +667,7 @@ export function SalesTable({
                       )}
                       {columnVisibility.sale_number && (
                         <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
-                              <CreditCard className="w-4 h-4 text-primary" />
-                            </div>
-                            {sale.sale_number}
-                            {highlightId === sale.id?.toString() && (
-                              <Badge variant="outline" className="bg-primary/10 text-primary">
-                                Econtrado
-                              </Badge>
-                            )}
-                          </div>
+                          {renderProductsCell(sale)}
                         </TableCell>
                       )}
                       {columnVisibility.customer_name && (

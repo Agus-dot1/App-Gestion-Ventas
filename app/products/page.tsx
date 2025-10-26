@@ -199,65 +199,113 @@ export default function ProductsPage() {
   const addMockProducts = async () => {
     const mockProducts = [
       {
-      name: 'Auriculares Inalámbricos Bluetooth',
-      price: 159990,
-      description: 'Auriculares inalámbricos de alta calidad con cancelación de ruido y batería de 20 horas',
-      is_active: true
-    },
-    {
-      name: 'Funda para Smartphone',
-      price: 49990,
-      description: 'Funda protectora resistente compatible con la mayoría de modelos de smartphones',
-      is_active: true
-    },
-    {
-      name: 'Cable de Carga USB-C',
-      price: 25990,
-      description: 'Cable USB-C de carga rápida de 1.8m con diseño trenzado',
-      is_active: true
-    },
-    {
-      name: 'Batería Portátil Power Bank',
-      price: 91990,
-      description: 'Cargador portátil de 10,000mAh con puertos USB duales y pantalla LED',
-      is_active: true
-    },
-    {
-      name: 'Mouse Inalámbrico',
-      price: 59990,
-      description: 'Mouse inalámbrico ergonómico con seguimiento de precisión y larga duración de batería',
-      is_active: true
-    },
-    {
-      name: 'Parlante Bluetooth',
-      price: 179990,
-      description: 'Parlante portátil resistente al agua con sonido 360 grados y 12 horas de reproducción',
-      is_active: true
-    },
-    {
-      name: 'Protector de Pantalla',
-      price: 19990,
-      description: 'Protector de pantalla de vidrio templado con revestimiento anti-huellas',
-      is_active: true
-    },
-    {
-      name: 'Soporte de Auto para Celular',
-      price: 39990,
-      description: 'Soporte de auto ajustable con agarre seguro y rotación de 360 grados',
-      is_active: true
-    },
-    {
-      name: 'Teclado Gamer',
-      price: 259990,
-      description: 'Teclado mecánico gaming con retroiluminación RGB y teclas programables',
-      is_active: false
-    },
-    {
-      name: 'Cámara Web HD',
-      price: 119990,
-      description: 'Cámara web HD 1080p con enfoque automático y micrófono integrado',
-      is_active: true
-    }
+        name: 'Auriculares Bluetooth Pro',
+        price: 159990,
+        cost_price: 105000,
+        description: 'Cancelación activa de ruido, 24h batería',
+        category: 'Audio',
+        stock: 25,
+        is_active: true
+      },
+      {
+        name: 'Parlante Portátil 20W',
+        price: 179990,
+        cost_price: 120000,
+        description: 'Resistente al agua, sonido 360°',
+        category: 'Audio',
+        stock: 12,
+        is_active: true
+      },
+      {
+        name: 'Mouse Inalámbrico Ergonómico',
+        price: 59990,
+        cost_price: 35000,
+        description: '7000 DPI, silencioso',
+        category: 'Computación',
+        stock: 40,
+        is_active: true
+      },
+      {
+        name: 'Teclado Mecánico RGB',
+        price: 259990,
+        cost_price: 180000,
+        description: 'Switches rojos, anti-ghosting',
+        category: 'Computación',
+        stock: 8,
+        is_active: false
+      },
+      {
+        name: 'Webcam Full HD 1080p',
+        price: 119990,
+        cost_price: 80000,
+        description: 'Micrófono integrado, auto foco',
+        category: 'Computación',
+        stock: 20,
+        is_active: true
+      },
+      {
+        name: 'Cable USB-C 2m Trenzado',
+        price: 25990,
+        cost_price: 12000,
+        description: 'Carga rápida, 60W',
+        category: 'Accesorios',
+        stock: 100,
+        is_active: true
+      },
+      {
+        name: 'Power Bank 20,000mAh',
+        price: 91990,
+        cost_price: 60000,
+        description: 'LCD, doble USB',
+        category: 'Accesorios',
+        stock: 30,
+        is_active: true
+      },
+      {
+        name: 'Funda Premium para Smartphone',
+        price: 49990,
+        cost_price: 25000,
+        description: 'Antigolpes, compatible multi-modelos',
+        category: 'Accesorios',
+        stock: 50,
+        is_active: true
+      },
+      {
+        name: 'Protector de Pantalla Vidrio',
+        price: 19990,
+        cost_price: 8000,
+        description: 'Anti-huellas, alta transparencia',
+        category: 'Accesorios',
+        stock: 200,
+        is_active: true
+      },
+      {
+        name: 'Soporte de Auto Magnético',
+        price: 39990,
+        cost_price: 18000,
+        description: 'Rotación 360°, agarre firme',
+        category: 'Accesorios',
+        stock: 60,
+        is_active: true
+      },
+      {
+        name: 'Smartwatch Deportivo',
+        price: 229990,
+        cost_price: 160000,
+        description: 'GPS, resistencia al agua, notificaciones',
+        category: 'Wearables',
+        stock: 15,
+        is_active: true
+      },
+      {
+        name: 'Cargador GaN 65W',
+        price: 84990,
+        cost_price: 50000,
+        description: 'USB-C + USB-A, compacto',
+        category: 'Accesorios',
+        stock: 35,
+        is_active: true
+      }
     ];
 
     try {
@@ -347,6 +395,11 @@ export default function ProductsPage() {
       : 0
   };
 
+  const totals = {
+    totalCost: products.reduce((sum, p) => sum + (p.cost_price || 0), 0),
+    totalGain: products.reduce((sum, p) => sum + ((p.price || 0) - (p.cost_price || 0)), 0),
+  };
+
   return (
     <DashboardLayout>
       <div className="p-8">
@@ -373,6 +426,83 @@ export default function ProductsPage() {
               </Button>
             </div>
           </div>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium">Costos totales</CardTitle>
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <DollarSign className="h-4 w-4 text-blue-500" />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'ARS' }).format(totals.totalCost)}
+              </div>
+              <div className="flex items-center text-xs text-muted-foreground mt-1">
+                Costos acumulados de todos los productos
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium">Ganancia potencial</CardTitle>
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <TrendingUp className="h-4 w-4 text-green-500" />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'ARS' }).format(totals.totalGain)}
+              </div>
+              <div className="flex items-center text-xs text-muted-foreground mt-1">
+                Suma de (precio - costo) por producto
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium">Productos activos</CardTitle>
+                <div className="p-2 bg-purple-100 rounded-lg">
+                  <Eye className="h-4 w-4 text-purple-500" />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.active}</div>
+              <div className="flex items-center text-xs text-muted-foreground mt-1">
+                Activos sobre un total de {stats.total}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium">Precio promedio</CardTitle>
+                <div className="p-2 bg-orange-100 rounded-lg">
+                  <Package className="h-4 w-4 text-orange-500" />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'ARS' }).format(stats.averagePrice || 0)}
+              </div>
+              <div className="flex items-center text-xs text-muted-foreground mt-1">
+                Promedio de precios cargados
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
       

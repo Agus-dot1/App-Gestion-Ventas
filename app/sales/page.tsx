@@ -215,6 +215,8 @@ export default function SalesPage() {
         // Create new sale
         await window.electronAPI.database.sales.create(saleData);
         toast.success('Venta creada correctamente');
+        
+        // Eliminado fallback de notificación de stock bajo: lo emite el proceso principal
       }
 
       // Clear cache and force refresh to ensure fresh data is loaded
@@ -500,6 +502,60 @@ export default function SalesPage() {
     }
   };
 
+  // NUEVO: Crear venta en cuotas con primera cuota atrasada 1 mes
+  const addOverdueInstallmentSale = async () => {
+    try {
+      const customers = await window.electronAPI.database.customers.getAll();
+      const products = await window.electronAPI.database.products.getAll();
+
+      if (customers.length === 0 || products.length === 0) {
+        toast.error('Necesitas al menos un cliente y un producto');
+        return;
+      }
+
+      const saleData: SaleFormData = {
+        customer_id: customers[0]?.id!,
+        items: [
+          {
+            product_id: products[0]?.id ?? null,
+            quantity: 1,
+            unit_price: products[0]?.price,
+            discount_per_item: 0
+          }
+        ],
+        payment_type: 'installments',
+        number_of_installments: 6,
+        advance_installments: 0,
+        tax_amount: 0,
+        discount_amount: 0,
+        notes: 'Venta de prueba con primera cuota vencida'
+      };
+
+      const saleId = await window.electronAPI.database.sales.create(saleData);
+
+      const installments = await window.electronAPI.database.installments.getBySale(saleId);
+      if (installments && installments.length > 0) {
+        const first = [...installments].sort((a, b) => (a.installment_number || 0) - (b.installment_number || 0))[0];
+        const now = new Date();
+        const past = new Date(now);
+        past.setMonth(now.getMonth() - 1);
+        const pastDate = past.toISOString().split('T')[0];
+        await window.electronAPI.database.installments.update(first.id!, { due_date: pastDate });
+      }
+
+      dataCache.invalidateCache('sales');
+      await loadSales(true);
+      await loadOverdueSales();
+      if (installmentDashboardRef.current) {
+        installmentDashboardRef.current.refreshData();
+      }
+      toast.success('Venta en cuotas con primera cuota atrasada creada');
+    } catch (error) {
+      console.error('Error creando venta atrasada:', error);
+      toast.error('Error creando la venta atrasada');
+    }
+  };
+
   // Calculate statistics
   const stats = {
     totalSales: sales.length,
@@ -560,6 +616,14 @@ export default function SalesPage() {
                   >
                     <Database className="h-4 w-4" />
                     Cargar Datos de Prueba
+                  </Button>
+                  <Button
+                    onClick={addOverdueInstallmentSale}
+                    variant="outline"
+                    className="gap-2"
+                  >
+                    <AlertTriangle className="h-4 w-4" />
+                    Crear venta en cuotas atrasada 1 mes
                   </Button>
                 </div>
               </div>

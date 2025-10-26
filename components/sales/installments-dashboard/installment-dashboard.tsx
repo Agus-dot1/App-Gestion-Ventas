@@ -11,16 +11,16 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { 
-  Search, 
-  ChevronDown, 
-  ChevronRight, 
-  User, 
-  Calendar, 
-  DollarSign, 
-  AlertTriangle, 
-  CheckCircle, 
-  Clock, 
+import {
+  Search,
+  ChevronDown,
+  ChevronRight,
+  User,
+  Calendar,
+  DollarSign,
+  AlertTriangle,
+  CheckCircle,
+  Clock,
   Plus,
   Edit,
   Trash2,
@@ -32,11 +32,13 @@ import {
   MapPin,
   Eye,
   MoreHorizontal,
-  Copy
+  Copy,
+  Package
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InstallmentForm } from '../installment-form';
-import { PaymentForm } from '../payment-form';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+
 import type { Customer, Sale, Installment } from '@/lib/database-operations';
 import { toast } from 'sonner';
 
@@ -72,13 +74,11 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
   const [sortBy, setSortBy] = useState<SortBy>('customer');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [windowFilter, setWindowFilter] = useState<WindowFilter>('all');
-  
   const [selectedInstallment, setSelectedInstallment] = useState<Installment | null>(null);
   const [isInstallmentFormOpen, setIsInstallmentFormOpen] = useState(false);
-  const [isPaymentFormOpen, setIsPaymentFormOpen] = useState(false);
-  const [deleteInstallment, setDeleteInstallment] = useState<Installment | null>(null);
   const [deleteCustomer, setDeleteCustomer] = useState<CustomerWithInstallments | null>(null);
-  
+  const [deleteSale, setDeleteSale] = useState<Sale | null>(null);
+
   const [isElectron] = useState(() => typeof window !== 'undefined' && !!window.electronAPI);
 
   // Expose refresh method to parent component
@@ -153,8 +153,21 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
       for (const customer of allCustomers) {
         const customerSales = allSales.filter(sale => sale.customer_id === customer.id);
         const installmentSales = customerSales.filter(sale => sale.payment_type === 'installments');
-        
+
         if (installmentSales.length === 0) continue;
+
+        // Attach sale items to each installment sale for product display
+        const salesWithItems = await Promise.all(
+          installmentSales.map(async (sale) => {
+            try {
+              const items = await window.electronAPI.database.saleItems.getBySale(sale.id!);
+              return { ...sale, items };
+            } catch (e) {
+              console.warn('No se pudieron obtener items para la venta', sale.id, e);
+              return { ...sale, items: [] };
+            }
+          })
+        );
 
         let allInstallments: Installment[] = [];
         for (const sale of installmentSales) {
@@ -176,7 +189,7 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
 
         customersWithInstallments.push({
           ...customer,
-          sales: installmentSales,
+          sales: salesWithItems,
           installments: allInstallments,
           totalOwed,
           overdueAmount,
@@ -207,30 +220,30 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
   const handleMarkAsPaid = async (installment: Installment) => {
     try {
       await window.electronAPI.database.installments.markAsPaid(installment.id!);
-      
+
       // Update the local state directly instead of reloading all data
-      setCustomers(prevCustomers => 
+      setCustomers(prevCustomers =>
         prevCustomers.map(customer => {
           if (customer.installments.some(inst => inst.id === installment.id)) {
-            const updatedInstallments = customer.installments.map(inst => 
-              inst.id === installment.id 
+            const updatedInstallments = customer.installments.map(inst =>
+              inst.id === installment.id
                 ? { ...inst, status: 'paid' as const, balance: 0, paid_amount: inst.amount }
                 : inst
             );
-            
+
             // Recalculate totals for this customer
             const totalOwed = updatedInstallments
               .filter(inst => inst.status !== 'paid')
               .reduce((sum, inst) => sum + inst.balance, 0);
-            
+
             const overdueAmount = updatedInstallments
               .filter(inst => inst.status === 'overdue' || (inst.status === 'pending' && new Date(inst.due_date) < new Date()))
               .reduce((sum, inst) => sum + inst.balance, 0);
-            
+
             const nextPayment = updatedInstallments
               .filter(inst => inst.status === 'pending')
               .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
-            
+
             return {
               ...customer,
               installments: updatedInstallments,
@@ -242,7 +255,7 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
           return customer;
         })
       );
-      
+
       onRefresh?.();
       toast.success('Cuota marcada como pagada');
     } catch (error) {
@@ -251,36 +264,33 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
     }
   };
 
-  const handleRecordPayment = (installment: Installment) => {
-    setSelectedInstallment(installment);
-    setIsPaymentFormOpen(true);
-  };
+
 
   const handleRevertPayment = async (installment: Installment) => {
     try {
       // Get the payment transactions for this installment to find the most recent completed one to revert
       const payments = await window.electronAPI.database.payments.getBySale(installment.sale_id);
       const installmentPayments = payments.filter(p => p.installment_id === installment.id && p.status === 'completed');
-      
+
       if (installmentPayments.length === 0) {
         console.error('No completed payments found for this installment');
         toast.warning('No se encontraron pagos completados para revertir');
         return;
       }
-      
+
       // Get the most recent completed payment transaction to revert
-      const latestPayment = installmentPayments.sort((a, b) => 
+      const latestPayment = installmentPayments.sort((a, b) =>
         new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime()
       )[0];
-      
+
       // Use the proper revertPayment method with transaction ID
       await window.electronAPI.database.installments.revertPayment(
         installment.id!,
         latestPayment.id!
       );
-      
+
       // Update the local state directly instead of reloading all data
-      setCustomers(prevCustomers => 
+      setCustomers(prevCustomers =>
         prevCustomers.map(customer => {
           if (customer.installments.some(inst => inst.id === installment.id)) {
             const updatedInstallments = customer.installments.map(inst => {
@@ -289,13 +299,13 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                 const newPaidAmount = inst.paid_amount - latestPayment.amount;
                 const newBalance = inst.amount - newPaidAmount;
                 let newStatus: 'pending' | 'partial' | 'paid' = 'pending';
-                
+
                 if (newPaidAmount > 0 && newBalance > 0) {
                   newStatus = 'partial';
                 } else if (newBalance <= 0) {
                   newStatus = 'paid';
                 }
-                
+
                 return {
                   ...inst,
                   status: newStatus,
@@ -305,20 +315,20 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
               }
               return inst;
             });
-            
+
             // Recalculate totals for this customer
             const totalOwed = updatedInstallments
               .filter(inst => inst.status !== 'paid')
               .reduce((sum, inst) => sum + inst.balance, 0);
-            
+
             const overdueAmount = updatedInstallments
               .filter(inst => inst.status === 'overdue' || (inst.status === 'pending' && new Date(inst.due_date) < new Date()))
               .reduce((sum, inst) => sum + inst.balance, 0);
-            
+
             const nextPayment = updatedInstallments
               .filter(inst => inst.status === 'pending')
               .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
-            
+
             return {
               ...customer,
               installments: updatedInstallments,
@@ -330,7 +340,7 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
           return customer;
         })
       );
-      
+
       onRefresh?.();
       toast.success('Pago revertido correctamente');
     } catch (error) {
@@ -343,9 +353,13 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
     setDeleteCustomer(customer);
   };
 
+  const handleDeleteSale = (sale: Sale) => {
+    setDeleteSale(sale);
+  };
+
   const confirmDeleteCustomer = async () => {
     if (!deleteCustomer?.id) return;
-    
+
     try {
       // Delete all installments for this customer first
       for (const installment of deleteCustomer.installments) {
@@ -353,22 +367,22 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
           await window.electronAPI.database.installments.delete(installment.id);
         }
       }
-      
+
       // Delete all sales for this customer
       for (const sale of deleteCustomer.sales) {
         if (sale.id) {
           await window.electronAPI.database.sales.delete(sale.id);
         }
       }
-      
+
       // Finally delete the customer
       await window.electronAPI.database.customers.delete(deleteCustomer.id);
-      
+
       // Update local state by removing the deleted customer
-      setCustomers(prevCustomers => 
+      setCustomers(prevCustomers =>
         prevCustomers.filter(customer => customer.id !== deleteCustomer.id)
       );
-      
+
       onRefresh?.();
       toast.success('Cliente eliminado correctamente');
     } catch (error) {
@@ -379,52 +393,73 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
     }
   };
 
-  const confirmDelete = async () => {
-    if (!deleteInstallment?.id) return;
-    
+  const confirmDeleteSale = async () => {
+    if (!deleteSale?.id) return;
+
     try {
-      await window.electronAPI.database.installments.delete(deleteInstallment.id);
-      
-      // Update the local state directly instead of reloading all data
-      setCustomers(prevCustomers => 
-        prevCustomers.map(customer => {
-          if (customer.installments.some(inst => inst.id === deleteInstallment.id)) {
-            const updatedInstallments = customer.installments.filter(inst => inst.id !== deleteInstallment.id);
-            
-            // Recalculate totals for this customer
+      const saleId = deleteSale.id;
+
+      // Find the customer owning this sale
+      const targetCustomer = customers.find(c => c.sales.some(s => s.id === saleId));
+
+      // Delete installments for this sale first (to maintain integrity)
+      if (targetCustomer) {
+        const saleInstalls = targetCustomer.installments.filter(inst => inst.sale_id === saleId);
+        for (const inst of saleInstalls) {
+          if (inst.id) {
+            await window.electronAPI.database.installments.delete(inst.id);
+          }
+        }
+      }
+
+      // Delete the sale
+      await window.electronAPI.database.sales.delete(saleId);
+
+      // Update local state: remove sale and its installments; recalc totals
+      setCustomers(prevCustomers => prevCustomers
+        .map(c => {
+          if (c.sales.some(s => s.id === saleId)) {
+            const updatedSales = c.sales.filter(s => s.id !== saleId);
+            const updatedInstallments = c.installments.filter(inst => inst.sale_id !== saleId);
+
             const totalOwed = updatedInstallments
               .filter(inst => inst.status !== 'paid')
               .reduce((sum, inst) => sum + inst.balance, 0);
-            
+
             const overdueAmount = updatedInstallments
               .filter(inst => inst.status === 'overdue' || (inst.status === 'pending' && new Date(inst.due_date) < new Date()))
               .reduce((sum, inst) => sum + inst.balance, 0);
-            
+
             const nextPayment = updatedInstallments
               .filter(inst => inst.status === 'pending')
               .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
-            
+
             return {
-              ...customer,
+              ...c,
+              sales: updatedSales,
               installments: updatedInstallments,
               totalOwed,
               overdueAmount,
               nextPaymentDate: nextPayment?.due_date || null
             };
           }
-          return customer;
-        }).filter(customer => customer.installments.length > 0) // Remove customers with no installments
+          return c;
+        })
+        // Remove customer card if no installments remain
+        .filter(c => c.installments.length > 0)
       );
-      
+
       onRefresh?.();
-      toast.success('Cuota eliminada correctamente');
+      toast.success('Venta eliminada correctamente');
     } catch (error) {
-      console.error('Error deleting installment:', error);
-      toast.error('Error eliminando la cuota');
+      console.error('Error deleting sale:', error);
+      toast.error('Error eliminando la venta');
     } finally {
-      setDeleteInstallment(null);
+      setDeleteSale(null);
     }
   };
+
+
 
   const handleCopyValue = async (value: string, label: string) => {
     try {
@@ -446,76 +481,7 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
     return '1 al 10';
   };
 
-  const handlePaymentSave = async (paymentData: any) => {
-    try {
-      await window.electronAPI.database.installments.recordPayment(
-        selectedInstallment!.id!,
-        paymentData.amount,
-        paymentData.paymentMethod,
-        paymentData.reference
-      );
-      
-      // Update the local state directly instead of reloading all data
-      setCustomers(prevCustomers => 
-        prevCustomers.map(customer => {
-          if (customer.installments.some(inst => inst.id === selectedInstallment!.id)) {
-            const updatedInstallments = customer.installments.map(inst => {
-              if (inst.id === selectedInstallment!.id) {
-                const newPaidAmount = inst.paid_amount + paymentData.amount;
-                const newBalance = inst.amount - newPaidAmount;
-                let newStatus: 'pending' | 'partial' | 'paid' = 'pending';
-                
-                if (newBalance <= 0) {
-                  newStatus = 'paid';
-                } else if (newPaidAmount > 0) {
-                  newStatus = 'partial';
-                }
-                
-                return {
-                  ...inst,
-                  status: newStatus,
-                  balance: Math.max(0, newBalance),
-                  paid_amount: newPaidAmount
-                };
-              }
-              return inst;
-            });
-            
-            // Recalculate totals for this customer
-            const totalOwed = updatedInstallments
-              .filter(inst => inst.status !== 'paid')
-              .reduce((sum, inst) => sum + inst.balance, 0);
-            
-            const overdueAmount = updatedInstallments
-              .filter(inst => inst.status === 'overdue' || (inst.status === 'pending' && new Date(inst.due_date) < new Date()))
-              .reduce((sum, inst) => sum + inst.balance, 0);
-            
-            const nextPayment = updatedInstallments
-              .filter(inst => inst.status === 'pending')
-              .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
-            
-            return {
-              ...customer,
-              installments: updatedInstallments,
-              totalOwed,
-              overdueAmount,
-              nextPaymentDate: nextPayment?.due_date || null
-            };
-          }
-          return customer;
-        })
-      );
-      
-      onRefresh?.();
-      setIsPaymentFormOpen(false);
-      setSelectedInstallment(null);
-      toast.success('Pago registrado correctamente');
-    } catch (error) {
-      console.error('Error recording payment:', error);
-      toast.error('Error registrando el pago');
-      throw error;
-    }
-  };
+
 
   // Determine customer's effective payment window using fallbacks
   const getEffectivePaymentWindow = (c: CustomerWithInstallments): PaymentWindow | null => {
@@ -548,7 +514,7 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
 
       const hasMatchingInstallments = customer.installments.some(installment => {
         const isOverdue = new Date(installment.due_date) < new Date() && installment.status !== 'paid';
-        
+
         switch (statusFilter) {
           case 'pending':
             return installment.status === 'pending';
@@ -650,7 +616,7 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
 
   const getInstallmentStatusBadge = (installment: Installment) => {
     const isOverdue = new Date(installment.due_date) < new Date() && installment.status !== 'paid';
-    
+
     if (installment.status === 'paid') {
       return <Badge className="bg-green-100 text-green-800">Pagada</Badge>;
     } else if (isOverdue || installment.status === 'overdue') {
@@ -887,7 +853,7 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                               )}
                               {getCustomerStatusIndicator(customer)}
                             </div>
-                            
+
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
                                 <CardTitle className="text-lg">{customer.name}</CardTitle>
@@ -962,14 +928,14 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                             <div className="text-sm text-muted-foreground">
                               {customer.installments.length} cuotas
                             </div>
-                              <Button
-                                                size="sm"
-                                                variant="ghost"
-                                                onClick={() => handleDeleteCustomer(customer)}
-                                                className="h-12 w-12 p-0 text-red-600 hover:text-red-700"
-                                              >
-                                                <Trash2 className="h-4 w-4" />
-                                              </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleDeleteCustomer(customer)}
+                              className="h-12 w-12 p-0 text-red-600 hover:text-red-700"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
                         </div>
                       </CardHeader>
@@ -1005,7 +971,47 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                                         ) : (
                                           <ChevronRight className="h-4 w-4" />
                                         )}
-                                        <span className="font-medium">Venta #{sale.sale_number}</span>
+                                        {(() => {
+                                          const items = sale.items ?? [];
+                                          if (items.length === 0) {
+                                            return <span className="font-medium">Venta #{sale.sale_number}</span>;
+                                          }
+                                          const firstProduct = items[0];
+                                          const hasMultipleItems = items.length > 1;
+                                          return (
+                                            <div className="flex items-center gap-2">
+                                              <div className="w-6 h-6 bg-primary/10 rounded-full flex items-center justify-center">
+                                                <Package className="w-3 h-3 text-primary" />
+                                              </div>
+                                              <span className="font-medium">{firstProduct.product_name}</span>
+                                              {hasMultipleItems && (
+                                                <Popover>
+                                                  <PopoverTrigger asChild>
+                                                    <Button onClick={(e) => e.stopPropagation()} variant="outline" size="sm" className="h-6 px-2 text-xs z-10">
+                                                      +{items.length - 1} más
+                                                    </Button>
+                                                  </PopoverTrigger>
+                                                  <PopoverContent className="w-80" align="start">
+                                                    <div className="space-y-2">
+                                                      <h4 className="font-medium text-sm">Productos en esta venta:</h4>
+                                                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                                                        {items.map((item, index) => (
+                                                          <div key={index} className="flex items-center justify-between text-sm p-2 bg-muted/50 rounded">
+                                                            <div className="flex items-center gap-2">
+                                                              <Package className="w-3 h-3 text-muted-foreground" />
+                                                              <span>{item.product_name}</span>
+                                                            </div>
+                                                            <div className="text-muted-foreground">x{item.quantity}</div>
+                                                          </div>
+                                                        ))}
+                                                      </div>
+                                                    </div>
+                                                  </PopoverContent>
+                                                </Popover>
+                                              )}
+                                            </div>
+                                          );
+                                        })()}
                                         {saleInstallments.length > 0 && (
                                           <Badge variant="outline" className="text-xs">
                                             {saleInstallments.length} cuotas
@@ -1015,8 +1021,20 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                                           <Badge variant="destructive" className="text-xs">Pago Vencido</Badge>
                                         )}
                                       </div>
-                                      <div className="text-sm text-muted-foreground">
-                                        {sale.date ? formatDate(sale.date) : ''}
+                                      <div className="flex items-center gap-2">
+                                        <div className="text-sm text-muted-foreground">
+                                          {sale.date ? formatDate(sale.date) : ''}
+                                        </div>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                                          onClick={(e) => { e.stopPropagation(); handleDeleteSale(sale); }}
+                                          title="Eliminar venta"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                          <span className="sr-only">Eliminar venta</span>
+                                        </Button>
                                       </div>
                                     </div>
                                   </CollapsibleTrigger>
@@ -1109,15 +1127,7 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                                                             <CheckCircle className="h-3 w-3 mr-1" />
                                                             Marcar Pagada
                                                           </Button>
-                                                          <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            onClick={() => handleRecordPayment(installment)}
-                                                            className="h-7 px-2 text-xs"
-                                                          >
-                                                            <DollarSign className="h-3 w-3 mr-1" />
-                                                            Pago
-                                                          </Button>
+
                                                         </>
                                                       ) : (
                                                         <>
@@ -1174,32 +1184,23 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
         }}
       />
 
-      {/* Payment Form */}
-      <PaymentForm
-        installment={selectedInstallment}
-        open={isPaymentFormOpen}
-        onOpenChange={(open) => {
-          setIsPaymentFormOpen(open);
-          if (!open) setSelectedInstallment(null);
-        }}
-        onSave={handlePaymentSave}
-      />
 
-      {/* Delete Installment Confirmation */}
-      <AlertDialog open={!!deleteInstallment} onOpenChange={() => setDeleteInstallment(null)}>
+
+      {/* Delete Sale Confirmation */}
+      <AlertDialog open={!!deleteSale} onOpenChange={() => setDeleteSale(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Eliminar Cuota</AlertDialogTitle>
+            <AlertDialogTitle>Eliminar Venta</AlertDialogTitle>
             <AlertDialogDescription>
-              ¿Estás seguro de que deseas eliminar la cuota #{deleteInstallment?.installment_number}?
-              Esta acción no se puede deshacer.
+              ¿Estás seguro de que deseas eliminar la venta #{deleteSale?.sale_number}?
+              Se eliminarán sus cuotas asociadas. Esta acción no se puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-700">
-               Eliminar Cuota
-             </AlertDialogAction>
+            <AlertDialogAction onClick={confirmDeleteSale} className="bg-red-600 hover:bg-red-700">
+              Eliminar Venta
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

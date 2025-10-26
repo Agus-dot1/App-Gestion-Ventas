@@ -208,55 +208,97 @@ export default function CustomersPage() {
   const addMockCustomers = async () => {
     const mockCustomers = [
       {
-        name: 'Agustin de Olveira',
-        dni: '45686722',
-        email: 'agustin.olveira@email.com',
-        phone: '+54 11 32170664',
-        address: 'El resero 4141, Gregorio de Laferrere',
-        notes: 'Referido: juan'
+        name: 'Lucía Fernández',
+        dni: '32123456',
+        email: 'lucia.fernandez@example.com',
+        phone: '+54 11 55551234',
+        address: 'Av. Santa Fe 1234, CABA',
+        company: 'Fernández & Co.',
+        tags: 'vip, recurrente',
+        payment_window: '1 to 10',
+        notes: 'Prefiere contacto por email'
       },
       {
-        name: 'Matias Ezequiel Reynoso',
-        dni: '23456789',
-        email: 'matias.reynoso@email.com',
-        phone: '+54 11 23456789',
-        address: 'Puerta de hierro'
+        name: 'Martín Gómez',
+        dni: '28900123',
+        email: 'martin.gomez@example.com',
+        phone: '+54 11 55554444',
+        address: 'Belgrano 2200, CABA',
+        tags: 'nuevo',
+        payment_window: '20 to 30'
       },
       {
-        name: 'Facundo Cruz',
-        dni: '34567890',
-        phone: '+54 11 45678901',
-        address: 'San pedro',
-        notes: 'Referencia: Hincha del rojo'
+        name: 'Carla Rodríguez',
+        dni: '33111222',
+        email: 'carla.rodriguez@example.com',
+        phone: '+54 9 11 56781234',
+        address: 'Ituzaingó 450, Lanús',
+        company: 'CR Estudio',
+        tags: 'mayorista',
+        payment_window: '20 to 30'
       },
       {
-        name: 'Cain Elian Silva Pais',
-        dni: '45678901',
-        email: 'cain.silva@email.com',
-        phone: '+54 11 45678901',
-        address: 'Suarez 980, La Boca'
+        name: 'Santiago Pérez',
+        dni: '30222333',
+        phone: '+54 11 55553333',
+        address: 'Mitre 980, Quilmes',
+        notes: 'Referido por Juan',
+        payment_window: '1 to 10'
       },
       {
-        name: 'Mauro Julian López',
-        dni: '56789012',
-        email: 'Mauro.López@email.com',
-        phone: '+54 11 56789012',
-        address: 'Da vinci 400, Gregorio de Laferrere',
-        company: 'Referencia: Mago'
+        name: 'Valentina López',
+        dni: '34566789',
+        email: 'valentina.lopez@example.com',
+        phone: '+54 11 44443333',
+        address: 'Rivadavia 789, Morón',
+        tags: 'vip',
+        payment_window: '20 to 30'
       },
       {
-        name: 'Leandro Gluckszack',
-        dni: '67890123',
-        email: 'leandro.gluckszack@email.com',
-        phone: '+54 11 56789012',
-        address: 'Laferrere'
+        name: 'Nicolás Duarte',
+        dni: '37123456',
+        email: 'nicolas.duarte@example.com',
+        phone: '+54 11 55557777',
+        address: 'San Martín 150, Ramos Mejía',
+        company: 'Duarte Servicios',
+        tags: 'recurrente',
+        payment_window: '1 to 10'
       },
       {
-        name: 'Ulises Godoy',
-        dni: '78901234',
-        email: 'ulises.godoy@email.com',
-        phone: '+54 11 67890123',
-        notes: 'direccion: no proporcionada'
+        name: 'Julieta Ortiz',
+        dni: '31654321',
+        email: 'julieta.ortiz@example.com',
+        phone: '+54 11 55556666',
+        address: 'Av. La Plata 2100, CABA',
+        notes: 'Pago en efectivo',
+        payment_window: '1 to 10'
+      },
+      {
+        name: 'Gastón Alvarez',
+        dni: '33445566',
+        phone: '+54 11 55551111',
+        address: 'Córdoba 1200, Rosario',
+        tags: 'evento',
+        payment_window: '20 to 30'
+      },
+      {
+        name: 'Camila Herrera',
+        dni: '32777888',
+        email: 'camila.herrera@example.com',
+        phone: '+54 9 11 62341234',
+        address: 'Sarmiento 540, Lomas',
+        company: 'Herrera Boutique',
+        tags: 'mayorista, vip',
+        payment_window: '1 to 10'
+      },
+      {
+        name: 'Bruno Silva',
+        dni: '31889900',
+        email: 'bruno.silva@example.com',
+        phone: '+54 11 55550000',
+        address: 'Dorrego 700, CABA',
+        notes: 'Factura A',
+        payment_window: '20 to 30'
       },
     ];
 

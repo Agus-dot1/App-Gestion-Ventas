@@ -1,13 +1,12 @@
-// Database operations for the sales management system
+
+
 import { getDatabase } from './database';
 
 // Normalize legacy/variant payment window values to the canonical union
 function normalizePaymentWindow(value?: string): '1 to 10' | '20 to 30' | undefined {
   if (!value) return undefined;
-  // Legacy English range
   if (value === '10 to 20') return '1 to 10';
-  // Common Spanish label variants
-  if (value === '10 a 20' || value === '10-20' || value === '10–20') return '1 to 10';
+  if (value === '10 a 20' || value === '10-20' || value === '10-20') return '1 to 10';
   if (value === '1 a 10' || value === '1 al 10') return '1 to 10';
   if (value === '20 a 30' || value === '20 al 30') return '20 to 30';
   if (value === '1 to 10' || value === '20 to 30') return value as '1 to 10' | '20 to 30';
@@ -30,7 +29,7 @@ export interface Customer {
   notes?: string;
   tags?: string;
   payment_window?: '1 to 10' | '20 to 30';
-  contact_info?: string; // Keep for backward compatibility
+  contact_info?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -39,6 +38,7 @@ export interface Product {
   id?: number;
   name: string;
   price: number;
+  cost_price?: number;
   description?: string;
   category?: string;
   stock?: number;
@@ -47,41 +47,18 @@ export interface Product {
   updated_at?: string;
 }
 
-export interface Sale {
+export interface Partner {
   id?: number;
-  customer_id: number;
-  sale_number: string;
-  date: string;
-  due_date?: string;
-  subtotal: number;
-  tax_amount: number;
-  discount_amount: number;
-  total_amount: number;
-  payment_type: 'cash' | 'installments' | 'credit';
-  payment_status: 'paid' | 'partial' | 'unpaid' | 'overdue';
-  payment_period?: '1 to 10' | '20 to 30';
-  period_type?: 'monthly' | 'weekly' | 'biweekly';
-  number_of_installments?: number;
-  installment_amount?: number;
-  advance_installments: number;
-  transaction_type: 'sale' | 'return' | 'exchange' | 'refund';
-  status: 'pending' | 'completed' | 'cancelled' | 'refunded';
-  created_by?: number;
+  name: string;
+  is_active: boolean;
   created_at?: string;
   updated_at?: string;
-  notes?: string;
-  parent_sale_id?: number;
-  
-  // Joined data
-  customer_name?: string;
-  items?: SaleItem[];
-  installments?: Installment[];
 }
 
 export interface SaleItem {
   id?: number;
   sale_id: number;
-  product_id: number;
+  product_id: number | null;
   quantity: number;
   unit_price: number;
   discount_per_item: number;
@@ -110,6 +87,37 @@ export interface Installment {
   notes?: string;
 }
 
+export interface Sale {
+  id?: number;
+  customer_id: number;
+  partner_id?: number;
+  sale_number: string;
+  date: string;
+  due_date?: string;
+  subtotal: number;
+  tax_amount: number;
+  discount_amount: number;
+  total_amount: number;
+  payment_type: 'cash' | 'installments' | 'credit';
+  payment_status: 'paid' | 'partial' | 'unpaid' | 'overdue';
+  payment_period?: '1 to 10' | '20 to 30';
+  period_type?: 'monthly' | 'weekly' | 'biweekly';
+  number_of_installments?: number;
+  installment_amount?: number;
+  advance_installments: number;
+  transaction_type: 'sale' | 'return' | 'exchange' | 'refund';
+  status: 'pending' | 'completed' | 'cancelled' | 'refunded';
+  created_by?: number;
+  created_at?: string;
+  updated_at?: string;
+  notes?: string;
+  parent_sale_id?: number;
+  customer_name?: string;
+  partner_name?: string;
+  items?: SaleItem[];
+  installments?: Installment[];
+}
+
 export interface PaymentTransaction {
   id?: number;
   sale_id: number;
@@ -126,126 +134,21 @@ export interface PaymentTransaction {
 
 export interface SaleFormData {
   customer_id: number;
+  partner_id?: number;
   items: Array<{
     product_id: number | null;
     quantity: number;
     unit_price: number;
     discount_per_item?: number;
-    // Optional name to support items without catalog product
     product_name?: string;
   }>;
   payment_type: 'cash' | 'installments' | 'credit';
-  // Optional fallback when customer has no payment_window
   payment_period?: '1 to 10' | '20 to 30';
   number_of_installments?: number;
   advance_installments?: number;
   tax_amount?: number;
   discount_amount?: number;
   notes?: string;
-}
-
-// Declare global electronAPI interface
-declare global {
-  interface Window {
-    electronAPI: {
-      database: {
-        customers: {
-          getAll: () => Promise<Customer[]>;
-          getPaginated: (page?: number, pageSize?: number, searchTerm?: string) => Promise<{
-            customers: Customer[];
-            total: number;
-            totalPages: number;
-            currentPage: number;
-            pageSize: number;
-          }>;
-          search: (searchTerm: string, limit?: number) => Promise<Customer[]>;
-          getById: (id: number) => Promise<Customer>;
-          create: (customer: Omit<Customer, 'id' | 'created_at'>) => Promise<number>;
-          update: (id: number, customer: Partial<Customer>) => Promise<void>;
-          delete: (id: number) => Promise<void>;
-          getCount: () => Promise<number>;
-          getRecent: (limit?: number) => Promise<Customer[]>;
-          getMonthlyComparison: () => Promise<{ current: number; previous: number; change: number }>;
-          deleteAll: () => Promise<void>;
-        };
-        products: {
-          getAll: () => Promise<Product[]>;
-          getPaginated: (page?: number, pageSize?: number, searchTerm?: string) => Promise<{
-            products: Product[];
-            total: number;
-            totalPages: number;
-            currentPage: number;
-            pageSize: number;
-          }>;
-          search: (searchTerm: string, limit?: number) => Promise<Product[]>;
-          getById: (id: number) => Promise<Product>;
-          getActive: () => Promise<Product[]>;
-          create: (product: Omit<Product, 'id'>) => Promise<number>;
-          update: (id: number, product: Partial<Product>) => Promise<void>;
-          delete: (id: number) => Promise<void>;
-          getCount: () => Promise<number>;
-          getMonthlyComparison: () => Promise<{ current: number; previous: number; change: number }>;
-          deleteAll: () => Promise<void>;
-        };
-        sales: {
-          getAll: () => Promise<Sale[]>;
-          getPaginated: (page?: number, pageSize?: number, searchTerm?: string) => Promise<{
-            sales: Sale[];
-            total: number;
-            totalPages: number;
-            currentPage: number;
-            pageSize: number;
-          }>;
-          search: (searchTerm: string, limit?: number) => Promise<Sale[]>;
-          getById: (id: number) => Promise<Sale>;
-          getByCustomer: (customerId: number) => Promise<Sale[]>;
-          create: (sale: SaleFormData) => Promise<number>;
-          update: (id: number, sale: Partial<Sale>) => Promise<void>;
-          delete: (id: number) => Promise<void>;
-          getWithDetails: (id: number) => Promise<Sale>;
-          getOverdueSales: () => Promise<Sale[]>;
-          getOverdueSalesCount: () => Promise<number>;
-          getCount: () => Promise<number>;
-          getTotalRevenue: () => Promise<number>;
-          getRecent: (limit?: number) => Promise<Sale[]>;
-          getSalesChartData: (days?: number) => Promise<Array<{ date: string; sales: number; revenue: number }>>;
-          getStatsComparison: () => Promise<{ current: number; previous: number; change: number }>;
-          deleteAll: () => Promise<void>;
-        };
-        installments: {
-          getBySale: (saleId: number) => Promise<Installment[]>;
-          getOverdue: () => Promise<Installment[]>;
-          getUpcoming: (limit?: number) => Promise<Array<Installment & { customer_name: string; sale_number: string; customer_id: number }>>;
-          create: (installment: Omit<Installment, 'id' | 'created_at' | 'updated_at'>) => Promise<number>;
-          recordPayment: (installmentId: number, amount: number, paymentMethod: string, reference?: string) => Promise<void>;
-          revertPayment: (installmentId: number, transactionId: number) => Promise<void>;
-          applyLateFee: (installmentId: number, fee: number) => Promise<void>;
-          markAsPaid: (id: number) => Promise<void>;
-          delete: (id: number) => Promise<void>;
-        };
-        payments: {
-          getBySale: (saleId: number) => Promise<PaymentTransaction[]>;
-          create: (payment: Omit<PaymentTransaction, 'id' | 'created_at'>) => Promise<number>;
-        };
-        saleItems: {
-          getBySale: (saleId: number) => Promise<SaleItem[]>;
-          create: (saleItem: Omit<SaleItem, 'id'>) => Promise<number>;
-          getSalesForProduct: (productId: number) => Promise<Array<{ sale_id: number; sale_number: string; date: string; customer_id: number; customer_name: string }>>;
-        };
-      };
-      backup: {
-        save: (data: any) => Promise<{ success: boolean; filePath?: string; error?: string }>;
-        load: () => Promise<{ success: boolean; data?: any; error?: string }>;
-        importCustomers: (customers: Customer[]) => Promise<{ success: boolean; error?: string }>;
-        importProducts: (products: Product[]) => Promise<{ success: boolean; error?: string }>;
-        importSales: (sales: Sale[]) => Promise<{ success: boolean; error?: string }>;
-      };
-      cache: {
-        getSize: () => Promise<string>;
-        clear: () => Promise<{ success: boolean; error?: string; message?: string }>;
-      };
-    };
-  }
 }
 
 // Database operation implementations
@@ -645,14 +548,15 @@ export const productOperations = {
   create: (product: Omit<Product, 'id'>): number => {
     const db = getDatabase();
     const stmt = db.prepare(
-      "INSERT INTO products (name, price, description, category, stock, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))"
+      "INSERT INTO products (name, price, cost_price, description, category, stock, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))"
     );
     const result = stmt.run(
-      product.name, 
-      product.price, 
-      product.description || null, 
-      product.category || null, 
-      product.stock || null, 
+      product.name,
+      product.price,
+      (product.cost_price ?? null),
+      product.description || null,
+      product.category || null,
+      product.stock || null,
       product.is_active ? 1 : 0
     );
     return result.lastInsertRowid as number;
@@ -670,6 +574,10 @@ export const productOperations = {
     if (product.price !== undefined) {
       fields.push('price = ?');
       values.push(product.price);
+    }
+    if (product.cost_price !== undefined) {
+      fields.push('cost_price = ?');
+      values.push(product.cost_price);
     }
     if (product.description !== undefined) {
       fields.push('description = ?');
@@ -771,13 +679,59 @@ export const productOperations = {
   }
 };
 
+export const partnerOperations = {
+  getAll: (): Partner[] => {
+    const db = getDatabase();
+    return db.prepare('SELECT * FROM partners WHERE is_active = 1 ORDER BY name').all() as Partner[];
+  },
+
+  getById: (id: number): Partner => {
+    const db = getDatabase();
+    const partner = db.prepare('SELECT * FROM partners WHERE id = ?').get(id) as Partner;
+    if (!partner) {
+      throw new Error(`Partner with id ${id} not found`);
+    }
+    return partner;
+  },
+
+  create: (partner: Omit<Partner, 'id' | 'created_at' | 'updated_at'>): number => {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      INSERT INTO partners (name, is_active)
+      VALUES (?, ?)
+    `);
+    const result = stmt.run(partner.name, partner.is_active ? 1 : 0);
+    return result.lastInsertRowid as number;
+  },
+
+  update: (id: number, partner: Partial<Partner>): void => {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      UPDATE partners 
+      SET name = COALESCE(?, name),
+          is_active = COALESCE(?, is_active),
+          updated_at = datetime('now')
+      WHERE id = ?
+    `);
+    stmt.run(partner.name, partner.is_active ? 1 : 0, id);
+  },
+
+  delete: (id: number): void => {
+    const db = getDatabase();
+    // Soft delete by setting is_active to false
+    const stmt = db.prepare('UPDATE partners SET is_active = 0 WHERE id = ?');
+    stmt.run(id);
+  }
+};
+
 export const saleOperations = {
   getAll: (): Sale[] => {
     const db = getDatabase();
     const stmt = db.prepare(`
-      SELECT s.*, c.name as customer_name
+      SELECT s.*, c.name as customer_name, p.name as partner_name
       FROM sales s
       LEFT JOIN customers c ON s.customer_id = c.id
+      LEFT JOIN partners p ON s.partner_id = p.id
       ORDER BY s.date DESC
     `);
     return stmt.all() as Sale[];
@@ -809,21 +763,32 @@ export const saleOperations = {
       SELECT COUNT(*) as total 
       FROM sales s
       LEFT JOIN customers c ON s.customer_id = c.id
+      LEFT JOIN partners p ON s.partner_id = p.id
       ${whereClause}
     `);
     const { total } = countStmt.get(...params) as { total: number };
     
     // Get paginated results
     const stmt = db.prepare(`
-      SELECT s.*, c.name as customer_name
+      SELECT s.*, c.name as customer_name, p.name as partner_name
       FROM sales s
       LEFT JOIN customers c ON s.customer_id = c.id
+      LEFT JOIN partners p ON s.partner_id = p.id
       ${whereClause}
       ORDER BY s.date DESC 
       LIMIT ? OFFSET ?
     `);
     
     const sales = stmt.all(...params, pageSize, offset) as Sale[];
+    
+    // Get items for each sale
+    const itemsStmt = db.prepare('SELECT * FROM sale_items WHERE sale_id = ?');
+    sales.forEach(sale => {
+      if (sale.id) {
+        sale.items = itemsStmt.all(sale.id) as SaleItem[];
+      }
+    });
+    
     console.timeEnd('sales_query_total');
     return {
       sales,
@@ -885,13 +850,84 @@ export const saleOperations = {
   getByCustomer: (customerId: number): Sale[] => {
     const db = getDatabase();
     const stmt = db.prepare(`
-      SELECT s.*, c.name as customer_name
+      SELECT s.*, c.name as customer_name, p.name as partner_name
       FROM sales s
       LEFT JOIN customers c ON s.customer_id = c.id
+      LEFT JOIN partners p ON s.partner_id = p.id
       WHERE s.customer_id = ?
       ORDER BY s.date DESC
     `);
     return stmt.all(customerId) as Sale[];
+  },
+
+  getByPartner: (partnerId: number): Sale[] => {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      SELECT s.*, c.name as customer_name, p.name as partner_name
+      FROM sales s
+      LEFT JOIN customers c ON s.customer_id = c.id
+      LEFT JOIN partners p ON s.partner_id = p.id
+      WHERE s.partner_id = ?
+      ORDER BY s.date DESC
+    `);
+    return stmt.all(partnerId) as Sale[];
+  },
+
+  getPaginatedByPartner: (partnerId: number, page: number = 1, pageSize: number = 10, searchTerm: string = ''): {
+    sales: Sale[];
+    total: number;
+    totalPages: number;
+    currentPage: number;
+    pageSize: number;
+  } => {
+    const db = getDatabase();
+    const offset = (page - 1) * pageSize;
+    
+    let whereClause = 'WHERE s.partner_id = ?';
+    let params: any[] = [partnerId];
+    
+    if (searchTerm.trim()) {
+      whereClause += ' AND (s.sale_number LIKE ? OR c.name LIKE ? OR s.notes LIKE ?)';
+      const searchPattern = `%${searchTerm.trim()}%`;
+      params.push(searchPattern, searchPattern, searchPattern);
+    }
+    
+    // Get total count for pagination
+    const countStmt = db.prepare(`
+      SELECT COUNT(*) as total 
+      FROM sales s
+      LEFT JOIN customers c ON s.customer_id = c.id
+      LEFT JOIN partners p ON s.partner_id = p.id
+      ${whereClause}
+    `);
+    const { total } = countStmt.get(...params) as { total: number };
+    
+    // Get paginated results
+    const stmt = db.prepare(`
+      SELECT s.*, c.name as customer_name, p.name as partner_name
+      FROM sales s
+      LEFT JOIN customers c ON s.customer_id = c.id
+      LEFT JOIN partners p ON s.partner_id = p.id
+      ${whereClause}
+      ORDER BY s.date DESC 
+      LIMIT ? OFFSET ?
+    `);
+    
+    const sales = stmt.all(...params, pageSize, offset) as Sale[];
+    
+    // Get items for each sale
+    const itemsStmt = db.prepare('SELECT * FROM sale_items WHERE sale_id = ?');
+    sales.forEach(sale => {
+      sale.items = itemsStmt.all(sale.id) as SaleItem[];
+    });
+    
+    return {
+      sales,
+      total,
+      totalPages: Math.ceil(total / pageSize),
+      currentPage: page,
+      pageSize
+    };
   },
 
   create: (saleData: SaleFormData): number => {
@@ -923,11 +959,11 @@ export const saleOperations = {
     // Insert sale
     const saleStmt = db.prepare(`
       INSERT INTO sales (
-        customer_id, sale_number, date, due_date, subtotal, tax_amount,
+        customer_id, partner_id, sale_number, date, due_date, subtotal, tax_amount,
         discount_amount, total_amount, payment_type, payment_status,
         number_of_installments, installment_amount, advance_installments,
         transaction_type, status, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
     const installmentAmount = saleData.payment_type === 'installments' && saleData.number_of_installments
@@ -936,6 +972,7 @@ export const saleOperations = {
     
     const saleResult = saleStmt.run(
       saleData.customer_id,
+      saleData.partner_id || null,
       saleNumber,
       new Date().toISOString(),
       null, // due_date
@@ -1187,8 +1224,8 @@ export const saleOperations = {
       const itemStmt = db.prepare(`
         INSERT INTO sale_items (
           sale_id, product_id, quantity, unit_price, discount_per_item,
-          line_total, product_name, status, returned_quantity
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          line_total, product_name, product_description, status, returned_quantity
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const item of sale.items) {
         const lineTotal = (item.quantity * item.unit_price) - (item.discount_per_item || 0);
@@ -1485,9 +1522,15 @@ export const installmentOperations = {
   getOverdue: (): Installment[] => {
     const db = getDatabase();
     const stmt = db.prepare(`
-      SELECT * FROM installments
-      WHERE status IN ('pending', 'partial') AND due_date < date('now')
-      ORDER BY due_date
+      SELECT i.*, c.name as customerName, s.sale_number
+      FROM installments i
+      JOIN sales s ON i.sale_id = s.id
+      JOIN customers c ON s.customer_id = c.id
+      WHERE i.status IN ('pending', 'partial') 
+      AND i.due_date < date('now')
+      AND i.balance > 0
+      AND s.status != 'cancelled'
+      ORDER BY i.due_date
     `);
     return stmt.all() as Installment[];
   },
@@ -1505,6 +1548,9 @@ export const installmentOperations = {
       JOIN customers c ON s.customer_id = c.id
       WHERE i.status IN ('pending', 'partial') 
       AND i.due_date >= date('now')
+      AND i.due_date <= date('now', '+14 days')
+      AND i.balance > 0
+      AND s.status != 'cancelled'
       ORDER BY i.due_date ASC
       LIMIT ?
     `);
@@ -1597,6 +1643,31 @@ export const installmentOperations = {
       WHERE id = ?
     `);
     cancelTransactionStmt.run(transactionId);
+  },
+
+  // Generic update for installments (e.g., due_date or status)
+  update: (id: number, data: Partial<Installment>): void => {
+    const db = getDatabase();
+    const fields: string[] = [];
+    const values: any[] = [];
+    const allowed = [
+      'due_date', 'status', 'amount', 'paid_amount', 'balance',
+      'days_overdue', 'late_fee', 'late_fee_applied', 'notes'
+    ];
+
+    for (const key of allowed) {
+      const value = (data as any)[key];
+      if (value !== undefined) {
+        fields.push(`${key} = ?`);
+        values.push(value);
+      }
+    }
+
+    if (fields.length === 0) return;
+
+    values.push(id);
+    const stmt = db.prepare(`UPDATE installments SET ${fields.join(', ')} WHERE id = ?`);
+    stmt.run(...values);
   },
 
   create: (installment: Omit<Installment, 'id' | 'created_at' | 'updated_at'>): number => {
@@ -1731,5 +1802,108 @@ export const paymentOperations = {
     const db = getDatabase();
     const stmt = db.prepare('DELETE FROM payment_transactions');
     stmt.run();
+  }
+};
+
+export interface NotificationRecord {
+  id?: number;
+  user_id?: number;
+  message: string;
+  type: 'attention' | 'alert' | 'info';
+  read_at?: string;
+  created_at?: string;
+  deleted_at?: string;
+  message_key?: string;
+}
+
+export const notificationOperations = {
+  list: (limit: number = 20): NotificationRecord[] => {
+    const db = getDatabase();
+    const stmt = db.prepare('SELECT * FROM notifications WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT ?');
+    return stmt.all(limit) as NotificationRecord[];
+  },
+  markRead: (id: number): void => {
+    const db = getDatabase();
+    db.prepare("UPDATE notifications SET read_at = datetime('now') WHERE id = ? AND read_at IS NULL").run(id);
+  },
+  markUnread: (id: number): void => {
+    const db = getDatabase();
+    db.prepare("UPDATE notifications SET read_at = NULL WHERE id = ?").run(id);
+  },
+  delete: (id: number): void => {
+    const db = getDatabase();
+    db.prepare("UPDATE notifications SET deleted_at = datetime('now') WHERE id = ? AND deleted_at IS NULL").run(id);
+  },
+  // Nuevo: eliminar todas las notificaciones con el mismo mensaje creadas hoy
+  deleteByMessageToday: (message: string): void => {
+    const db = getDatabase();
+    db.prepare("UPDATE notifications SET deleted_at = datetime('now') WHERE message = ? AND date(created_at) = date('now') AND deleted_at IS NULL").run(message);
+  },
+  // Nuevo: eliminar por clave semántica creadas hoy
+  deleteByKeyToday: (key: string): void => {
+    const db = getDatabase();
+    db.prepare("UPDATE notifications SET deleted_at = datetime('now') WHERE message_key = ? AND date(created_at) = date('now') AND deleted_at IS NULL").run(key);
+  },
+  create: (message: string, type: 'attention' | 'alert' | 'info' = 'info', message_key?: string): number => {
+    const db = getDatabase();
+    const res = db
+      .prepare('INSERT INTO notifications (message, type, message_key) VALUES (?, ?, ?)')
+      .run(message, type, message_key ?? null);
+    return res.lastInsertRowid as number;
+  },
+  existsTodayWithMessage: (message: string): boolean => {
+    const db = getDatabase();
+    const row = db
+      .prepare("SELECT COUNT(*) as cnt FROM notifications WHERE message = ? AND (date(created_at) = date('now') OR date(deleted_at) = date('now'))")
+      .get(message) as { cnt: number } | undefined;
+    return !!row && row.cnt > 0;
+  },
+  // Nuevo: existencia por clave semántica (incluye eliminadas hoy)
+  existsTodayWithKey: (key: string): boolean => {
+    const db = getDatabase();
+    const row = db
+      .prepare("SELECT COUNT(*) as cnt FROM notifications WHERE message_key = ? AND (date(created_at) = date('now') OR date(deleted_at) = date('now'))")
+      .get(key) as { cnt: number } | undefined;
+    return !!row && row.cnt > 0;
+  },
+  // Nuevo: existencia activa por clave (sin importar el día)
+  existsActiveWithKey: (key: string): boolean => {
+    const db = getDatabase();
+    const row = db
+      .prepare("SELECT COUNT(*) as cnt FROM notifications WHERE message_key = ? AND deleted_at IS NULL")
+      .get(key) as { cnt: number } | undefined;
+    return !!row && row.cnt > 0;
+  },
+  // Nuevo: existencia activa por mensaje (sin importar el día)
+  existsActiveWithMessage: (message: string): boolean => {
+    const db = getDatabase();
+    const row = db
+      .prepare("SELECT COUNT(*) as cnt FROM notifications WHERE message = ? AND deleted_at IS NULL")
+      .get(message) as { cnt: number } | undefined;
+    return !!row && row.cnt > 0;
+  },
+  // Clear all active notifications via soft-delete to keep history
+  clearAll: (): void => {
+    const db = getDatabase();
+    db.prepare("UPDATE notifications SET deleted_at = datetime('now') WHERE deleted_at IS NULL").run();
+  },
+  // List archived (soft-deleted) notifications
+  listArchived: (limit: number = 20): NotificationRecord[] => {
+    const db = getDatabase();
+    const stmt = db.prepare('SELECT * FROM notifications WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT ?');
+    return stmt.all(limit) as NotificationRecord[];
+  },
+  // Permanently delete archived notifications
+  purgeArchived: (): void => {
+    const db = getDatabase();
+    db.prepare('DELETE FROM notifications WHERE deleted_at IS NOT NULL').run();
+  },
+  // Fetch latest notification by semantic key (active or archived)
+  getLatestByKey: (key: string): NotificationRecord | null => {
+    const db = getDatabase();
+    const row = db
+      .prepare("SELECT * FROM notifications WHERE message_key = ? ORDER BY datetime(created_at) DESC LIMIT 1")
+      .get(key) as NotificationRecord | undefined;
+    return row ?? null;
   }
 };

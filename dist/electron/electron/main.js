@@ -28,28 +28,35 @@ const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
 const database_1 = require("../lib/database");
 const database_operations_1 = require("../lib/database-operations");
+const handlers_1 = require("../notifications/ipc/handlers");
+const scheduler_1 = require("../notifications/scheduler");
 const isDev = process.env.NODE_ENV === 'development';
 let mainWindow;
 function createWindow() {
     // Create the browser window
     mainWindow = new electron_1.BrowserWindow({
-        width: 1600,
+        width: 1200,
         height: 800,
-        minWidth: 1600,
+        minWidth: 1200,
         minHeight: 800,
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
             preload: isDev
-                ? path.join(__dirname, '../preload.js')
+                ? path.join(process.cwd(), 'electron/preload.js')
                 : path.join(__dirname, '../preload.js')
         },
         titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
         show: false,
         autoHideMenuBar: true // hide menu bar by default (prevents it from showing)
     });
-    // Remove any menu (ensures "File Edit View..." bar is gone on Windows/Linux)
+    // Ensure menu is removed and cannot reappear with Alt
     mainWindow.removeMenu();
+    mainWindow.setMenuBarVisibility(false);
+    mainWindow.setAutoHideMenuBar(false);
+    // Ensure minimum and initial size (safety in case build used old values)
+    mainWindow.setMinimumSize(1600, 800);
+    mainWindow.setSize(1600, 800);
     // Load the app
     if (isDev) {
         const devUrl = process.env.ELECTRON_DEV_URL || 'http://localhost:3001';
@@ -101,7 +108,12 @@ function setupIpcHandlers() {
     electron_1.ipcMain.handle('sales:search', (_, searchTerm, limit) => database_operations_1.saleOperations.search(searchTerm, limit));
     electron_1.ipcMain.handle('sales:getById', (_, id) => database_operations_1.saleOperations.getById(id));
     electron_1.ipcMain.handle('sales:getByCustomer', (_, customerId) => database_operations_1.saleOperations.getByCustomer(customerId));
-    electron_1.ipcMain.handle('sales:create', (_, saleData) => database_operations_1.saleOperations.create(saleData));
+    electron_1.ipcMain.handle('sales:create', async (_, saleData) => {
+        const id = await database_operations_1.saleOperations.create(saleData);
+        // Centralizado: verificar stock bajo y emitir notificación si corresponde
+        (0, scheduler_1.checkLowStockAfterSale)(saleData, () => mainWindow);
+        return id;
+    });
     electron_1.ipcMain.handle('sales:update', (_, id, sale) => database_operations_1.saleOperations.update(id, sale));
     electron_1.ipcMain.handle('sales:delete', (_, id) => database_operations_1.saleOperations.delete(id));
     electron_1.ipcMain.handle('sales:getWithDetails', (_, id) => database_operations_1.saleOperations.getWithDetails(id));
@@ -122,6 +134,7 @@ function setupIpcHandlers() {
     electron_1.ipcMain.handle('installments:recordPayment', (_, installmentId, amount, paymentMethod, reference) => database_operations_1.installmentOperations.recordPayment(installmentId, amount, paymentMethod, reference));
     electron_1.ipcMain.handle('installments:applyLateFee', (_, installmentId, fee) => database_operations_1.installmentOperations.applyLateFee(installmentId, fee));
     electron_1.ipcMain.handle('installments:revertPayment', (_, installmentId, transactionId) => database_operations_1.installmentOperations.revertPayment(installmentId, transactionId));
+    electron_1.ipcMain.handle('installments:update', (_, id, data) => database_operations_1.installmentOperations.update(id, data));
     electron_1.ipcMain.handle('installments:delete', (_, id) => database_operations_1.installmentOperations.delete(id));
     electron_1.ipcMain.handle('installments:deleteAll', () => database_operations_1.installmentOperations.deleteAll());
     // Sale item operations
@@ -134,6 +147,7 @@ function setupIpcHandlers() {
     electron_1.ipcMain.handle('payments:getOverdue', () => database_operations_1.paymentOperations.getOverdue());
     electron_1.ipcMain.handle('payments:create', (_, payment) => database_operations_1.paymentOperations.create(payment));
     electron_1.ipcMain.handle('payments:deleteAll', () => database_operations_1.paymentOperations.deleteAll());
+    // Notifications operations centralizadas en notifications/ipc/handlers.ts
     // Backup and restore operations
     electron_1.ipcMain.handle('backup:save', async (_, backupData) => {
         try {
@@ -317,6 +331,7 @@ function setupIpcHandlers() {
         }
     });
 }
+// setupScheduler deprecated: use centralized notifications scheduler in notifications/scheduler.ts
 // This method will be called when Electron has finished initialization
 electron_1.app.whenReady().then(() => {
     // Initialize the database
@@ -331,6 +346,23 @@ electron_1.app.whenReady().then(() => {
     electron_1.Menu.setApplicationMenu(null);
     // Set up IPC handlers
     setupIpcHandlers();
+    // Centralizar IPC de notificaciones
+    (0, handlers_1.setupNotificationIpcHandlers)(() => mainWindow);
+    // Start background scheduler for notifications (centralizado)
+    // Permitir configurar el intervalo vía variable de entorno sin cambiar defaults
+    const rawInterval = process.env.NOTIFICATIONS_SCHEDULER_INTERVAL_MS || process.env.NOTIFICATIONS_INTERVAL_MS;
+    if (rawInterval) {
+        const parsed = parseInt(rawInterval, 10);
+        if (!Number.isNaN(parsed) && parsed > 0) {
+            (0, scheduler_1.setupNotificationScheduler)(() => mainWindow, parsed);
+        }
+        else {
+            (0, scheduler_1.setupNotificationScheduler)(() => mainWindow);
+        }
+    }
+    else {
+        (0, scheduler_1.setupNotificationScheduler)(() => mainWindow);
+    }
     // Register protocol handler globally before creating windows
     const { session } = require('electron');
     session.defaultSession.protocol.interceptBufferProtocol('file', (request, callback) => {
@@ -508,5 +540,15 @@ electron_1.app.on('web-contents-created', (event, contents) => {
     contents.setWindowOpenHandler(() => {
         return { action: 'deny' };
     });
+});
+electron_1.ipcMain.handle('open-external', async (_event, url) => {
+    try {
+        await electron_1.shell.openExternal(url);
+        return true;
+    }
+    catch (err) {
+        console.error('open-external failed:', err);
+        return false;
+    }
 });
 //# sourceMappingURL=main.js.map

@@ -8,6 +8,7 @@ export interface ColumnVisibility {
   name: boolean;
   category: boolean;
   price: boolean;
+  cost: boolean;
   stock: boolean;
   description: boolean;
   status: boolean;
@@ -22,6 +23,7 @@ const columnLabels: Record<keyof ColumnVisibility, string> = {
   name: 'Nombre',
   category: 'Categoría',
   price: 'Precio',
+  cost: 'Costo',
   stock: 'Stock',
   description: 'Descripción',
   status: 'Estado'

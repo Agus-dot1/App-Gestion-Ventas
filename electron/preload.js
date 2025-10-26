@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     sales: {
       getAll: () => ipcRenderer.invoke('sales:getAll'),
       getPaginated: (page, pageSize, searchTerm) => ipcRenderer.invoke('sales:getPaginated', page, pageSize, searchTerm),
+
       search: (searchTerm, limit) => ipcRenderer.invoke('sales:search', searchTerm, limit),
       getById: (id) => ipcRenderer.invoke('sales:getById', id),
       getByCustomer: (customerId) => ipcRenderer.invoke('sales:getByCustomer', customerId),
@@ -49,6 +50,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       getOverdueSalesCount: () => ipcRenderer.invoke('sales:getOverdueSalesCount'),
       deleteAll: () => ipcRenderer.invoke('sales:deleteAll')
     },
+
     installments: {
       getBySale: (saleId) => ipcRenderer.invoke('installments:getBySale', saleId),
       getOverdue: () => ipcRenderer.invoke('installments:getOverdue'),
@@ -57,6 +59,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       applyLateFee: (installmentId, fee) => ipcRenderer.invoke('installments:applyLateFee', installmentId, fee),
       revertPayment: (installmentId, transactionId) => ipcRenderer.invoke('installments:revertPayment', installmentId, transactionId),
       create: (installment) => ipcRenderer.invoke('installments:create', installment),
+      update: (id, data) => ipcRenderer.invoke('installments:update', id, data),
       markAsPaid: (id) => ipcRenderer.invoke('installments:markAsPaid', id),
       delete: (id) => ipcRenderer.invoke('installments:delete', id),
       deleteAll: () => ipcRenderer.invoke('installments:deleteAll')
@@ -86,6 +89,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
     importCustomers: (customers) => ipcRenderer.invoke('backup:importCustomers', customers),
     importProducts: (products) => ipcRenderer.invoke('backup:importProducts', products),
     importSales: (sales) => ipcRenderer.invoke('backup:importSales', sales)
+  },
+  // Notifications API
+  notifications: {
+    list: (limit) => ipcRenderer.invoke('notifications:list', limit),
+    markRead: (id) => ipcRenderer.invoke('notifications:markRead', id),
+    markUnread: (id) => ipcRenderer.invoke('notifications:markUnread', id),
+    delete: (id) => ipcRenderer.invoke('notifications:delete', id),
+    // Nuevo: borrar por mensaje hoy
+    deleteByMessageToday: (message) => ipcRenderer.invoke('notifications:deleteByMessageToday', message),
+    // Nuevo: borrar por clave hoy
+    deleteByKeyToday: (key) => ipcRenderer.invoke('notifications:deleteByKeyToday', key),
+    // Nuevo: limpiar todas las notificaciones activas
+    clearAll: () => ipcRenderer.invoke('notifications:clearAll'),
+    create: (message, type, key) => ipcRenderer.invoke('notifications:create', message, type, key),
+    existsTodayWithMessage: (message) => ipcRenderer.invoke('notifications:existsTodayWithMessage', message),
+    existsTodayWithKey: (key) => ipcRenderer.invoke('notifications:existsTodayWithKey', key),
+    // Nuevo: listar archivadas
+    listArchived: (limit) => ipcRenderer.invoke('notifications:listArchived', limit),
+    // Nuevo: vaciar archivadas
+    purgeArchived: () => ipcRenderer.invoke('notifications:purgeArchived'),
+    onEvent: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on('notifications:event', handler);
+      return () => {
+        ipcRenderer.removeListener('notifications:event', handler);
+      };
+    },
+    emitTestEvent: (payload) => ipcRenderer.invoke('notifications:emitTestEvent', payload)
   },
   // Utility functions
   openExternal: (url) => ipcRenderer.invoke('open-external', url),

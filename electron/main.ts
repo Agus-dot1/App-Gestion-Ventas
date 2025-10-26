@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, Menu, ipcMain, dialog, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { initializeDatabase, closeDatabase } from '../lib/database';
@@ -8,8 +8,11 @@ import {
   saleOperations,
   installmentOperations,
   saleItemOperations,
-  paymentOperations
+  paymentOperations,
+  notificationOperations
 } from '../lib/database-operations';
+import { setupNotificationIpcHandlers } from '../notifications/ipc/handlers';
+import { setupNotificationScheduler, checkLowStockAfterSale } from '../notifications/scheduler';
 const isDev = process.env.NODE_ENV === 'development';
 
 let mainWindow: Electron.BrowserWindow | null;
@@ -17,15 +20,15 @@ let mainWindow: Electron.BrowserWindow | null;
 function createWindow() {
   // Create the browser window
   mainWindow = new BrowserWindow({
-    width: 1600,
+    width: 1200,
     height: 800,
-    minWidth: 1600,
+    minWidth: 1200,
     minHeight: 800,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: isDev 
-        ? path.join(__dirname, '../preload.js')
+        ? path.join(process.cwd(), 'electron/preload.js')
         : path.join(__dirname, '../preload.js')
     },
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
@@ -97,10 +100,16 @@ function setupIpcHandlers() {
   ipcMain.handle('sales:getAll', () => saleOperations.getAll());
   ipcMain.handle('sales:getPaginated', (_, page, pageSize, searchTerm) => 
     saleOperations.getPaginated(page, pageSize, searchTerm));
+
   ipcMain.handle('sales:search', (_, searchTerm, limit) => saleOperations.search(searchTerm, limit));
   ipcMain.handle('sales:getById', (_, id) => saleOperations.getById(id));
   ipcMain.handle('sales:getByCustomer', (_, customerId) => saleOperations.getByCustomer(customerId));
-  ipcMain.handle('sales:create', (_, saleData) => saleOperations.create(saleData));
+  ipcMain.handle('sales:create', async (_, saleData) => {
+    const id = await saleOperations.create(saleData);
+    // Centralizado: verificar stock bajo y emitir notificación si corresponde
+    checkLowStockAfterSale(saleData, () => mainWindow);
+    return id;
+  });
   ipcMain.handle('sales:update', (_, id, sale) => saleOperations.update(id, sale));
   ipcMain.handle('sales:delete', (_, id) => saleOperations.delete(id));
   ipcMain.handle('sales:getWithDetails', (_, id) => saleOperations.getWithDetails(id));
@@ -125,6 +134,7 @@ function setupIpcHandlers() {
     installmentOperations.applyLateFee(installmentId, fee));
   ipcMain.handle('installments:revertPayment', (_, installmentId, transactionId) =>
     installmentOperations.revertPayment(installmentId, transactionId));
+  ipcMain.handle('installments:update', (_, id, data) => installmentOperations.update(id, data));
   ipcMain.handle('installments:delete', (_, id) => installmentOperations.delete(id));
   ipcMain.handle('installments:deleteAll', () => installmentOperations.deleteAll());
 
@@ -134,12 +144,15 @@ ipcMain.handle('saleItems:create', (_, saleItem) => saleItemOperations.create(sa
 ipcMain.handle('saleItems:getSalesForProduct', (_, productId) => saleItemOperations.getSalesForProduct(productId));
 ipcMain.handle('saleItems:deleteAll', () => saleItemOperations.deleteAll());
 
+
+
   // Payment operations
   ipcMain.handle('payments:getBySale', (_, saleId) => paymentOperations.getBySale(saleId));
   ipcMain.handle('payments:getOverdue', () => paymentOperations.getOverdue());
   ipcMain.handle('payments:create', (_, payment) => paymentOperations.create(payment));
   ipcMain.handle('payments:deleteAll', () => paymentOperations.deleteAll());
 
+  // Notifications operations centralizadas en notifications/ipc/handlers.ts
   // Backup and restore operations
   ipcMain.handle('backup:save', async (_, backupData) => {
     try {
@@ -333,6 +346,8 @@ ipcMain.handle('saleItems:deleteAll', () => saleItemOperations.deleteAll());
   });
 }
 
+// setupScheduler deprecated: use centralized notifications scheduler in notifications/scheduler.ts
+
 // This method will be called when Electron has finished initialization
 app.whenReady().then(() => {
   // Initialize the database
@@ -348,6 +363,22 @@ app.whenReady().then(() => {
 
   // Set up IPC handlers
   setupIpcHandlers();
+  // Centralizar IPC de notificaciones
+  setupNotificationIpcHandlers(() => mainWindow);
+
+  // Start background scheduler for notifications (centralizado)
+  // Permitir configurar el intervalo vía variable de entorno sin cambiar defaults
+  const rawInterval = process.env.NOTIFICATIONS_SCHEDULER_INTERVAL_MS || process.env.NOTIFICATIONS_INTERVAL_MS;
+  if (rawInterval) {
+    const parsed = parseInt(rawInterval, 10);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      setupNotificationScheduler(() => mainWindow, parsed);
+    } else {
+      setupNotificationScheduler(() => mainWindow);
+    }
+  } else {
+    setupNotificationScheduler(() => mainWindow);
+  }
 
   // Register protocol handler globally before creating windows
   const { session } = require('electron');
@@ -551,4 +582,13 @@ app.on('web-contents-created', (event, contents) => {
   contents.setWindowOpenHandler(() => {
     return { action: 'deny' };
   });
+});
+ipcMain.handle('open-external', async (_event, url: string) => {
+  try {
+    await shell.openExternal(url);
+    return true;
+  } catch (err) {
+    console.error('open-external failed:', err);
+    return false;
+  }
 });

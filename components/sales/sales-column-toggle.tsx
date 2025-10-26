@@ -20,7 +20,7 @@ interface SalesColumnToggleProps {
 }
 
 const columnLabels: Record<keyof ColumnVisibility, string> = {
-  sale_number: 'Venta #',
+  sale_number: 'Productos',
   customer_name: 'Cliente',
   date: 'Fecha',
   payment_type: 'Método de pago',

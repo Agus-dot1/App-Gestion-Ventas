@@ -15,7 +15,8 @@ import {
   Loader2,
   RefreshCw,
   ArrowUpCircle,
-  Info
+  Info,
+  Bell
 } from 'lucide-react'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { Switch } from '@/components/ui/switch'
@@ -49,6 +50,8 @@ export default function AjustesPage() {
   const [lastBackup, setLastBackup] = useState<string | null>(null)
   const [migrationInfo, setMigrationInfo] = useState<MigrationInfo | null>(null)
   const [reduceAnimations, setReduceAnimations] = useState<boolean>(false)
+  const [isClearingNotifications, setIsClearingNotifications] = useState<boolean>(false)
+  const [isPurgingArchived, setIsPurgingArchived] = useState<boolean>(false)
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -218,68 +221,6 @@ export default function AjustesPage() {
     }
   }
 
-  const handleClearCache = async () => {
-    setIsClearingCache(true)
-    try {
-      // Limpiar localStorage
-      const keysToKeep = ['theme', 'language', 'currency', 'lastBackupDate']
-      const allKeys = Object.keys(localStorage)
-      allKeys.forEach(key => {
-        if (!keysToKeep.includes(key)) {
-          localStorage.removeItem(key)
-        }
-      })
-
-      // Limpiar caché de Electron si está disponible
-      if (isElectron && window.electronAPI) {
-        const result = await window.electronAPI.cache.clear()
-        if (result.success) {
-          if (result.message) {
-            // Show message if there were warnings
-            if (result.message.includes('warnings')) {
-            toast.warning(result.message, {
-              description: 'Se encontraron advertencias al limpiar caché',
-              position: 'top-center',
-              duration: 1000,
-            })
-            } else {
-              toast.success(result.message, {
-                description: 'Caché de Electron limpiada',
-                position: 'top-center',
-                duration: 1000,
-              })
-            }
-          } else {
-            toast.success('Caché limpiado exitosamente', {
-              description: 'Se eliminaron archivos temporales',
-              position: 'top-center',
-              duration: 1000,
-            })
-          }
-        } else {
-          throw new Error(result.error || 'Error al limpiar caché de Electron')
-        }
-      } else {
-        toast.success('Caché de navegador limpiado exitosamente', {
-          description: 'Se limpiaron datos de navegador',
-          position: 'top-center',
-          duration: 1000,
-        })
-      }
-
-      setCacheSize('0 MB')
-    } catch (error) {
-      console.error('Error clearing cache:', error)
-      toast.error('Error al limpiar caché', {
-        description: 'No fue posible eliminar algunos archivos',
-        position: 'top-center',
-        duration: 1000,
-      })
-    } finally {
-      setIsClearingCache(false)
-    }
-  }
-
   const checkMigrationStatus = async () => {
     if (!isElectron) return
     
@@ -418,6 +359,37 @@ export default function AjustesPage() {
       position: 'top-center',
       duration: 1000,
     })
+  }
+
+  const handlePurgeArchived = async () => {
+    if (!isElectron) {
+      toast.error('Esta función solo está disponible en la aplicación de escritorio', {
+        description: 'Usa la versión de escritorio para esta operación',
+        position: 'top-center',
+        duration: 1000,
+      })
+      return
+    }
+
+    setIsPurgingArchived(true)
+    try {
+      await window.electronAPI.notifications.purgeArchived()
+      toast.success('Archivadas vaciadas', {
+        description: 'Se eliminaron definitivamente todas las notificaciones archivadas',
+        position: 'top-center',
+        duration: 1000,
+      })
+      window.dispatchEvent(new CustomEvent('notifications:purged'))
+    } catch (error) {
+      console.error('Error purging archived notifications:', error)
+      toast.error('Error al vaciar archivadas', {
+        description: 'No fue posible eliminar algunas notificaciones archivadas',
+        position: 'top-center',
+        duration: 1000,
+      })
+    } finally {
+      setIsPurgingArchived(false)
+    }
   }
 
   return (
@@ -619,38 +591,55 @@ export default function AjustesPage() {
           {/* System Maintenance Section */}
           <div className="space-y-6">
             <h2 className="text-lg font-medium">Mantenimiento del Sistema</h2>
-            
-            {/* Cache Management 
+
+            {/* Vaciar Archivadas */}
             <div className="p-4 border rounded-lg space-y-4">
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
-                  <h3 className="font-medium">Limpiar Caché</h3>
-                  <p className="text-sm text-muted-foreground">Libera espacio eliminando archivos temporales</p>
+                  <h3 className="font-medium">Vaciar Archivadas</h3>
+                  <p className="text-sm text-muted-foreground">Elimina definitivamente todas las notificaciones archivadas.</p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <Badge variant="secondary" className="text-xs">{cacheSize}</Badge>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={handleClearCache}
-                    disabled={isClearingCache}
-                  >
-                    {isClearingCache ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Limpiando...
-                      </>
-                    ) : (
-                      <>
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Limpiar
-                      </>
-                    )}
-                  </Button>
-                </div>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {}}
+                      disabled={!isElectron || isPurgingArchived}
+                    >
+                      {isPurgingArchived ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Vaciando...
+                        </>
+                      ) : (
+                        <>
+                          <Bell className="h-4 w-4 mr-2" />
+                          Vaciar archivadas
+                        </>
+                      )}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle className="flex items-center gap-2">
+                        <AlertTriangle className="h-5 w-5 text-amber-500" />
+                        Confirmar vaciado de archivadas
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Esta acción eliminará PERMANENTEMENTE todas las notificaciones archivadas. Esta operación no se puede deshacer.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction onClick={handlePurgeArchived}>
+                        Vaciar
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             </div>
-            */}
 
             {/* Database Reset - DANGER ZONE */}
             <div className="p-4 border-2 border-red-900 rounded-lg space-y-4 bg-red-950">
