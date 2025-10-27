@@ -699,6 +699,9 @@ export function SalesTable({
                               {sale.number_of_installments} pagos
                             </div>
                           )}
+                          {sale.payment_type === 'installments' && <div className="text-xs text-muted-foreground">
+                            {sale.period_type === 'weekly' ? 'Semanal (1 y 15)' : 'Mensual'}
+                          </div>}
                           </div>
                         </TableCell>
                       )}

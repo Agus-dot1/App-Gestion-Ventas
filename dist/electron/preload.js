@@ -72,6 +72,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       create: (payment) => ipcRenderer.invoke('payments:create', payment),
       getOverdue: () => ipcRenderer.invoke('payments:getOverdue'),
       deleteAll: () => ipcRenderer.invoke('payments:deleteAll')
+    },
+    partners: {
+      getAll: () => ipcRenderer.invoke('partners:getAll'),
+      create: (partner) => ipcRenderer.invoke('partners:create', partner),
+      update: (id, partner) => ipcRenderer.invoke('partners:update', id, partner),
+      delete: (id) => ipcRenderer.invoke('partners:delete', id)
     }
   },
   // Cache management

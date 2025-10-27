@@ -9,7 +9,8 @@ import {
   installmentOperations,
   saleItemOperations,
   paymentOperations,
-  notificationOperations
+  notificationOperations,
+  partnerOperations
 } from '../lib/database-operations';
 import { setupNotificationIpcHandlers } from '../notifications/ipc/handlers';
 import { setupNotificationScheduler, checkLowStockAfterSale } from '../notifications/scheduler';
@@ -95,6 +96,12 @@ function setupIpcHandlers() {
   ipcMain.handle('products:getCount', () => productOperations.getCount());
   ipcMain.handle('products:getMonthlyComparison', () => productOperations.getMonthlyComparison());
   ipcMain.handle('products:deleteAll', () => productOperations.deleteAll());
+
+  // Partner operations
+  ipcMain.handle('partners:getAll', () => partnerOperations.getAll());
+  ipcMain.handle('partners:create', (_e, partner) => partnerOperations.create(partner));
+  ipcMain.handle('partners:update', (_e, id, partner) => partnerOperations.update(id, partner));
+  ipcMain.handle('partners:delete', (_e, id) => partnerOperations.delete(id));
 
   // Sale operations
   ipcMain.handle('sales:getAll', () => saleOperations.getAll());

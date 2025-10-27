@@ -182,13 +182,28 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
       if (customer) {
         doc.text(`Cliente: ${customer.name}`, 14, yPosition);
         yPosition += 6;
-        if (customer.email) {
-          doc.text(`Email: ${customer.email}`, 14, yPosition);
-          yPosition += 6;
-        }
+
         if (customer.phone) {
           doc.text(`Teléfono: ${customer.phone}`, 14, yPosition);
           yPosition += 6;
+        }
+        if (customer.secondary_phone) {
+          doc.text(`Teléfono secundario: ${customer.secondary_phone}`, 14, yPosition);
+          yPosition += 6;
+        }
+        if (sale?.partner_name) {
+          doc.text(`Responsable: ${sale.partner_name}`, 14, yPosition);
+          yPosition += 6;
+        }
+        if (sale?.payment_type === 'installments') {
+          const periodLabel = sale.period_type === 'weekly' ? 'Semanal (1 y 15)' : 'Mensual';
+          const windowLabel = sale.payment_period ? (sale.payment_period === '1 to 10' ? '1 al 10' : '20 al 30') : 'N/A';
+          doc.text(`Periodo: ${periodLabel} • Ventana: ${windowLabel}`, 14, yPosition);
+          yPosition += 6;
+          if ((sale.advance_installments ?? 0) > 0) {
+            doc.text(`Cuotas adelantadas: ${sale.advance_installments}`, 14, yPosition);
+            yPosition += 6;
+          }
         }
       }
       yPosition += 5;
@@ -342,17 +357,23 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
   const handleExportToExcel = () => {
     try {
       // Prepare sale data for Excel
+      const periodLabel = sale?.payment_type === 'installments' ? (sale?.period_type === 'weekly' ? 'Semanal (1 y 15)' : 'Mensual') : 'N/A';
+      const windowLabel = sale?.payment_type === 'installments' ? (sale?.payment_period ? (sale.payment_period === '1 to 10' ? '1 al 10' : '20 al 30') : 'N/A') : 'N/A';
       const saleData = {
         'Número de Venta': sale?.sale_number ?? 'N/A',
         'Fecha': sale?.date ? formatDate(sale.date) : 'N/A',
         'Cliente': customer?.name || 'N/A',
-        'Email': customer?.email || 'N/A',
         'Teléfono': customer?.phone || 'N/A',
+        'Teléfono secundario': customer?.secondary_phone || 'N/A',
         'Dirección': customer?.address || 'N/A',
         'Subtotal': formatCurrency(sale?.subtotal ?? 0),
         'Descuento': formatCurrency(sale?.discount_amount ?? 0),
         'Total': formatCurrency(sale?.total_amount ?? 0),
         'Método de Pago': sale?.payment_type ? getPaymentTypeBadge(sale.payment_type).label : 'N/A',
+        'Responsable': sale?.partner_name || 'N/A',
+        'Periodo': periodLabel,
+        'Ventana de pago': windowLabel,
+        'Cuotas adelantadas': sale?.advance_installments ?? 0,
         'Estado de Pago': sale?.payment_status ? getPaymentStatusBadge(sale.payment_status).label : 'N/A',
         'Estado': sale?.status ? getStatusBadge(sale.status).label : 'N/A',
         'Notas': sale?.notes || ''
@@ -417,7 +438,7 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
               </div>
               <div>
                 <DialogTitle className="text-xl font-bold">
-                  Venta #{sale.sale_number}
+                  {saleItems[0]?.product_name || `Venta #${sale.sale_number}`}
                 </DialogTitle>
                 <DialogDescription className="flex items-center gap-2 mt-1">
                   <Calendar className="w-4 h-4" />
@@ -554,6 +575,26 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
                             {statusBadge.label}
                           </Badge>
                         </div>
+                        {sale.partner_name && (
+                          <div className="flex justify-between">
+                            <span className="text-sm font-medium">Responsable:</span>
+                            <span className="text-sm">{sale.partner_name}</span>
+                          </div>
+                        )}
+                        {sale.payment_type === 'installments' && (
+                          <div className="space-y-1">
+                            <div className="flex justify-between">
+                              <span className="text-sm font-medium">Periodo:</span>
+                              <span className="text-sm">{sale.period_type === 'weekly' ? 'Semanal (1 y 15)' : 'Mensual'}</span>
+                            </div>
+                            {sale.payment_period && (
+                              <div className="flex justify-between">
+                                <span className="text-sm font-medium">Ventana de pago:</span>
+                                <span className="text-sm">{sale.payment_period === '1 to 10' ? '1 al 10' : '20 al 30'}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div className="space-y-3">
                         <div className="flex justify-between">
@@ -622,15 +663,15 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
                           </div>
                         </div>
                         <div className="grid gap-3">
-                          {customer.email && (
+                          {customer.secondary_phone && (
                             <div className="flex items-center gap-3">
-                              <Mail className="w-4 h-4 text-muted-foreground" />
+                              <Phone className="w-4 h-4 text-muted-foreground" />
                               <span 
                                 className="text-sm cursor-pointer hover:bg-muted px-2 py-1 rounded transition-colors"
-                                onClick={() => copyToClipboard(customer.email!, 'email')}
+                                onClick={() => copyToClipboard(customer.secondary_phone!, 'secondary_phone')}
                                 title="Clic para copiar"
                               >
-                                {customer.email}
+                                {customer.secondary_phone}
                               </span>
                             </div>
                           )}

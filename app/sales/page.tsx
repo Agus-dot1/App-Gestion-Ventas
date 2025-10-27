@@ -22,7 +22,10 @@ export default function SalesPage() {
   const highlightId = searchParams.get('highlight');
   const installmentDashboardRef = useRef<InstallmentDashboardRef>(null);
   const tabParam = searchParams.get('tab');
+  const partnerParam = searchParams.get('partner');
   const [sales, setSales] = useState<Sale[]>([]);
+  const [partners, setPartners] = useState<any[]>([]);
+  const [selectedPartnerId, setSelectedPartnerId] = useState<number>(0);
   const [overdueSales, setOverdueSales] = useState<number>(0);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | undefined>();
@@ -57,14 +60,31 @@ export default function SalesPage() {
       // Load data in background
       loadSales();
       loadOverdueSales();
+      loadPartners();
     }
   }, [isElectron]);
+
+  const loadPartners = async () => {
+    try {
+      if (!window.electronAPI?.database?.partners?.getAll) return;
+      const list = await window.electronAPI.database.partners.getAll();
+      setPartners(list || []);
+    } catch (error) {
+      console.error('Error cargando responsables:', error);
+    }
+  };
 
   useEffect(() => {
     if (tabParam) {
       setActiveTab(tabParam);
     }
   }, [tabParam]);
+
+  // NEW: read partner selection from query
+  useEffect(() => {
+    const id = Number(partnerParam || '0');
+    setSelectedPartnerId(Number.isFinite(id) ? id : 0);
+  }, [partnerParam]);
 
   // Handle search changes
   useEffect(() => {
@@ -629,6 +649,8 @@ export default function SalesPage() {
               </div>
             </div>
 
+            {/* Removed in-page partner tabs; selection comes from sidebar */}
+
             {/* Statistics Cards */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
               <Card>
@@ -699,7 +721,7 @@ export default function SalesPage() {
             </div>
             <SalesTable
               key={refreshCounter}
-              sales={sales}
+              sales={(selectedPartnerId ? sales.filter(s => (s.partner_id || 0) === selectedPartnerId) : sales)}
               highlightId={highlightId}
               onEdit={handleEditSale}
               onDelete={handleDeleteSale}
@@ -718,6 +740,7 @@ export default function SalesPage() {
               <InstallmentDashboard
                 ref={installmentDashboardRef}
                 highlightId={highlightId}
+                partnerId={selectedPartnerId}
                 onRefresh={() => {
                   dataCache.invalidateCache('sales');
                   loadSales();

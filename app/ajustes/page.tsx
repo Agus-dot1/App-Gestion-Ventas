@@ -21,6 +21,7 @@ import {
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 
 interface BackupData {
   customers: any[]
@@ -52,6 +53,12 @@ export default function AjustesPage() {
   const [reduceAnimations, setReduceAnimations] = useState<boolean>(false)
   const [isClearingNotifications, setIsClearingNotifications] = useState<boolean>(false)
   const [isPurgingArchived, setIsPurgingArchived] = useState<boolean>(false)
+  // Partners management state
+  const [partners, setPartners] = useState<any[]>([])
+  const [isLoadingPartners, setIsLoadingPartners] = useState<boolean>(false)
+  const [newPartnerName, setNewPartnerName] = useState<string>('')
+  const [editingPartnerId, setEditingPartnerId] = useState<number | null>(null)
+  const [editingName, setEditingName] = useState<string>('')
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -64,6 +71,100 @@ export default function AjustesPage() {
       checkMigrationStatus()
     }
   }, [])
+
+  // Gestión de perfiles/partners
+  const loadPartners = async () => {
+    try {
+      if (!window.electronAPI?.database?.partners?.getAll) return
+      setIsLoadingPartners(true)
+      const list = await window.electronAPI.database.partners.getAll()
+      setPartners(list || [])
+    } catch (error) {
+      console.error('Error cargando responsables:', error)
+    } finally {
+      setIsLoadingPartners(false)
+    }
+  }
+
+  useEffect(() => {
+    if (isElectron) {
+      loadPartners()
+    }
+  }, [isElectron])
+
+  const handleAddPartner = async () => {
+    const name = newPartnerName.trim()
+    if (!name) return
+    try {
+      await window.electronAPI.database.partners.create({ name })
+      setNewPartnerName('')
+      await loadPartners()
+      toast.success('Perfil agregado', {
+        description: 'El nombre ahora aparece en Ventas y el formulario',
+        position: 'top-center',
+        duration: 1000,
+      })
+    } catch (error: any) {
+      console.error('Error creando perfil:', error)
+      toast.error('No se pudo crear el perfil', {
+        description: error?.message || 'Intenta nuevamente',
+        position: 'top-center',
+        duration: 1000,
+      })
+    }
+  }
+
+  const startEditPartner = (id: number, name: string) => {
+    setEditingPartnerId(id)
+    setEditingName(name)
+  }
+
+  const cancelEditPartner = () => {
+    setEditingPartnerId(null)
+    setEditingName('')
+  }
+
+  const saveEditPartner = async () => {
+    if (!editingPartnerId) return
+    const name = editingName.trim()
+    if (!name) return
+    try {
+      await window.electronAPI.database.partners.update(editingPartnerId, { name })
+      cancelEditPartner()
+      await loadPartners()
+      toast.success('Perfil actualizado', {
+        description: 'Los cambios se reflejan en Ventas y el formulario',
+        position: 'top-center',
+        duration: 1000,
+      })
+    } catch (error: any) {
+      console.error('Error actualizando perfil:', error)
+      toast.error('No se pudo actualizar el perfil', {
+        description: error?.message || 'Intenta nuevamente',
+        position: 'top-center',
+        duration: 1000,
+      })
+    }
+  }
+
+  const handleDeletePartner = async (id: number) => {
+    try {
+      await window.electronAPI.database.partners.delete(id)
+      await loadPartners()
+      toast.success('Perfil eliminado', {
+        description: 'Se removió de Ventas y el formulario',
+        position: 'top-center',
+        duration: 1000,
+      })
+    } catch (error: any) {
+      console.error('Error eliminando perfil:', error)
+      toast.error('No se pudo eliminar el perfil', {
+        description: error?.message || 'Intenta nuevamente',
+        position: 'top-center',
+        duration: 1000,
+      })
+    }
+  }
 
   const loadCacheInfo = async () => {
     try {
@@ -411,6 +512,75 @@ export default function AjustesPage() {
                 <p className="text-sm text-muted-foreground">Desactiva la animación de navegación para una experiencia más fluida.</p>
               </div>
               <Switch id="reduce-animations" checked={reduceAnimations} onCheckedChange={handleToggleReduceAnimations} />
+            </div>
+          </div>
+        </div>
+
+        {/* Gestión de Perfiles/Responsables */}
+        <div className="space-y-6">
+          <div className="p-4 border rounded-lg space-y-4">
+            <h2 className="text-lg font-medium">Perfiles</h2>
+            <p className="text-sm text-muted-foreground">Agrega nombres para asignar ventas y filtrar en el menú Ventas.</p>
+
+            {/* Add partner */}
+            <div className="flex gap-2">
+              <Input
+                placeholder="Nombre del perfil"
+                value={newPartnerName}
+                onChange={(e) => setNewPartnerName(e.target.value)}
+              />
+              <Button onClick={handleAddPartner} disabled={!isElectron || !newPartnerName.trim()}>
+                Añadir
+              </Button>
+            </div>
+
+            {/* List partners */}
+            <div className="space-y-2">
+              {isLoadingPartners ? (
+                <div className="text-sm text-muted-foreground">Cargando...</div>
+              ) : partners.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No hay perfiles aún.</div>
+              ) : (
+                <ul className="space-y-2">
+                  {partners.map((p) => (
+                    <li key={p.id} className="flex items-center gap-2">
+                      {editingPartnerId === p.id ? (
+                        <>
+                          <Input
+                            className="flex-1"
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                          />
+                          <Button size="sm" variant="outline" onClick={cancelEditPartner}>Cancelar</Button>
+                          <Button size="sm" onClick={saveEditPartner} disabled={!editingName.trim()}>Guardar</Button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="flex-1">{p.name}</span>
+                          <Button size="sm" variant="outline" onClick={() => startEditPartner(p.id, p.name)}>Editar</Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="sm" variant="destructive">Eliminar</Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Eliminar perfil</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Esta acción eliminará el perfil y su nombre ya no aparecerá en Ventas ni en el formulario.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDeletePartner(p.id)}>Eliminar</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         </div>

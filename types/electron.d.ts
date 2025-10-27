@@ -75,6 +75,12 @@ export interface ElectronAPI {
       getOverdue: () => InvokeResult<any[]>
       deleteAll: () => InvokeResult<void>
     }
+    partners: {
+      getAll: () => InvokeResult<any[]>
+      create: (partner: { name: string; is_active?: boolean }) => InvokeResult<number>
+      update: (id: number, partner: { name?: string; is_active?: boolean }) => InvokeResult<void>
+      delete: (id: number) => InvokeResult<void>
+    }
   }
   cache: {
     getSize: () => InvokeResult<string>

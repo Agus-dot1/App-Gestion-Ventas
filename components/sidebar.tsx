@@ -25,7 +25,9 @@ import {
   ChevronRight,
   CreditCard,
   LayoutDashboard,
-  Bell
+  Bell,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -130,6 +132,24 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
 
   // Set up global keyboard shortcut
   useSearchShortcut({ onOpenSearch: handleOpenSearch, onToggleSearch: handleToggleSearch });
+
+  // NEW: partners for expandable sales submenu
+  const [partners, setPartners] = useState<any[]>([]);
+  const [salesExpanded, setSalesExpanded] = useState(false);
+  const [isElectron] = useState(() => typeof window !== 'undefined' && !!(window as any).electronAPI);
+
+  useEffect(() => {
+    const loadPartners = async () => {
+      try {
+        const api = (window as any).electronAPI;
+        if (!api?.database?.partners?.getAll) return;
+        const list = await api.database.partners.getAll();
+        setPartners(list || []);
+      } catch {}
+    };
+    if (isElectron) loadPartners();
+  }, [isElectron]);
+
   const navigationItems = [
     {
       title: 'Inicio',
@@ -161,21 +181,6 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
     //  href: '/calendar',
     //  prefetch: prefetchCalendar
     //},
-    // {
-    //   title: 'Analytics',
-    //   icon: BarChart3,
-    //   href: '/analytics'
-    // },
-    // {
-    //   title: 'Reports',
-    //   icon: FileText,
-    //   href: '/reports'
-    // },
-    // {
-    //   title: 'Notifications',
-    //   icon: Bell,
-    //   href: '/notifications'
-    // }
   ];
 
   return (
@@ -221,6 +226,76 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
             {navigationItems.map((item) => {
               const Icon = item.icon;
               const isActive = isRouteActive(item.href);
+
+              if (item.title === 'Ventas') {
+                return (
+                  <div key={item.href} className="relative">
+                    <Link
+                      href={item.href}
+                      className="block"
+                      onMouseEnter={() => {
+                        if (item.prefetch) item.prefetch();
+                      }}
+                    >
+                      <Button
+                        variant={isActive ? 'secondary' : 'ghost'}
+                        className={cn(
+                          'w-full justify-start gap-3 h-10 transition-colors',
+                          collapsed && 'justify-center px-2',
+                          isActive && 'bg-secondary text-secondary-foreground font-medium'
+                        )}
+                        aria-current={isActive ? 'page' : undefined}
+                      >
+                        <Icon className="h-4 w-4 flex-shrink-0" />
+                        {!collapsed && <span className="truncate">{item.title}</span>}
+                        {!collapsed && (
+                          <span className="ml-auto inline-flex items-center">
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              className="p-1 rounded hover:bg-muted"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setSalesExpanded(prev => !prev);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setSalesExpanded(prev => !prev);
+                                }
+                              }}
+                              aria-label={salesExpanded ? 'Contraer Ventas' : 'Expandir Ventas'}
+                            >
+                              {salesExpanded ? (
+                                <ChevronUp className="h-4 w-4" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4" />
+                              )}
+                            </span>
+                          </span>
+                        )}
+                      </Button>
+                    </Link>
+
+                    {!collapsed && salesExpanded && partners.length > 0 && (
+                      <div className="mt-1 ml-8 space-y-1">
+                        {partners.map((p: any) => (
+                          <Link key={p.id} href={`/sales?partner=${p.id}`} className="block">
+                            <Button
+                              variant={'ghost'}
+                              className={cn('w-full justify-start h-8 text-sm', 'gap-2')}
+                            >
+                              <span className="truncate">{p.name}</span>
+                            </Button>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
 
               return (
                 <Link

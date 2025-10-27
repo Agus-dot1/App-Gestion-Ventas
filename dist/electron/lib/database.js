@@ -21,6 +21,8 @@ function initializeDatabase() {
     if (db)
         return db;
     const dbPath = getDatabasePath();
+    // Added explicit log to identify the actual DB path being used at runtime
+    console.log('Using database file at:', dbPath);
     db = new better_sqlite3_1.default(dbPath);
     // Enable foreign keys
     db.pragma('foreign_keys = ON');
@@ -41,6 +43,7 @@ function createTables() {
       dni TEXT,
       email TEXT,
       phone TEXT,
+      secondary_phone TEXT,
       address TEXT,
       company TEXT,
       notes TEXT,
@@ -62,6 +65,10 @@ function createTables() {
     catch (e) { /* Column already exists */ }
     try {
         db.exec('ALTER TABLE customers ADD COLUMN phone TEXT');
+    }
+    catch (e) { /* Column already exists */ }
+    try {
+        db.exec('ALTER TABLE customers ADD COLUMN secondary_phone TEXT');
     }
     catch (e) { /* Column already exists */ }
     try {
@@ -209,7 +216,8 @@ function createTables() {
       total_amount DECIMAL(10,2) NOT NULL,
       payment_type TEXT CHECK(payment_type IN ('cash', 'installments', 'credit', 'mixed')) NOT NULL,
       payment_status TEXT CHECK(payment_status IN ('paid', 'partial', 'unpaid', 'overdue')) DEFAULT 'unpaid',
-      number_of_installments INTEGER,
++      period_type TEXT CHECK(period_type IN ('monthly', 'weekly', 'biweekly')),
+       number_of_installments INTEGER,
       installment_amount DECIMAL(10,2),
       advance_installments INTEGER DEFAULT 0,
       transaction_type TEXT CHECK(transaction_type IN ('sale', 'return', 'exchange', 'refund')) DEFAULT 'sale',
@@ -355,6 +363,7 @@ function createTables() {
     catch (e) {
         console.error('Error deduplicating notifications before index creation:', e);
     }
+    // Indexes that are safe regardless of existing sales schema
     db.exec(`
     -- Customer table indexes for optimized search and queries
      
@@ -365,11 +374,13 @@ function createTables() {
  
      CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name);
      CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email);
-    CREATE INDEX IF NOT EXISTS idx_customers_company ON customers(company);
-    CREATE INDEX IF NOT EXISTS idx_customers_created_at ON customers(created_at);
-    CREATE INDEX IF NOT EXISTS idx_customers_updated_at ON customers(updated_at);
-    CREATE INDEX IF NOT EXISTS idx_customers_name_email ON customers(name, email);
-    CREATE INDEX IF NOT EXISTS idx_customers_search ON customers(name, email, company, tags);
+     CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
+     CREATE INDEX IF NOT EXISTS idx_customers_secondary_phone ON customers(secondary_phone);
+     CREATE INDEX IF NOT EXISTS idx_customers_company ON customers(company);
+     CREATE INDEX IF NOT EXISTS idx_customers_created_at ON customers(created_at);
+     CREATE INDEX IF NOT EXISTS idx_customers_updated_at ON customers(updated_at);
+     CREATE INDEX IF NOT EXISTS idx_customers_name_email ON customers(name, email);
+     CREATE INDEX IF NOT EXISTS idx_customers_search ON customers(name, email, company, tags);
     
     -- Product table indexes
     CREATE INDEX IF NOT EXISTS idx_products_name ON products(name);
@@ -377,9 +388,8 @@ function createTables() {
     CREATE INDEX IF NOT EXISTS idx_products_created_at ON products(created_at);
     CREATE INDEX IF NOT EXISTS idx_products_updated_at ON products(updated_at);
     
-    -- Sales and related table indexes
+    -- Sales and related table indexes (safe subset)
     CREATE INDEX IF NOT EXISTS idx_sales_customer_id ON sales(customer_id);
-    CREATE INDEX IF NOT EXISTS idx_sales_partner_id ON sales(partner_id);
     CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(date);
     CREATE INDEX IF NOT EXISTS idx_sales_due_date ON sales(due_date);
     CREATE INDEX IF NOT EXISTS idx_sales_payment_status ON sales(payment_status);
@@ -399,6 +409,21 @@ function createTables() {
     CREATE INDEX IF NOT EXISTS idx_notifications_message ON notifications(message);
     CREATE INDEX IF NOT EXISTS idx_notifications_message_key ON notifications(message_key);
   `);
+    // Create partner_id index only if column exists (avoids init failure on legacy DB)
+    try {
+        const salesInfo = db.prepare("PRAGMA table_info(sales)").all();
+        const hasPartnerIdIndexColumn = salesInfo.some((col) => col.name === 'partner_id');
+        if (hasPartnerIdIndexColumn) {
+            db.exec('CREATE INDEX IF NOT EXISTS idx_sales_partner_id ON sales(partner_id)');
+            console.log('Ensured idx_sales_partner_id index exists during table creation');
+        }
+        else {
+            console.log('Skipping idx_sales_partner_id creation in createTables: partner_id missing; will be added in migrations');
+        }
+    }
+    catch (e) {
+        console.error('Error creating idx_sales_partner_id index during createTables:', e);
+    }
 }
 function runMigrations() {
     if (!db)
@@ -412,11 +437,44 @@ function runMigrations() {
     const missingColumns = requiredColumns.filter(col => !columnNames.includes(col));
     // Check if partner_id column exists
     const hasPartnerId = columnNames.includes('partner_id');
+    const hasPeriodType = columnNames.includes('period_type');
     // Check if sale_items table needs to be migrated to allow NULL product_id
     const saleItemsTableInfo = db.prepare("PRAGMA table_info(sale_items)").all();
     const product_id_column = saleItemsTableInfo.find((col) => col.name === 'product_id');
     const needsProductIDMigration = product_id_column && product_id_column.notnull === 1;
-    if (missingColumns.length > 0 || needsProductIDMigration || !hasPartnerId) {
+    // SAFE MIGRATION: only missing partner_id -> add column without dropping tables
+    const onlyMissingPartnerId = missingColumns.length === 0 && !needsProductIDMigration && !hasPartnerId;
+    const onlyMissingPeriodType = missingColumns.length === 0 && !needsProductIDMigration && !hasPeriodType;
+    if (onlyMissingPartnerId) {
+        try {
+            db.exec('ALTER TABLE sales ADD COLUMN partner_id INTEGER');
+            console.log('Successfully added partner_id column to sales table');
+        }
+        catch (e) {
+            console.error('Error adding partner_id column to sales table:', e);
+        }
+        try {
+            db.exec('CREATE INDEX IF NOT EXISTS idx_sales_partner_id ON sales(partner_id)');
+            console.log('Ensured idx_sales_partner_id index exists');
+        }
+        catch (e) {
+            console.error('Error creating idx_sales_partner_id index:', e);
+        }
+        // No further action required in this specific migration path
+        return;
+    }
+    // SAFE MIGRATION: only missing period_type -> add column without dropping tables
+    if (onlyMissingPeriodType) {
+        try {
+            db.exec('ALTER TABLE sales ADD COLUMN period_type TEXT');
+            console.log('Successfully added period_type column to sales table');
+        }
+        catch (e) {
+            console.error('Error adding period_type column to sales table:', e);
+        }
+        return;
+    }
+    if (missingColumns.length > 0 || needsProductIDMigration) {
         console.log('Missing columns detected or sale_items table needs migration:', missingColumns);
         // Backup existing data if any
         let existingData = [];
@@ -435,6 +493,21 @@ function runMigrations() {
         // Recreate tables with new schema
         createSalesRelatedTables();
         console.log('Sales table recreated with new schema');
+    }
+    // Partners migration: ensure is_active column exists and backfill nulls as active
+    try {
+        const partnerInfo = db.prepare("PRAGMA table_info(partners)").all();
+        const hasIsActive = partnerInfo.some((col) => col.name === 'is_active');
+        if (!hasIsActive) {
+            db.exec('ALTER TABLE partners ADD COLUMN is_active BOOLEAN DEFAULT 1');
+            console.log('Successfully added is_active column to partners table');
+        }
+        // Backfill: activate legacy/inactive rows to avoid empty lists
+        db.exec('UPDATE partners SET is_active = 1 WHERE is_active IS NULL OR is_active = 0');
+        console.log('Backfilled partners.is_active for NULL or 0 values');
+    }
+    catch (e) {
+        console.error('Error migrating partners table (is_active backfill):', e);
     }
 }
 function createSalesRelatedTables() {
@@ -455,7 +528,8 @@ function createSalesRelatedTables() {
       total_amount DECIMAL(10,2) NOT NULL,
       payment_type TEXT CHECK(payment_type IN ('cash', 'installments', 'credit', 'mixed')) NOT NULL,
       payment_status TEXT CHECK(payment_status IN ('paid', 'partial', 'unpaid', 'overdue')) DEFAULT 'unpaid',
-      number_of_installments INTEGER,
++      period_type TEXT CHECK(period_type IN ('monthly', 'weekly', 'biweekly')),
+       number_of_installments INTEGER,
       installment_amount DECIMAL(10,2),
       advance_installments INTEGER DEFAULT 0,
       transaction_type TEXT CHECK(transaction_type IN ('sale', 'return', 'exchange', 'refund')) DEFAULT 'sale',

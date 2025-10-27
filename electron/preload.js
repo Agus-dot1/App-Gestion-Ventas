@@ -75,6 +75,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       create: (payment) => ipcRenderer.invoke('payments:create', payment),
       getOverdue: () => ipcRenderer.invoke('payments:getOverdue'),
       deleteAll: () => ipcRenderer.invoke('payments:deleteAll')
+    },
+    partners: {
+      getAll: () => ipcRenderer.invoke('partners:getAll'),
+      create: (partner) => ipcRenderer.invoke('partners:create', partner),
+      update: (id, partner) => ipcRenderer.invoke('partners:update', id, partner),
+      delete: (id) => ipcRenderer.invoke('partners:delete', id)
     }
   },
   // Cache management
@@ -96,18 +102,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     markRead: (id) => ipcRenderer.invoke('notifications:markRead', id),
     markUnread: (id) => ipcRenderer.invoke('notifications:markUnread', id),
     delete: (id) => ipcRenderer.invoke('notifications:delete', id),
-    // Nuevo: borrar por mensaje hoy
     deleteByMessageToday: (message) => ipcRenderer.invoke('notifications:deleteByMessageToday', message),
-    // Nuevo: borrar por clave hoy
     deleteByKeyToday: (key) => ipcRenderer.invoke('notifications:deleteByKeyToday', key),
-    // Nuevo: limpiar todas las notificaciones activas
     clearAll: () => ipcRenderer.invoke('notifications:clearAll'),
     create: (message, type, key) => ipcRenderer.invoke('notifications:create', message, type, key),
     existsTodayWithMessage: (message) => ipcRenderer.invoke('notifications:existsTodayWithMessage', message),
     existsTodayWithKey: (key) => ipcRenderer.invoke('notifications:existsTodayWithKey', key),
-    // Nuevo: listar archivadas
     listArchived: (limit) => ipcRenderer.invoke('notifications:listArchived', limit),
-    // Nuevo: vaciar archivadas
     purgeArchived: () => ipcRenderer.invoke('notifications:purgeArchived'),
     onEvent: (callback) => {
       const handler = (_event, payload) => callback(payload);

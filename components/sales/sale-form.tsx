@@ -33,8 +33,10 @@ interface SaleItem {
 export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [partners, setPartners] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     customer_id: 0,
+    partner_id: 0,
     payment_type: 'cash' as 'cash' | 'installments',
     payment_period: '1 to 10' as '1 to 10' | '20 to 30',
     period_type: 'monthly' as 'monthly' | 'weekly' | 'biweekly',
@@ -56,6 +58,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
     if (open && typeof window !== 'undefined' && window.electronAPI) {
       loadCustomers();
       loadProducts();
+      loadPartners();
     }
   }, [open]);
 
@@ -63,6 +66,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
     if (sale) {
       setFormData({
         customer_id: sale.customer_id,
+        partner_id: sale.partner_id || 0,
         payment_type: sale.payment_type,
         payment_period: sale.payment_period || '1 to 10',
         period_type: sale.period_type || 'monthly',
@@ -76,6 +80,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
     } else {
       setFormData({
         customer_id: 0,
+        partner_id: 0,
         payment_type: 'cash',
         payment_period: '1 to 10',
         period_type: 'monthly',
@@ -106,6 +111,16 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
       setProducts(activeProducts);
     } catch (error) {
       console.error('Error cargando productos:', error);
+    }
+  };
+
+  const loadPartners = async () => {
+    try {
+      if (!window.electronAPI) return;
+      const list = await window.electronAPI.database.partners.getAll();
+      setPartners(list || []);
+    } catch (error) {
+      console.error('Error cargando responsables:', error);
     }
   };
 
@@ -260,6 +275,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
       const payment_type = formData.payment_type;
       const saleData: SaleFormData = {
         customer_id: formData.customer_id,
+        partner_id: formData.partner_id || undefined,
         items: items.map(item => ({
           product_id: item.product_id,
           quantity: item.quantity,
@@ -269,6 +285,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         })),
         payment_type,
         payment_period: payment_type === 'installments' ? formData.payment_period : undefined,
+        period_type: payment_type === 'installments' ? formData.period_type : undefined,
         number_of_installments: payment_type === 'installments' ? formData.number_of_installments : undefined,
         advance_installments: payment_type === 'installments' ? formData.advance_installments : undefined,
         installment_payment_method: payment_type === 'installments' ? formData.installment_payment_method : undefined,
@@ -280,6 +297,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
 
       setFormData({
         customer_id: 0,
+        partner_id: 0,
         payment_type: 'cash',
         payment_period: '1 to 10',
         period_type: 'monthly',
@@ -355,6 +373,24 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                       </div>
                     )}
                   </div>
+                  <div className="col-span-2">
+                    <Label className="text-xs mb-1.5 block">Asignar</Label>
+                    <Select
+                      value={formData.partner_id ? String(formData.partner_id) : ''}
+                      onValueChange={(value: any) => setFormData(prev => ({ ...prev, partner_id: parseInt(value) || 0 }))}
+                    >
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Asigna esta venta" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {partners.map((p) => (
+                          <SelectItem key={p.id} value={String(p.id)}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
 
@@ -367,7 +403,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
 
                 <div className="grid grid-cols-4 gap-4">
                   <div>
-                    <Label className="text-xs mb-1.5 block">Método de pago</Label>
+                    <Label className="text-xs mb-1.5 block">Forma de pago</Label>
                     <Select
                       value={formData.payment_type}
                       onValueChange={(value: any) => setFormData(prev => ({ ...prev, payment_type: value }))}
@@ -413,6 +449,22 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                       </div>
 
                       <div>
+                        <Label className="text-xs mb-1.5 block">Tipo de periodo</Label>
+                        <Select
+                          value={formData.period_type}
+                          onValueChange={(value: any) => setFormData(prev => ({ ...prev, period_type: value }))}
+                        >
+                          <SelectTrigger className="h-10">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="monthly">Mensual</SelectItem>
+                            <SelectItem value="weekly">Semanal (1 y 15)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
                         <Label className="text-xs mb-1.5 block">Método de pago de cuotas</Label>
                         <Select
                           value={formData.installment_payment_method}
@@ -426,8 +478,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                             <SelectItem value="transfer">Transferencia</SelectItem>
                           </SelectContent>
                         </Select>
-                      </div>
-                    </>
+                      </div>                    </>
                   )}
                 </div>
               </div>

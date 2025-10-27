@@ -33,7 +33,8 @@ import {
   Eye,
   MoreHorizontal,
   Copy,
-  Package
+  Package,
+  MessageCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InstallmentForm } from '../installment-form';
@@ -53,6 +54,7 @@ interface CustomerWithInstallments extends Customer {
 interface InstallmentDashboardProps {
   highlightId?: string | null;
   onRefresh?: () => void;
+  partnerId?: number | null;
 }
 
 export interface InstallmentDashboardRef {
@@ -64,7 +66,7 @@ type SortBy = 'customer' | 'amount' | 'dueDate' | 'status';
 type PaymentWindow = '1 to 10' | '20 to 30';
 type WindowFilter = 'all' | PaymentWindow;
 
-export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, InstallmentDashboardProps>(({ highlightId, onRefresh }, ref) => {
+export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, InstallmentDashboardProps>(({ highlightId, onRefresh, partnerId }, ref) => {
   const [customers, setCustomers] = useState<CustomerWithInstallments[]>([]);
   const [expandedCustomers, setExpandedCustomers] = useState<Set<number>>(new Set());
   const [expandedSales, setExpandedSales] = useState<Set<number>>(new Set());
@@ -74,6 +76,7 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
   const [sortBy, setSortBy] = useState<SortBy>('customer');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [windowFilter, setWindowFilter] = useState<WindowFilter>('all');
+  const [periodFilter, setPeriodFilter] = useState<'all' | 'monthly' | 'weekly'>('all');
   const [selectedInstallment, setSelectedInstallment] = useState<Installment | null>(null);
   const [isInstallmentFormOpen, setIsInstallmentFormOpen] = useState(false);
   const [deleteCustomer, setDeleteCustomer] = useState<CustomerWithInstallments | null>(null);
@@ -90,7 +93,7 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
     if (isElectron) {
       loadInstallmentData();
     }
-  }, [isElectron]);
+  }, [isElectron, partnerId]);
 
   // Track whether we've already applied the highlight for the current deep link
   const highlightAppliedRef = useRef<string | null>(null);
@@ -143,10 +146,14 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
   const loadInstallmentData = async () => {
     setIsLoading(true);
     try {
-      const [allCustomers, allSales] = await Promise.all([
+      const [allCustomers, allSalesUnfiltered] = await Promise.all([
         window.electronAPI.database.customers.getAll(),
         window.electronAPI.database.sales.getAll()
       ]);
+
+      const allSales = partnerId
+        ? allSalesUnfiltered.filter(s => (s.partner_id || 0) === Number(partnerId))
+        : allSalesUnfiltered;
 
       const customersWithInstallments: CustomerWithInstallments[] = [];
 
@@ -499,15 +506,26 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
   const filteredAndSortedCustomers = useMemo(() => {
     let filtered = customers.filter(customer => {
       const matchesSearch = customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customer.phone?.toLowerCase().includes(searchTerm.toLowerCase());
+        customer.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        customer.secondary_phone?.toLowerCase().includes(searchTerm.toLowerCase());
 
       if (!matchesSearch) return false;
+
+      // Exclude customers with all installments paid
+      if (customer.installments.length > 0 && customer.installments.every(i => i.status === 'paid')) {
+        return false;
+      }
 
       // Filter by effective payment window if selected
       if (windowFilter !== 'all') {
         const effective = getEffectivePaymentWindow(customer);
         if (effective !== windowFilter) return false;
+      }
+
+      // Filter by period type (monthly/weekly)
+      if (periodFilter !== 'all') {
+        const hasPeriod = customer.sales.some(s => s.payment_type === 'installments' && s.period_type === periodFilter);
+        if (!hasPeriod) return false;
       }
 
       if (statusFilter === 'all') return true;
@@ -565,7 +583,7 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
     });
 
     return filtered;
-  }, [customers, searchTerm, statusFilter, sortBy, sortOrder, windowFilter]);
+  }, [customers, searchTerm, statusFilter, sortBy, sortOrder, windowFilter, periodFilter]);
 
   // Visual feedback helpers (client-only)
   const [clientDate, setClientDate] = useState<Date | null>(null);
@@ -796,6 +814,16 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                   <SelectItem value="20 to 30">Cobros del 20–30</SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={periodFilter} onValueChange={(value) => setPeriodFilter(value as 'all' | 'monthly' | 'weekly')}>
+                <SelectTrigger className="w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los periodos</SelectItem>
+                  <SelectItem value="monthly">Mensual</SelectItem>
+                  <SelectItem value="weekly">Semanal (1 y 15)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardHeader>
@@ -878,21 +906,7 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                                 )}
                               </div>
                               <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
-                                {customer.email && (
-                                  <div className="flex items-center gap-1">
-                                    <Mail className="h-3 w-3" />
-                                    {customer.email}
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-6 w-6 p-0"
-                                      onClick={(e) => { e.stopPropagation(); handleCopyValue(customer.email!, 'Email'); }}
-                                      title="Copiar email"
-                                    >
-                                      <Copy className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                )}
+
                                 {customer.phone && (
                                   <div className="flex items-center gap-1">
                                     <Phone className="h-3 w-3" />
@@ -905,6 +919,30 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                                       title="Copiar teléfono"
                                     >
                                       <Copy className="h-3 w-3" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 w-6 p-0"
+                                      onClick={(e) => { e.stopPropagation(); openWhatsApp(customer, customer.phone!); }}
+                                      title="Abrir WhatsApp"
+                                    >
+                                      <MessageCircle className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                )}
+                                {customer.secondary_phone && (
+                                  <div className="flex items-center gap-1">
+                                    <Phone className="h-3 w-3" />
+                                    {customer.secondary_phone}
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 w-6 p-0"
+                                      onClick={(e) => { e.stopPropagation(); openWhatsApp(customer, customer.secondary_phone!); }}
+                                      title="Abrir WhatsApp"
+                                    >
+                                      <MessageCircle className="h-3 w-3" />
                                     </Button>
                                   </div>
                                 )}
@@ -1238,3 +1276,50 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
 });
 
 InstallmentDashboard.displayName = 'InstallmentDashboard';
+
+
+const buildWhatsAppMessageForCustomer = (c: CustomerWithInstallments): string => {
+  const DEFAULT_CVU = '747382997471';
+  const normalize = (s: string) => String(s || '').trim();
+  const next = [...(c.installments || [])]
+    .filter(inst => inst.status !== 'paid')
+    .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
+  const formatAmt = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(n);
+  const amountStr = next ? formatAmt(typeof next.balance === 'number' ? next.balance : next.amount) : formatAmt(c.totalOwed || 0);
+
+  let dueLine: string | undefined;
+  if (next?.due_date) {
+    const dueMs = new Date(next.due_date).getTime();
+    const nowMs = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const days = Math.max(0, Math.floor(Math.abs(dueMs - nowMs) / dayMs));
+    const dueDateStr = new Date(next.due_date).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+    dueLine = (dueMs < nowMs)
+      ? `La cuota venció el ${dueDateStr} (hace ${days} días).`
+      : `La cuota vence el ${dueDateStr} (en ${days} días).`;
+  }
+
+  const greeting = c.name ? `Hola ${normalize(c.name)}, que tal?` : 'Hola, que tal?';
+  const lines = [
+    `${greeting}`,
+    'Te escribo para informarte sobre tu cuota.',
+    dueLine,
+    'Detalle:',
+    `• Importe de la cuota: ${amountStr}`,
+    `CVU para depósito: ${DEFAULT_CVU}`,
+    'Por favor, enviá el comprobante por este chat para acreditar el pago.',
+    'Gracias.',
+  ].filter(Boolean).join('\n');
+
+  return lines;
+};
+
+const openWhatsApp = (customer: CustomerWithInstallments, num: string) => {
+  const digits = (num || '').replace(/\D/g, '');
+  if (!digits) return;
+  const text = encodeURIComponent(buildWhatsAppMessageForCustomer(customer));
+  const url = `https://wa.me/+54${digits}?text=${text}`;
+  window.open(url, '_blank');
+};
+
+// WhatsApp helper moved above with customer context

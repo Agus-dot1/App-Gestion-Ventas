@@ -24,6 +24,7 @@ export interface Customer {
   dni?: string;
   email?: string;
   phone?: string;
+  secondary_phone?: string;
   address?: string;
   company?: string;
   notes?: string;
@@ -143,6 +144,7 @@ export interface SaleFormData {
     product_name?: string;
   }>;
   payment_type: 'cash' | 'installments' | 'credit';
+  period_type?: 'monthly' | 'weekly' | 'biweekly';
   payment_period?: '1 to 10' | '20 to 30';
   number_of_installments?: number;
   advance_installments?: number;
@@ -180,9 +182,10 @@ export const customerOperations = {
         email LIKE ? OR 
         company LIKE ? OR 
         tags LIKE ? OR
-        phone LIKE ?`;
+        phone LIKE ? OR
+        secondary_phone LIKE ?`;
       const searchPattern = `%${searchTerm.trim()}%`;
-      params = [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern];
+      params = [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern];
     }
 
     const countStmt = db.prepare(`SELECT COUNT(*) as total FROM customers ${whereClause}`);
@@ -219,7 +222,8 @@ export const customerOperations = {
         email LIKE ? OR 
         company LIKE ? OR 
         tags LIKE ? OR
-        phone LIKE ?
+        phone LIKE ? OR
+        secondary_phone LIKE ?
       ORDER BY 
         CASE 
           WHEN dni = ? THEN 1
@@ -238,7 +242,7 @@ export const customerOperations = {
     const exactMatch = searchTerm.trim();
     
     const rows = stmt.all(
-      searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
+      searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
       exactMatch, exactPattern, exactPattern, exactPattern, exactPattern,
       limit
     ) as Customer[];
@@ -258,14 +262,15 @@ export const customerOperations = {
   create: (customer: Omit<Customer, 'id' | 'created_at' | 'updated_at'>): number => {
     const db = getDatabase();
     const stmt = db.prepare(`
-      INSERT INTO customers (name, dni, email, phone, address, company, notes, tags, payment_window, contact_info) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO customers (name, dni, email, phone, secondary_phone, address, company, notes, tags, payment_window, contact_info) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const result = stmt.run(
       customer.name,
       customer.dni || null,
       customer.email || null,
       customer.phone || null,
+      customer.secondary_phone || null,
       customer.address || null,
       customer.company || null,
       customer.notes || null,
@@ -296,6 +301,10 @@ export const customerOperations = {
     if (customer.phone !== undefined) {
       fields.push('phone = ?');
       values.push(customer.phone);
+    }
+    if (customer.secondary_phone !== undefined) {
+      fields.push('secondary_phone = ?');
+      values.push(customer.secondary_phone);
     }
     if (customer.address !== undefined) {
       fields.push('address = ?');
@@ -415,6 +424,7 @@ export const customerOperations = {
         dni: customer.dni,
         email: customer.email,
         phone: customer.phone,
+        secondary_phone: customer.secondary_phone,
         address: customer.address,
         company: customer.company,
         notes: customer.notes,
@@ -426,9 +436,9 @@ export const customerOperations = {
 
     const stmt = db.prepare(`
       INSERT INTO customers (
-        id, name, dni, email, phone, address, company, notes, tags, contact_info, payment_window,
+        id, name, dni, email, phone, secondary_phone, address, company, notes, tags, contact_info, payment_window,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
     `);
     const result = stmt.run(
       customer.id,
@@ -436,6 +446,7 @@ export const customerOperations = {
       customer.dni || null,
       customer.email || null,
       customer.phone || null,
+      customer.secondary_phone || null,
       customer.address || null,
       customer.company || null,
       customer.notes || null,
@@ -682,6 +693,16 @@ export const productOperations = {
 export const partnerOperations = {
   getAll: (): Partner[] => {
     const db = getDatabase();
+    // diagnóstico: listar conteo y muestra de partners
+    try {
+      const rows = db.prepare('SELECT id, name, is_active FROM partners ORDER BY name').all() as Array<{ id: number; name: string; is_active: number }>;
+      console.log('partners:getAll ejecutándose en el proceso', process.type, 'count:', rows.length);
+      if (rows.length > 0) {
+        console.log('partners sample:', rows.slice(0, Math.min(rows.length, 5)));
+      }
+    } catch (e) {
+      console.error('partners:getAll error inspeccionando tabla:', e);
+    }
     return db.prepare('SELECT * FROM partners WHERE is_active = 1 ORDER BY name').all() as Partner[];
   },
 
@@ -960,10 +981,10 @@ export const saleOperations = {
     const saleStmt = db.prepare(`
       INSERT INTO sales (
         customer_id, partner_id, sale_number, date, due_date, subtotal, tax_amount,
-        discount_amount, total_amount, payment_type, payment_status,
+        discount_amount, total_amount, payment_type, payment_status, period_type,
         number_of_installments, installment_amount, advance_installments,
         transaction_type, status, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
     const installmentAmount = saleData.payment_type === 'installments' && saleData.number_of_installments
@@ -982,6 +1003,7 @@ export const saleOperations = {
       totalAmount,
       saleData.payment_type,
       saleData.payment_type === 'cash' ? 'paid' : 'unpaid',
+      saleData.period_type || null,
       saleData.number_of_installments || null,
       installmentAmount,
       saleData.advance_installments || 0, // advance_installments
@@ -1192,10 +1214,10 @@ export const saleOperations = {
     const saleStmt = db.prepare(`
       INSERT INTO sales (
         customer_id, sale_number, date, due_date, subtotal, tax_amount,
-        discount_amount, total_amount, payment_type, payment_status,
+        discount_amount, total_amount, payment_type, payment_status, period_type,
         number_of_installments, installment_amount, advance_installments,
         transaction_type, status, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const saleResult = saleStmt.run(
@@ -1209,6 +1231,7 @@ export const saleOperations = {
       totalAmount,
       paymentType,
       paymentStatus,
+      sale.period_type || null,
       numberOfInstallments,
       installmentAmount,
       advanceInstallments,

@@ -16,7 +16,7 @@ interface CustomerFormState {
   name: string;
   dni: string;
   phone: string;
-  email: string;
+  secondary_phone: string;
   address: string;
   notes: string;
   tags: string;
@@ -35,7 +35,7 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
     name: customer?.name || '',
     dni: customer?.dni || '',
     phone: customer?.phone || '',
-    email: customer?.email || '',
+    secondary_phone: customer?.secondary_phone || '',
     address: customer?.address || '',
     notes: customer?.notes || '',
     tags: customer?.tags || '',
@@ -51,7 +51,7 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
         name: customer.name || '',
         dni: customer.dni || '',
         phone: customer.phone || '',
-        email: customer.email || '',
+        secondary_phone: customer.secondary_phone || '',
         address: customer.address || '',
         notes: customer.notes || '',
         tags: customer.tags || '',
@@ -62,7 +62,7 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
         name: '',
         dni: '',
         phone: '',
-        email: '',
+        secondary_phone: '',
         address: '',  
         notes: '',
         tags: '',
@@ -97,8 +97,8 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
     if (formData.phone.trim()) {
       contactParts.push(`Teléfono: ${formData.phone.trim()}`);
     }
-    if (formData.email.trim()) {
-      contactParts.push(`Email: ${formData.email.trim()}`);
+    if (formData.secondary_phone.trim()) {
+      contactParts.push(`Teléfono secundario: ${formData.secondary_phone.trim()}`);
     }
     if (formData.address.trim()) {
       contactParts.push(`Dirección: ${formData.address.trim()}`);
@@ -120,8 +120,8 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
       await onSave({
         name: formData.name.trim(),
         dni: formData.dni.trim() || undefined,
-        email: formData.email.trim() || undefined,
         phone: formData.phone.trim() || undefined,
+        secondary_phone: formData.secondary_phone.trim() || undefined,
         address: formData.address.trim() || undefined,
         notes: formData.notes.trim() || undefined,
         tags: formData.tags.trim() || undefined,
@@ -134,7 +134,7 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
         name: '',
         dni: '',
         phone: '',
-        email: '',
+        secondary_phone: '',
         address: '',
         notes: '',
         tags: '',
@@ -246,17 +246,17 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
                   </div>
                 </div>
 
-                {/* Email */}
+                {/* Secondary Phone */}
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="secondary_phone">Telefono secundario</Label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                      id="email"
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => handleInputChange('email', e.target.value)}
-                      placeholder="cliente@ejemplo.com"
+                      id="secondary_phone"
+                      type="tel"
+                      value={formData.secondary_phone}
+                      onChange={(e) => handleInputChange('secondary_phone', e.target.value)}
+                      placeholder="(555) 987-6543"
                       className="pl-10"
                     />
                   </div>
@@ -292,26 +292,6 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
                       className="pl-10"
                     />
                   </div>
-                </div>
-
-                {/* Payment Window */}
-                <div className="space-y-2">
-                  <Label htmlFor="payment_window">Ventana de pago</Label>
-                  <Select
-                    value={formData.payment_window ?? ''}
-                    onValueChange={(value) => handlePaymentWindowChange(value as PaymentWindow)}
-                  >
-                    <SelectTrigger id="payment_window">
-                      <SelectValue placeholder="Selecciona una ventana" />
-                    </SelectTrigger>
-                    <SelectContent>
-        <SelectItem value="1 to 10">1 al 10</SelectItem>
-        <SelectItem value="20 to 30">20 al 30</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Define el rango de días del mes en el que suele pagar.
-                  </p>
                 </div>
 
                 {/* Notes */}

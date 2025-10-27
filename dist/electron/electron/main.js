@@ -102,6 +102,11 @@ function setupIpcHandlers() {
     electron_1.ipcMain.handle('products:getCount', () => database_operations_1.productOperations.getCount());
     electron_1.ipcMain.handle('products:getMonthlyComparison', () => database_operations_1.productOperations.getMonthlyComparison());
     electron_1.ipcMain.handle('products:deleteAll', () => database_operations_1.productOperations.deleteAll());
+    // Partner operations
+    electron_1.ipcMain.handle('partners:getAll', () => database_operations_1.partnerOperations.getAll());
+    electron_1.ipcMain.handle('partners:create', (_e, partner) => database_operations_1.partnerOperations.create(partner));
+    electron_1.ipcMain.handle('partners:update', (_e, id, partner) => database_operations_1.partnerOperations.update(id, partner));
+    electron_1.ipcMain.handle('partners:delete', (_e, id) => database_operations_1.partnerOperations.delete(id));
     // Sale operations
     electron_1.ipcMain.handle('sales:getAll', () => database_operations_1.saleOperations.getAll());
     electron_1.ipcMain.handle('sales:getPaginated', (_, page, pageSize, searchTerm) => database_operations_1.saleOperations.getPaginated(page, pageSize, searchTerm));

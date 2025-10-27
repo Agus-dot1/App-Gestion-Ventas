@@ -42,9 +42,10 @@ exports.customerOperations = {
         email LIKE ? OR 
         company LIKE ? OR 
         tags LIKE ? OR
-        phone LIKE ?`;
+        phone LIKE ? OR
+        secondary_phone LIKE ?`;
             const searchPattern = `%${searchTerm.trim()}%`;
-            params = [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern];
+            params = [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern];
         }
         const countStmt = db.prepare(`SELECT COUNT(*) as total FROM customers ${whereClause}`);
         const { total } = countStmt.get(...params);
@@ -76,7 +77,8 @@ exports.customerOperations = {
         email LIKE ? OR 
         company LIKE ? OR 
         tags LIKE ? OR
-        phone LIKE ?
+        phone LIKE ? OR
+        secondary_phone LIKE ?
       ORDER BY 
         CASE 
           WHEN dni = ? THEN 1
@@ -92,7 +94,7 @@ exports.customerOperations = {
         const searchPattern = `%${searchTerm.trim()}%`;
         const exactPattern = `${searchTerm.trim()}%`;
         const exactMatch = searchTerm.trim();
-        const rows = stmt.all(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, exactMatch, exactPattern, exactPattern, exactPattern, exactPattern, limit);
+        const rows = stmt.all(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, exactMatch, exactPattern, exactPattern, exactPattern, exactPattern, limit);
         return rows.map(normalizeCustomer);
     },
     getById: (id) => {
@@ -107,10 +109,10 @@ exports.customerOperations = {
     create: (customer) => {
         const db = (0, database_1.getDatabase)();
         const stmt = db.prepare(`
-      INSERT INTO customers (name, dni, email, phone, address, company, notes, tags, payment_window, contact_info) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO customers (name, dni, email, phone, secondary_phone, address, company, notes, tags, payment_window, contact_info) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-        const result = stmt.run(customer.name, customer.dni || null, customer.email || null, customer.phone || null, customer.address || null, customer.company || null, customer.notes || null, customer.tags || null, normalizePaymentWindow(customer.payment_window) || null, customer.contact_info || null);
+        const result = stmt.run(customer.name, customer.dni || null, customer.email || null, customer.phone || null, customer.secondary_phone || null, customer.address || null, customer.company || null, customer.notes || null, customer.tags || null, normalizePaymentWindow(customer.payment_window) || null, customer.contact_info || null);
         return result.lastInsertRowid;
     },
     update: (id, customer) => {
@@ -132,6 +134,10 @@ exports.customerOperations = {
         if (customer.phone !== undefined) {
             fields.push('phone = ?');
             values.push(customer.phone);
+        }
+        if (customer.secondary_phone !== undefined) {
+            fields.push('secondary_phone = ?');
+            values.push(customer.secondary_phone);
         }
         if (customer.address !== undefined) {
             fields.push('address = ?');
@@ -241,6 +247,7 @@ exports.customerOperations = {
                 dni: customer.dni,
                 email: customer.email,
                 phone: customer.phone,
+                secondary_phone: customer.secondary_phone,
                 address: customer.address,
                 company: customer.company,
                 notes: customer.notes,
@@ -251,11 +258,11 @@ exports.customerOperations = {
         }
         const stmt = db.prepare(`
       INSERT INTO customers (
-        id, name, dni, email, phone, address, company, notes, tags, contact_info, payment_window,
+        id, name, dni, email, phone, secondary_phone, address, company, notes, tags, contact_info, payment_window,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
     `);
-        const result = stmt.run(customer.id, customer.name, customer.dni || null, customer.email || null, customer.phone || null, customer.address || null, customer.company || null, customer.notes || null, customer.tags || null, customer.contact_info || null, normalizePaymentWindow(customer.payment_window) || null, customer.created_at || null, customer.updated_at || null);
+        const result = stmt.run(customer.id, customer.name, customer.dni || null, customer.email || null, customer.phone || null, customer.secondary_phone || null, customer.address || null, customer.company || null, customer.notes || null, customer.tags || null, customer.contact_info || null, normalizePaymentWindow(customer.payment_window) || null, customer.created_at || null, customer.updated_at || null);
         return result.lastInsertRowid;
     }
 };
@@ -436,6 +443,17 @@ exports.productOperations = {
 exports.partnerOperations = {
     getAll: () => {
         const db = (0, database_1.getDatabase)();
+        // diagnóstico: listar conteo y muestra de partners
+        try {
+            const rows = db.prepare('SELECT id, name, is_active FROM partners ORDER BY name').all();
+            console.log('partners:getAll ejecutándose en el proceso', process.type, 'count:', rows.length);
+            if (rows.length > 0) {
+                console.log('partners sample:', rows.slice(0, Math.min(rows.length, 5)));
+            }
+        }
+        catch (e) {
+            console.error('partners:getAll error inspeccionando tabla:', e);
+        }
         return db.prepare('SELECT * FROM partners WHERE is_active = 1 ORDER BY name').all();
     },
     getById: (id) => {
@@ -663,16 +681,16 @@ exports.saleOperations = {
         const saleStmt = db.prepare(`
       INSERT INTO sales (
         customer_id, partner_id, sale_number, date, due_date, subtotal, tax_amount,
-        discount_amount, total_amount, payment_type, payment_status,
+        discount_amount, total_amount, payment_type, payment_status, period_type,
         number_of_installments, installment_amount, advance_installments,
         transaction_type, status, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
         const installmentAmount = saleData.payment_type === 'installments' && saleData.number_of_installments
             ? Math.round(totalAmount / saleData.number_of_installments)
             : null;
         const saleResult = saleStmt.run(saleData.customer_id, saleData.partner_id || null, saleNumber, new Date().toISOString(), null, // due_date
-        subtotal, saleData.tax_amount || 0, saleData.discount_amount || 0, totalAmount, saleData.payment_type, saleData.payment_type === 'cash' ? 'paid' : 'unpaid', saleData.number_of_installments || null, installmentAmount, saleData.advance_installments || 0, // advance_installments
+        subtotal, saleData.tax_amount || 0, saleData.discount_amount || 0, totalAmount, saleData.payment_type, saleData.payment_type === 'cash' ? 'paid' : 'unpaid', saleData.period_type || null, saleData.number_of_installments || null, installmentAmount, saleData.advance_installments || 0, // advance_installments
         'sale', 'completed', saleData.notes || null);
         const saleId = saleResult.lastInsertRowid;
         // Insert sale items
@@ -824,12 +842,12 @@ exports.saleOperations = {
         const saleStmt = db.prepare(`
       INSERT INTO sales (
         customer_id, sale_number, date, due_date, subtotal, tax_amount,
-        discount_amount, total_amount, payment_type, payment_status,
+        discount_amount, total_amount, payment_type, payment_status, period_type,
         number_of_installments, installment_amount, advance_installments,
         transaction_type, status, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-        const saleResult = saleStmt.run(sale.customer_id, saleNumber, date, sale.due_date || null, subtotal, taxAmount, discountAmount, totalAmount, paymentType, paymentStatus, numberOfInstallments, installmentAmount, advanceInstallments, transactionType, status, notes);
+        const saleResult = saleStmt.run(sale.customer_id, saleNumber, date, sale.due_date || null, subtotal, taxAmount, discountAmount, totalAmount, paymentType, paymentStatus, sale.period_type || null, numberOfInstallments, installmentAmount, advanceInstallments, transactionType, status, notes);
         const saleId = saleResult.lastInsertRowid;
         // Insert sale items if provided in backup
         if (sale.items && Array.isArray(sale.items) && sale.items.length > 0) {

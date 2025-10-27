@@ -292,6 +292,25 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
 
               <Card 
                 className="cursor-pointer hover:bg-muted/50 transition-colors "
+                onClick={() => customer.secondary_phone && copyToClipboard(customer.secondary_phone, 'secondary_phone')}
+              >
+        {/* Sonner Toaster is mounted globally in app/layout.tsx */}
+                <CardContent className="pt-6">
+                  <div className="flex items-center space-x-2">
+                    <Phone className="h-4 w-4" />
+                    <span className="text-sm font-medium">Teléfono secundario</span>
+                    {copiedField === 'secondary_phone' && (
+                      <span className="text-xs text-green-600 font-medium">¡Copiado!</span>
+                    )}
+                  </div>
+                  <p className="mt-2 text-sm">
+                    {customer.secondary_phone || 'No especificado'}
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card 
+                className="cursor-pointer hover:bg-muted/50 transition-colors "
                 onClick={() => customer.phone && copyToClipboard(customer.phone, 'phone')}
               >
                 <CardContent className="pt-6">
