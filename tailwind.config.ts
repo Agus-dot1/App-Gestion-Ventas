@@ -76,28 +76,60 @@ const config: Config = {
   				ring: 'hsl(var(--sidebar-ring))'
   			}
   		},
-  		keyframes: {
-  			'accordion-down': {
-  				from: {
-  					height: '0'
-  				},
-  				to: {
-  					height: 'var(--radix-accordion-content-height)'
-  				}
+      keyframes: {
+        'collapsible-down': {
+          from: { height: '0' },
+          to: { height: 'var(--radix-collapsible-content-height)' }
+        },
+        'collapsible-up': {
+          from: { height: 'var(--radix-collapsible-content-height)' },
+          to: { height: '0' }
+        },
+        'accordion-down': {
+          from: {
+            height: '0'
+          },
+          to: {
+            height: 'var(--radix-accordion-content-height)'
+          }
+        },
+        'accordion-up': {
+          from: {
+            height: 'var(--radix-accordion-content-height)'
+          },
+          to: {
+            height: '0'
+          }
+        },
+  			// Custom animations for notifications bell UI
+  			'ring': {
+  				'0%, 100%': { transform: 'rotate(0deg)' },
+  				'15%': { transform: 'rotate(15deg)' },
+  				'30%': { transform: 'rotate(-10deg)' },
+  				'45%': { transform: 'rotate(5deg)' },
+  				'60%': { transform: 'rotate(-2deg)' },
+  				'75%': { transform: 'rotate(1deg)' }
   			},
-  			'accordion-up': {
-  				from: {
-  					height: 'var(--radix-accordion-content-height)'
-  				},
-  				to: {
-  					height: '0'
-  				}
+  			'pop': {
+  				'0%': { transform: 'scale(0.92)', opacity: '0' },
+  				'60%': { transform: 'scale(1.06)', opacity: '1' },
+  				'100%': { transform: 'scale(1)', opacity: '1' }
+  			},
+  			'badge-pop': {
+  				'0%': { transform: 'scale(0.85)', opacity: '0.8' },
+  				'50%': { transform: 'scale(1.15)', opacity: '1' },
+  				'100%': { transform: 'scale(1)', opacity: '1' }
   			}
   		},
-  		animation: {
-  			'accordion-down': 'accordion-down 0.2s ease-out',
-  			'accordion-up': 'accordion-up 0.2s ease-out'
-  		}
+      animation: {
+        'collapsible-down': 'collapsible-down 0.2s cubic-bezier(0.22, 1, 0.36, 1)',
+        'collapsible-up': 'collapsible-up 0.2s cubic-bezier(0.22, 1, 0.36, 1)',
+        'accordion-down': 'accordion-down 0.2s ease-out',
+        'accordion-up': 'accordion-up 0.2s ease-out',
+        'ring': 'ring 0.6s ease-in-out',
+        'pop': 'pop 300ms ease-out',
+        'badge-pop': 'badge-pop 600ms ease-out'
+      }
   	}
   },
   plugins: [require('tailwindcss-animate')],

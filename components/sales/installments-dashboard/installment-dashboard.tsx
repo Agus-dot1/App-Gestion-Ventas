@@ -61,7 +61,7 @@ export interface InstallmentDashboardRef {
   refreshData: () => Promise<void>;
 }
 
-type StatusFilter = 'all' | 'pending' | 'paid' | 'overdue' | 'partial';
+  type StatusFilter = 'all' | 'pending' | 'paid' | 'overdue';
 type SortBy = 'customer' | 'amount' | 'dueDate' | 'status';
 type PaymentWindow = '1 to 10' | '20 to 30';
 type WindowFilter = 'all' | PaymentWindow;
@@ -305,10 +305,10 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                 // Calculate the new status and balance after reverting the payment
                 const newPaidAmount = inst.paid_amount - latestPayment.amount;
                 const newBalance = inst.amount - newPaidAmount;
-                let newStatus: 'pending' | 'partial' | 'paid' = 'pending';
+                let newStatus: 'pending' | 'paid' = 'pending';
 
                 if (newPaidAmount > 0 && newBalance > 0) {
-                  newStatus = 'partial';
+                  newStatus = 'pending';
                 } else if (newBalance <= 0) {
                   newStatus = 'paid';
                 }
@@ -540,8 +540,6 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
             return installment.status === 'paid';
           case 'overdue':
             return isOverdue || installment.status === 'overdue';
-          case 'partial':
-            return installment.status === 'partial';
           default:
             return true;
         }
@@ -639,8 +637,6 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
       return <Badge className="bg-green-100 text-green-800">Pagada</Badge>;
     } else if (isOverdue || installment.status === 'overdue') {
       return <Badge className="bg-red-100 text-red-800">Vencida</Badge>;
-    } else if (installment.status === 'partial') {
-      return <Badge className="bg-yellow-100 text-yellow-800">Parcial</Badge>;
     } else {
       return <Badge className="bg-blue-100 text-blue-800">Pendiente</Badge>;
     }
@@ -782,14 +778,13 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                 />
               </div>
               <Select value={statusFilter} onValueChange={(value: StatusFilter) => setStatusFilter(value)}>
-                <SelectTrigger className="w-40">
+                <SelectTrigger className="w-52">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos los estados</SelectItem>
                   <SelectItem value="pending">Pendientes</SelectItem>
                   <SelectItem value="overdue">Vencidas</SelectItem>
-                  <SelectItem value="partial">Parciales</SelectItem>
                   <SelectItem value="paid">Pagadas</SelectItem>
                 </SelectContent>
               </Select>
@@ -810,8 +805,8 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todas las ventanas</SelectItem>
-                  <SelectItem value="1 to 10">Cobros del 1–10</SelectItem>
-                  <SelectItem value="20 to 30">Cobros del 20–30</SelectItem>
+                  <SelectItem value="1 to 10">Cobros del 1-10</SelectItem>
+                  <SelectItem value="20 to 30">Cobros del 20-30</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={periodFilter} onValueChange={(value) => setPeriodFilter(value as 'all' | 'monthly' | 'weekly')}>

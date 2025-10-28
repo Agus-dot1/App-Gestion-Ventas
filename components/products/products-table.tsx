@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -9,8 +9,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Search, MoreHorizontal, Edit, Trash2, Eye, EyeOff, Package, Download, FileText, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import type { Product } from '@/lib/database-operations';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -125,6 +123,46 @@ export function ProductsTable({
     return sorted;
   })();
 
+  // Persist preferences in localStorage
+  const PRODUCTS_PERSIST_KEY = 'productsTablePrefs';
+
+  // Load persisted preferences on mount
+  useEffect(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem(PRODUCTS_PERSIST_KEY) : null;
+      if (raw) {
+        const prefs = JSON.parse(raw);
+        if (prefs?.columnVisibility) {
+          setColumnVisibility(prev => ({ ...prev, ...prefs.columnVisibility }));
+        }
+        if (prefs?.sortConfig) {
+          setSortConfig(prev => ({ ...prev, ...prefs.sortConfig }));
+        }
+        if (!serverSidePagination && typeof prefs?.searchTerm === 'string') {
+          setInternalSearchTerm(prefs.searchTerm);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load products table prefs:', e);
+    }
+  }, [serverSidePagination]);
+
+  // Persist preferences when they change
+  useEffect(() => {
+    try {
+      const prefs = {
+        columnVisibility,
+        sortConfig,
+        searchTerm: serverSidePagination ? undefined : internalSearchTerm,
+      };
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(PRODUCTS_PERSIST_KEY, JSON.stringify(prefs));
+      }
+    } catch (e) {
+      console.warn('Failed to save products table prefs:', e);
+    }
+  }, [columnVisibility, sortConfig, internalSearchTerm, serverSidePagination]);
+
   // Pagination (10 items per page)
   const PAGE_SIZE = 10;
   const currentPage = serverSidePagination ? (externalCurrentPage || 1) : internalCurrentPage;
@@ -184,7 +222,6 @@ export function ProductsTable({
       newSelected.add(productId);
     } else {
       newSelected.delete(productId);
-      setSelectAll(false);
     }
     setSelectedProducts(newSelected);
     
@@ -194,8 +231,10 @@ export function ProductsTable({
     }
   };
 
-  const exportSelectedProducts = () => {
+  const exportSelectedProducts = async () => {
     const selectedProductsData = products.filter(p => selectedProducts.has(p.id!));
+    const { default: jsPDF } = await import('jspdf');
+    const autoTable = (await import('jspdf-autotable')).default;
     const doc = new jsPDF();
     doc.setFontSize(20);
     doc.text('Productos Seleccionados', 14, 22);
@@ -219,6 +258,10 @@ export function ProductsTable({
     });
     doc.save(`productos_seleccionados_${new Date().toISOString().split('T')[0]}.pdf`);
   };
+
+  // Derive "select all" state from current selection vs filtered dataset,
+  // so it stays accurate across pagination and filtering changes.
+  const isAllSelected = filteredProducts.length > 0 && selectedProducts.size === filteredProducts.length;
 
 
   // No additional filters; search bar only.
@@ -344,7 +387,7 @@ export function ProductsTable({
                   <TableRow>
                     <TableHead className="w-[50px]">
                       <Checkbox
-                        checked={selectAll}
+                        checked={isAllSelected}
                         onCheckedChange={handleSelectAll}
                         aria-label="Seleccionar todos los productos"
                         disabled={isLoading}

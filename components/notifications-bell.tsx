@@ -16,33 +16,6 @@ import { notificationsAdapter } from '@/notifications/renderer/adapter';
 import { useToast } from '@/hooks/use-toast';
 import type { NotificationItem } from '@/notifications/types'
 
-interface LegacyNotificationItem {
-  id?: number;
-  message: string;
-  type: 'attention' | 'alert' | 'info';
-  read_at?: string | null;
-  created_at: string;
-  meta?: {
-    category?: 'client' | 'system' | 'stock';
-    customerName?: string;
-    systemStatus?: string;
-    stockStatus?: string;
-    due_at?: string;
-    duration_ms?: number;
-    amount?: number;
-    actionLabel?: string;
-    customer?: string;
-    customerCount?: number;
-    customerPhone?: string; // número del cliente para WhatsApp
-    message_key?: string; // clave semántica para supresión/borrado por día
-    productId?: number; // id del producto para navegación desde notificación de stock
-    productName?: string;
-    productPrice?: number;
-    productCategory?: string;
-    currentStock?: number;
-  };
-}
-
 export function NotificationsBell() {
   const router = useRouter();
   const { toast } = useToast();
@@ -80,6 +53,24 @@ export function NotificationsBell() {
       window.localStorage.setItem('notifications:visibleTypes', JSON.stringify(visibleTypes));
     } catch {}
   }, [visibleTypes]);
+  
+  
+  function formatTitle(message: string, meta?: NotificationItem['meta']) {
+      const key = meta?.message_key ?? '';
+      if (key.startsWith('overdue|')) return 'Cuota vencida';
+    if (key.startsWith('upcoming|')) return 'Cuota próxima a vencer';
+    if (meta?.category === 'stock') {
+      if (meta?.productName) return `Producto ${meta.productName}`;
+      // Intento de fallback: extraer nombre desde el mensaje "Stock bajo: Nombre — ..."
+      const firstPart = message?.split(' — ')[0] ?? '';
+      const name = firstPart.replace(/^Stock bajo:\s*/i, '').trim();
+      return name ? `Producto ${name}` : 'Stock';
+    }
+    if (meta?.category === 'system') return 'Sistema';
+    // Fallback: toma solo la primera parte antes de " — "
+    const simplified = message?.split(' — ')[0] ?? message;
+    return simplified || message;
+  }
 
   // Lazy rendering: increase rendered items on scroll near bottom
   useEffect(() => {
@@ -169,86 +160,6 @@ export function NotificationsBell() {
     return () => clearTimeout(id);
   }, [open, activeTab, notifications.length, archived.length, scrollToBottom]);
 
-  // Helper: build the 3 sample notifications
-  const sampleNotifications = (now: number): NotificationItem[] => [
-    {
-      id: now - 5 * 24 * 60 * 60 * 1000,
-      message: 'Backup de la base de datos creada',
-      type: 'info',
-      created_at: new Date(now - 5 * 24 * 60 * 60 * 1000).toISOString(),
-      meta: {
-        category: 'system',
-        systemStatus: 'realizado correctamente',
-        duration_ms: 1.2,
-        actionLabel: 'Revisar',
-      },
-    },
-    {
-      id: now - 3 * 24 * 60 * 60 * 1000,
-      message: 'Cuota próxima a vencer 25/10',
-      type: 'attention',
-      created_at: new Date(now - 3 * 24 * 60 * 60 * 1000).toISOString(),
-      meta: {
-        category: 'client',
-        customerName: 'Ulises Godoy',
-        due_at: new Date(now + 3 * 24 * 60 * 60 * 1000).toISOString(),
-        amount: 20000,
-        actionLabel: 'Revisar',
-      },
-    },
-    {
-      id: now - 12 * 60 * 60 * 1000,
-      message: 'Cuota vencida hoy',
-      type: 'alert',
-      created_at: new Date(now - 12 * 60 * 60 * 1000).toISOString(),
-      meta: {
-        category: 'client',
-        customerName: 'Agustín de Oliveira',
-        due_at: new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString(),
-        amount: 20000,
-        actionLabel: 'Notificar cliente',
-      },
-    },
-  ];
-
-
-  const buildPaymentWindowStartNotification = useCallback(async (): Promise<NotificationItem | null> => {
-    try {
-      const allCustomers = await (window.electronAPI?.database?.customers?.getAll?.() ?? Promise.resolve([]));
-      const customers110 = Array.isArray(allCustomers)
-        ? allCustomers.filter((c: any) => c?.payment_window === '1 to 10')
-        : [];
-      const count = customers110.length;
-      const representativeCustomer = customers110[0] || allCustomers[0] || {};
-      const representative = representativeCustomer?.name || 'Cliente';
-
-      const now = new Date();
-      const next10th = new Date(now);
-      if (now.getDate() > 10) {
-        next10th.setMonth(now.getMonth() + 1);
-      }
-      next10th.setDate(10);
-      next10th.setHours(9, 0, 0, 0);
-
-      const notification: NotificationItem = {
-        id: Date.now(),
-        message: `Periodo de pago día 1 al 10 comenzado`,
-        type: 'attention',
-        created_at: new Date().toISOString(),
-        meta: {
-          category: 'client',
-          customerName: representative,
-          customerCount: count,
-          customerPhone: representativeCustomer?.phone,
-          due_at: next10th.toISOString(),
-          actionLabel: 'Revisar',
-        },
-      };
-      return notification;
-    } catch {
-      return null;
-    }
-  }, []);
 
   const DEFAULT_CVU = '747382997471';
 
@@ -333,7 +244,7 @@ export function NotificationsBell() {
         <Button
           variant="ghost"
           size="sm"
-          className={cn("h-8 text-muted-foreground hover:bg-[#3C3C3C]", isRead ? "text-muted-foreground font-medium hover:bg-transparent" : "font-semibold")}
+          className={cn("h-8 text-muted-foreground hover:bg-[#3C3C3C] transition-transform active:scale-95", isRead ? "text-muted-foreground font-medium hover:bg-transparent" : "font-semibold")}
           title={isRead ? "Marcar no leída" : "Marcar leído"}
           onClick={(e) => { e.preventDefault(); toggleNotificationRead(n.id, isRead); }}
         >
@@ -342,7 +253,7 @@ export function NotificationsBell() {
         <Button
           variant="ghost"
           size="sm"
-          className={cn("h-8 text-muted-foreground hover:bg-[#3C3C3C]", isRead ? "text-muted-foreground font-medium hover:bg-transparent" : "font-semibold")}
+          className={cn("h-8 text-muted-foreground hover:bg-[#3C3C3C] transition-transform active:scale-95", isRead ? "text-muted-foreground font-medium hover:bg-transparent" : "font-semibold")}
           title="Archivar"
           onClick={(e) => { e.preventDefault(); archiveNotification(n.id); }}
         >
@@ -359,7 +270,7 @@ export function NotificationsBell() {
           <Button
             variant="ghost"
             size="sm"
-            className={cn("h-8 text-muted-foreground hover:bg-[#3C3C3C]", isRead ? "text-muted-foreground font-medium hover:bg-transparent" : "font-semibold")}
+            className={cn("h-8 text-muted-foreground hover:bg-[#3C3C3C] transition-transform active:scale-95", isRead ? "text-muted-foreground font-medium hover:bg-transparent" : "font-semibold")}
             onClick={(e) => { e.preventDefault(); router.push(pid ? `/products?highlight=${pid}` : '/products'); }}
             title="Revisar producto"
           >
@@ -377,7 +288,7 @@ export function NotificationsBell() {
           <Button
             variant="ghost"
             size="sm"
-            className={cn("h-8 text-muted-foreground hover:bg-[#3C3C3C]", isRead ? "text-muted-foreground font-medium hover:bg-transparent" : "font-semibold")}
+            className={cn("h-8 text-muted-foreground hover:bg-[#3C3C3C] transition-transform active:scale-95", isRead ? "text-muted-foreground font-medium hover:bg-transparent" : "font-semibold")}
             onClick={(e) => { e.preventDefault(); router.push('/sales?tab=installments'); }}
           >
             Revisar
@@ -385,7 +296,7 @@ export function NotificationsBell() {
           <Button
             variant="ghost"
             size="sm"
-            className={cn("h-8 text-muted-foreground hover:bg-[#3C3C3C]", isRead ? "text-muted-foreground font-medium hover:bg-transparent" : "font-semibold")}
+            className={cn("h-8 text-muted-foreground hover:bg-[#3C3C3C] transition-transform active:scale-95", isRead ? "text-muted-foreground font-medium hover:bg-transparent" : "font-semibold")}
             onClick={(e) => { e.preventDefault(); openWhatsAppForCustomer(m); }}
           >
             Notificar cliente
@@ -421,20 +332,6 @@ export function NotificationsBell() {
     return undefined;
   };
 
-  const resetToSamples = useCallback(async () => {
-    try {
-      // Ensure demo mode is OFF and any prior seed flags are cleared
-      window.localStorage.removeItem('notifications:samplesOnly');
-      window.localStorage.removeItem('notifications:seed:init');
-      window.localStorage.removeItem('notifications:snoozeUntil');
-    } catch {}
-
-    // Reload persisted notifications from backend and apply suppression filters
-    try {
-      const refreshed = await loadPersisted(50);
-      setNotifications(filterSuppressed(refreshed));
-    } catch {}
-  }, []);
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem('notifications:snoozeUntil');
@@ -507,18 +404,6 @@ export function NotificationsBell() {
     }
   }, [activeTab]);
 
-  const markNotificationRead = useCallback(async (id?: number) => {
-    if (!id) return;
-    // Actualiza local y registra candado inmediatamente
-    setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read_at: new Date().toISOString() } : n)));
-    pendingChangesRef.current.set(id, { read: true, ts: Date.now() });
-    try {
-      await notificationsAdapter.markRead(id);
-    } catch (e) {
-      toast({ title: 'Error', description: 'No se pudo marcar como leída' });
-    }
-  }, [toast]);
-
   const toggleNotificationRead = useCallback(async (id?: number, isRead?: boolean) => {
     if (!id) return;
     const nextRead = !isRead; // estado al que queremos ir
@@ -549,13 +434,8 @@ export function NotificationsBell() {
   }, [notifications, toast]);
 
   const openRelated = useCallback((n: NotificationItem) => {
-    // Basic routing based on type. Can be refined with IDs later.
-    const t = n.type;
-    if (t === 'attention') {
-      router.push('/calendar');
-    } else {
-      router.push('/sales');
-    }
+    // Route to sales for all types; calendar feature is disabled/removed from bundle.
+    router.push('/sales');
   }, [router]);
 
   const snooze = useCallback((hours: number = 1) => {
@@ -602,21 +482,6 @@ export function NotificationsBell() {
     }
   }, [notifications, toast]);
 
-  const emitTest = useCallback(async (type: 'info' | 'alert' | 'attention') => {
-    const payload = {
-      message: type === 'info' ? 'Backup de la base de datos creada'
-        : type === 'alert' ? 'Cuota vencida hoy'
-          : 'Cuota próxima a vencer 25/10',
-      type,
-    } as const;
-    const ok = await notificationsAdapter.emitTestEvent(payload);
-    if (!ok) {
-      setNotifications(prev => [
-        ...prev,
-        { message: payload.message, type: payload.type, created_at: new Date().toISOString() } as any,
-      ]);
-    }
-  }, []);
 
   const emitStockTest = useCallback(async () => {
     const payload = {
@@ -706,20 +571,20 @@ export function NotificationsBell() {
   // Render principal
   return (
     <>
-      {open && <div className="fixed inset-0 bg-black/40 backdrop-blur-[1px] z-40 pointer-events-none" />}
+      {open && <div className="fixed inset-0 bg-black/40 backdrop-blur-[1px] z-40 pointer-events-none animate-in fade-in-0 duration-200" />}
       <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 rounded-2xl">
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative h-10 w-10 rounded-md shadow-md">
-              <Inbox className="h-5 w-5" />
+            <Button variant="ghost" size="icon" className="group relative h-10 w-10 rounded-md shadow-md transition-transform active:scale-95">
+              <Inbox className={cn("h-5 w-5 origin-top transition-transform", !open && unreadCount > 0 && "animate-ring")} />
               {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-sm px-1 min-w-[18px] text-center">
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-sm px-1 min-w-[18px] text-center shadow-sm animate-badge-pop transition-transform group-hover:scale-110">
                   {unreadCount}
                 </span>
               )}
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="center" side="bottom" className="w-[42rem] p-0 rounded-3xl overflow-hidden flex flex-col max-h-[80vh]" onInteractOutside={(e) => { if (filtersOpen) e.preventDefault(); }} onEscapeKeyDown={(e) => { if (filtersOpen) e.preventDefault(); }}>
+          <PopoverContent align="center" side="bottom" className="w-[42rem] p-0 rounded-3xl overflow-hidden flex flex-col max-h-[80vh] animate-pop" onInteractOutside={(e) => { if (filtersOpen) e.preventDefault(); }} onEscapeKeyDown={(e) => { if (filtersOpen) e.preventDefault(); }}>
             <div className="px-4 py-3 flex items-center justify-between gap-2">
               <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
                 <TabsList className="rounded-3xl border border-[#3C3C3C] bg-[#202020]">
@@ -730,9 +595,6 @@ export function NotificationsBell() {
                 </TabsList>
               </Tabs>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" className="h-9 px-2" title="Recargar notificaciones persistidas" onClick={() => resetToSamples()}>
-                  Recargar
-                </Button>
                 <DropdownMenu onOpenChange={setFiltersOpen}>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="icon" className="h-9 w-9 rounded-full" title="Filtrar">
@@ -751,27 +613,11 @@ export function NotificationsBell() {
                     </DropdownMenuCheckboxItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="icon" className="h-9 w-9 rounded-full" title="Generar ejemplo">
-                      <Wand2 className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-52">
-                    <DropdownMenuItem onSelect={() => emitTest('info')}>Generar info</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => emitTest('attention')}>Generar atención</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => emitTest('alert')}>Generar crítica</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={emitStockTest}>Generar stock bajo</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <Button variant="outline" size="icon" className="h-9 w-9 rounded-full" title="Eliminar todas las notificaciones" onClick={clearAllNotifications}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
                 <Button variant="outline" size="icon" className="h-9 w-9 rounded-full" title="Marcar todas como leídas" onClick={markAllRead}>
                   <CheckCheck className="h-4 w-4" />
                 </Button>
                 {!snoozeActive ? (
-                  <Button variant="outline" size="icon" className="h-9 w-9 rounded-full" title="Snooze 1h" onClick={() => snooze(1)}>
+                  <Button variant="outline" size="icon" className="h-9 w-9 rounded-full" title="Silenciar 1h" onClick={() => snooze(1)}>
                     <BellOff className="h-4 w-4" />
                   </Button>
                 ) : (
@@ -810,7 +656,7 @@ export function NotificationsBell() {
                           : undefined;
                     const uniqueKey = n.id ?? `${n.created_at}-${n.type}-${n.message}`;
                     return (
-                      <li key={uniqueKey} className={cn("rounded-3xl border", isRead ? "bg-[#151515] border-[#2b2b2b] hover:bg-[#1a1a1a]" : "bg-[#202020] border-[#3C3C3C] hover:bg-[#262626]")}> 
+                      <li key={uniqueKey} className={cn("rounded-3xl border animate-in fade-in-0 slide-in-from-bottom-1 transition-transform duration-200", isRead ? "bg-[#151515] border-[#2b2b2b] hover:bg-[#1a1a1a]" : "bg-[#202020] border-[#3C3C3C] hover:bg-[#262626]")}> 
                         <div className="px-4 py-3">
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex items-start gap-3 min-w-0">
@@ -860,20 +706,4 @@ export function NotificationsBell() {
   );
 }
 
-function formatTitle(message: string, meta?: NotificationItem['meta']) {
-    const key = meta?.message_key ?? '';
-    if (key.startsWith('overdue|')) return 'Cuota vencida';
-  if (key.startsWith('upcoming|')) return 'Cuota próxima a vencer';
-  if (meta?.category === 'stock') {
-    if (meta?.productName) return `Producto ${meta.productName}`;
-    // Intento de fallback: extraer nombre desde el mensaje "Stock bajo: Nombre — ..."
-    const firstPart = message?.split(' — ')[0] ?? '';
-    const name = firstPart.replace(/^Stock bajo:\s*/i, '').trim();
-    return name ? `Producto ${name}` : 'Stock';
-  }
-  if (meta?.category === 'system') return 'Sistema';
-  // Fallback: toma solo la primera parte antes de " — "
-  const simplified = message?.split(' — ')[0] ?? message;
-  return simplified || message;
-}
 

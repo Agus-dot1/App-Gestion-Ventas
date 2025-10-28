@@ -1,9 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
+// Defer heavy PDF/Excel libraries until export is triggered
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -77,7 +75,9 @@ export function SalesBulkOperations({
     setBulkStatus('');
   };
 
-  const exportToPDF = () => {
+  const exportToPDF = async () => {
+    const { default: jsPDF } = await import('jspdf');
+    const autoTable = (await import('jspdf-autotable')).default;
     const doc = new jsPDF();
     
     // Add title
@@ -111,15 +111,13 @@ export function SalesBulkOperations({
     doc.save('ventas_seleccionadas.pdf');
   };
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     const worksheetData = selectedSalesData.map(sale => ({
       'N° Venta': sale.sale_number,
       'Cliente': sale.customer_name || 'N/A',
       'Fecha': formatDate(sale.date),
       'Fecha Vencimiento': sale.due_date ? formatDate(sale.due_date) : '',
       'Subtotal': sale.subtotal,
-      'Impuestos': sale.tax_amount,
-      'Descuento': sale.discount_amount,
       'Total': sale.total_amount,
       'Tipo de Pago': sale.payment_type === 'cash' ? 'Efectivo' : 
                      sale.payment_type === 'installments' ? 'Cuotas' :
@@ -127,13 +125,13 @@ export function SalesBulkOperations({
       'Estado de Pago': getPaymentStatusBadge(sale.payment_status).label,
       'Cuotas': sale.number_of_installments || '',
       'Monto Cuota': sale.installment_amount ? Math.round(sale.installment_amount) : '',
-      'Cuotas Adelantadas': sale.advance_installments,
       'Estado': sale.status === 'pending' ? 'Pendiente' :
                sale.status === 'completed' ? 'Completada' :
                sale.status === 'cancelled' ? 'Cancelada' : 'Reembolsada',
       'Notas': sale.notes || ''
     }));
     
+    const XLSX = await import('xlsx');
     const worksheet = XLSX.utils.json_to_sheet(worksheetData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Ventas');

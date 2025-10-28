@@ -16,7 +16,12 @@ import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SalesBulkOperations } from './sales-bulk-operations';
 import { SalesColumnToggle, type ColumnVisibility } from './sales-column-toggle';
-import { SaleDetailModal } from './sale-detail-modal';
+import dynamic from 'next/dynamic';
+
+// Lazy-load the sale detail modal to reduce initial bundle size
+const SaleDetailModal = dynamic(() => import('./sale-detail-modal').then(m => m.SaleDetailModal), {
+  ssr: false,
+});
 import { ButtonGroup } from '../ui/button-group';
 import { SalesFilters, SalesFiltersComponent, applySalesFilters } from './sales-filters';
 
@@ -75,6 +80,52 @@ export function SalesTable({
   });
   const [detailSale, setDetailSale] = useState<Sale | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+
+  // Persist preferences in localStorage
+  const SALES_PERSIST_KEY = 'salesTablePrefs';
+
+  // Load persisted preferences on mount
+  useEffect(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem(SALES_PERSIST_KEY) : null;
+      if (raw) {
+        const prefs = JSON.parse(raw);
+        if (prefs?.salesFilters) {
+          const f = prefs.salesFilters;
+          setSalesFilters(prev => ({
+            ...prev,
+            ...f,
+            dateAfter: f?.dateAfter ? new Date(f.dateAfter) : null,
+            dateBefore: f?.dateBefore ? new Date(f.dateBefore) : null,
+          }));
+        }
+        if (prefs?.columnVisibility) {
+          setColumnVisibility(prev => ({ ...prev, ...prefs.columnVisibility }));
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load sales table prefs:', e);
+    }
+  }, []);
+
+  // Persist preferences when they change
+  useEffect(() => {
+    try {
+      const prefs = {
+        salesFilters: {
+          ...salesFilters,
+          dateAfter: salesFilters.dateAfter ? salesFilters.dateAfter.toISOString() : null,
+          dateBefore: salesFilters.dateBefore ? salesFilters.dateBefore.toISOString() : null,
+        },
+        columnVisibility,
+      };
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(SALES_PERSIST_KEY, JSON.stringify(prefs));
+      }
+    } catch (e) {
+      console.warn('Failed to save sales table prefs:', e);
+    }
+  }, [salesFilters, columnVisibility]);
 
   // Apply sorting consistently. For client-side, use filters helper; for server-side, sort current page.
   const visibleSales = useMemo(() => {
@@ -168,7 +219,9 @@ export function SalesTable({
   };
 
   const handleSelectAll = (checked: boolean) => {
-    const list = serverSidePagination ? visibleSales : paginatedSales;
+    // Seleccionar todas las ventas visibles (todas las filtradas) en modo cliente.
+    // En modo server-side, visibleSales ya es la página actual.
+    const list = visibleSales;
     if (checked) {
       setSelectedSales(new Set(list.map(s => s.id).filter(id => id !== undefined) as number[]));
     } else {
@@ -177,7 +230,8 @@ export function SalesTable({
   };
 
   const isAllSelected = (() => {
-    const list = serverSidePagination ? visibleSales : paginatedSales;
+    // Considera todas las ventas visibles (filtradas) para el estado del checkbox.
+    const list = visibleSales;
     return list.length > 0 && selectedSales.size === list.filter(s => s.id !== undefined).length;
   })();
 
@@ -699,9 +753,6 @@ export function SalesTable({
                               {sale.number_of_installments} pagos
                             </div>
                           )}
-                          {sale.payment_type === 'installments' && <div className="text-xs text-muted-foreground">
-                            {sale.period_type === 'weekly' ? 'Semanal (1 y 15)' : 'Mensual'}
-                          </div>}
                           </div>
                         </TableCell>
                       )}
@@ -711,11 +762,6 @@ export function SalesTable({
                             <DollarSign className="w-4 h-4 text-green-600" />
                             <span className="font-medium">{formatCurrency(sale.total_amount)}</span>
                           </div>
-                          {sale.payment_type === 'installments' && sale.advance_installments > 0 && (
-                            <div className="text-xs text-muted-foreground">
-                              Cuotas adelantadas: {sale.advance_installments}
-                            </div>
-                          )}
                         </TableCell>
                       )}
                       {columnVisibility.payment_status && (

@@ -100,6 +100,59 @@ function setupNotificationScheduler(getMainWindow, intervalMs = isDev ? 30000 : 
                     }
                 });
             }
+            // Recordatorio específico para ventas semanales (1 y 15): avisar un día antes
+            try {
+                const now = new Date();
+                const tomorrow = new Date(now);
+                tomorrow.setDate(now.getDate() + 1);
+                const tDay = tomorrow.getDate();
+                if (tDay === 1 || tDay === 15) {
+                    const weeklySales = (database_operations_1.saleOperations.getAll() || []).filter((s) => s?.payment_type === 'installments' && s?.period_type === 'weekly');
+                    if (weeklySales.length > 0) {
+                        weeklySales.forEach((s) => {
+                            try {
+                                // Si la venta no tiene saldo pendiente, no avisamos
+                                const installments = database_operations_1.installmentOperations.getBySale(s.id) || [];
+                                const hasPending = installments.some((i) => i?.status === 'pending' && i?.balance > 0);
+                                if (!hasPending)
+                                    return;
+                                const customer = s.customer_name || database_operations_1.customerOperations.getById(s.customer_id)?.name || 'Cliente';
+                                const cycleLabel = tDay === 1 ? '1 del mes' : '15 del mes';
+                                const msg = `Recordatorio (Semanal): Mañana ${cycleLabel} — revisar pago — ${customer}`;
+                                const key = `weekly_precheck|sale|${s.id}|${tomorrow.toISOString().slice(0, 10)}`;
+                                const existsActive = repository_1.notificationOperations.existsActiveWithKey(key);
+                                const existsToday = repository_1.notificationOperations.existsTodayWithKey(key);
+                                if (!existsActive && !existsToday) {
+                                    const nid = repository_1.notificationOperations.create(msg, 'attention', key);
+                                    const win = getMainWindow();
+                                    if (win) {
+                                        const latest = repository_1.notificationOperations.getLatestByKey(key);
+                                        const createdAt = latest?.created_at;
+                                        win.webContents.send(constants_1.IPC_NOTIFICATIONS.event, {
+                                            id: nid,
+                                            message: msg,
+                                            type: 'attention',
+                                            meta: {
+                                                message_key: key,
+                                                customerName: customer,
+                                                due_at: tomorrow.toISOString(),
+                                                actionLabel: 'Revisar',
+                                                ...(createdAt ? { created_at: createdAt } : {}),
+                                            }
+                                        });
+                                    }
+                                }
+                            }
+                            catch (e) {
+                                console.error('Error creating weekly precheck notification:', e);
+                            }
+                        });
+                    }
+                }
+            }
+            catch (e) {
+                console.error('Weekly precheck scheduler error:', e);
+            }
         }
         catch (e) {
             console.error('Scheduler error:', e);

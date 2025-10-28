@@ -26,7 +26,6 @@ interface SaleItem {
   product_name: string;
   quantity: number;
   unit_price: number;
-  discount_per_item: number;
   line_total: number;
 }
 
@@ -39,11 +38,8 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
     partner_id: 0,
     payment_type: 'cash' as 'cash' | 'installments',
     payment_period: '1 to 10' as '1 to 10' | '20 to 30',
-    period_type: 'monthly' as 'monthly' | 'weekly' | 'biweekly',
+    period_type: 'monthly' as 'monthly' | 'weekly',
     number_of_installments: 6,
-    advance_installments: 0,
-    tax_amount: 0,
-    installment_payment_method: 'cash' as 'cash' | 'transfer',
     notes: ''
   });
   const [items, setItems] = useState<SaleItem[]>([]);
@@ -71,9 +67,6 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         payment_period: sale.payment_period || '1 to 10',
         period_type: sale.period_type || 'monthly',
         number_of_installments: sale.number_of_installments || 6,
-        advance_installments: sale.advance_installments || 0,
-        tax_amount: sale.tax_amount || 0,
-        installment_payment_method: (sale.installment_payment_method as 'cash' | 'transfer') || 'cash',
         notes: sale.notes || ''
       });
       loadSaleItems(sale.id!);
@@ -85,9 +78,6 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         payment_period: '1 to 10',
         period_type: 'monthly',
         number_of_installments: 6,
-        advance_installments: 0,
-        tax_amount: 0,
-        installment_payment_method: 'cash',
         notes: ''
       });
       setItems([]);
@@ -133,7 +123,6 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         product_name: item.product_name || '',
         quantity: item.quantity,
         unit_price: item.unit_price,
-        discount_per_item: item.discount_per_item || 0,
         line_total: item.line_total
       }));
       setItems(formattedItems);
@@ -153,7 +142,6 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
       product_name: product.name,
       quantity: 1,
       unit_price: product.price,
-      discount_per_item: 0,
       line_total: product.price
     };
     setItems(prev => [...prev, newItem]);
@@ -168,7 +156,6 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
       product_name: cleanName,
       quantity: 1,
       unit_price: 0,
-      discount_per_item: 0,
       line_total: 0
     };
     setItems(prev => [...prev, newItem]);
@@ -224,7 +211,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
     }
 
     const item = updatedItems[index];
-    item.line_total = (item.quantity * item.unit_price) - item.discount_per_item;
+    item.line_total = (item.quantity * item.unit_price);
 
     setItems(updatedItems);
   };
@@ -280,16 +267,12 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
           product_id: item.product_id,
           quantity: item.quantity,
           unit_price: item.unit_price,
-          discount_per_item: item.discount_per_item,
           product_name: item.product_name
         })),
         payment_type,
         payment_period: payment_type === 'installments' ? formData.payment_period : undefined,
         period_type: payment_type === 'installments' ? formData.period_type : undefined,
         number_of_installments: payment_type === 'installments' ? formData.number_of_installments : undefined,
-        advance_installments: payment_type === 'installments' ? formData.advance_installments : undefined,
-        installment_payment_method: payment_type === 'installments' ? formData.installment_payment_method : undefined,
-        tax_amount: formData.tax_amount,
         notes: formData.notes
       };
 
@@ -302,9 +285,6 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         payment_period: '1 to 10',
         period_type: 'monthly',
         number_of_installments: 6,
-        advance_installments: 0,
-        tax_amount: 0,
-        installment_payment_method: 'cash',
         notes: ''
       });
       setItems([]);
@@ -464,21 +444,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                         </Select>
                       </div>
 
-                      <div>
-                        <Label className="text-xs mb-1.5 block">Método de pago de cuotas</Label>
-                        <Select
-                          value={formData.installment_payment_method}
-                          onValueChange={(value: any) => setFormData(prev => ({ ...prev, installment_payment_method: value }))}
-                        >
-                          <SelectTrigger className="h-10">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="cash">Efectivo</SelectItem>
-                            <SelectItem value="transfer">Transferencia</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>                    </>
+                    </>
                   )}
                 </div>
               </div>
@@ -508,7 +474,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                           <th className="text-left text-xs font-medium p-3 w-[35%]">Producto</th>
                           <th className="text-left text-xs font-medium p-3 w-[12%]">Cantidad</th>
                           <th className="text-left text-xs font-medium p-3 w-[15%]">Precio unit.</th>
-                          <th className="text-left text-xs font-medium p-3 w-[15%]">Descuento</th>
+                          
                           <th className="text-left text-xs font-medium p-3 w-[15%]">Total</th>
                           <th className="text-left text-xs font-medium p-3 w-[8%]"></th>
                         </tr>
@@ -561,16 +527,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                                 className={`h-9 text-sm ${errors[`item_${index}_price`] ? 'border-red-500' : ''}`}
                               />
                             </td>
-                            <td className="p-2">
-                              <Input
-                                type="number"
-                                step="1"
-                                min="0"
-                                value={item.discount_per_item}
-                                onChange={(e) => updateItem(index, 'discount_per_item', parseFloat(e.target.value) || 0)}
-                                className="h-9 text-sm"
-                              />
-                            </td>
+                            
                             <td className="p-2">
                               <div className="h-9 px-3 py-2 border rounded-md bg-muted flex items-center text-sm font-medium">
                                 ${item.line_total}
@@ -656,19 +613,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                   className="text-sm resize-none"
                 />
               </div>
-              {formData.payment_type === 'installments' && (
-                  <div className="w-full">
-                    <div>
-                      <Label className="text-xs mb-1.5 block">Pago anticipado</Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        placeholder="Monto"
-                        className="h-10"
-                      />
-                    </div>
-                  </div>
-                )}
+              
             </div>
           </div>
 

@@ -271,25 +271,25 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
           <div className="space-y-6">
             {/* Contact Information */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              
               <Card 
                 className="cursor-pointer hover:bg-muted/50 transition-colors "
-                onClick={() => customer.email && copyToClipboard(customer.email, 'email')}
+                onClick={() => customer.phone && copyToClipboard(customer.phone, 'phone')}
               >
-        {/* Sonner Toaster is mounted globally in app/layout.tsx */}
                 <CardContent className="pt-6">
                   <div className="flex items-center space-x-2">
-                    <Mail className="h-4 w-4" />
-                    <span className="text-sm font-medium">Email</span>
-                    {copiedField === 'email' && (
+                    <Phone className="h-4 w-4" />
+                    <span className="text-sm font-medium">Teléfono</span>
+                    {copiedField === 'phone' && (
                       <span className="text-xs text-green-600 font-medium">¡Copiado!</span>
                     )}
                   </div>
                   <p className="mt-2 text-sm">
-                    {customer.email || 'No especificado'}
+                    {customer.phone || 'No especificado'}
                   </p>
                 </CardContent>
               </Card>
-
+              
               <Card 
                 className="cursor-pointer hover:bg-muted/50 transition-colors "
                 onClick={() => customer.secondary_phone && copyToClipboard(customer.secondary_phone, 'secondary_phone')}
@@ -308,29 +308,25 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                   </p>
                 </CardContent>
               </Card>
-
               <Card 
                 className="cursor-pointer hover:bg-muted/50 transition-colors "
-                onClick={() => customer.phone && copyToClipboard(customer.phone, 'phone')}
+                onClick={() => customer.email && copyToClipboard(customer.email, 'email')}
               >
+        {/* Sonner Toaster is mounted globally in app/layout.tsx */}
                 <CardContent className="pt-6">
                   <div className="flex items-center space-x-2">
-                    <Phone className="h-4 w-4" />
-                    <span className="text-sm font-medium">Teléfono</span>
-                    {copiedField === 'phone' && (
+                    <Mail className="h-4 w-4" />
+                    <span className="text-sm font-medium">Email</span>
+                    {copiedField === 'email' && (
                       <span className="text-xs text-green-600 font-medium">¡Copiado!</span>
                     )}
                   </div>
                   <p className="mt-2 text-sm">
-                    {customer.phone || 'No especificado'}
+                    {customer.email || 'No especificado'}
                   </p>
                 </CardContent>
               </Card>
-            </div>
-
-            {/* Address and Tags */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Card 
+                 <Card 
                 className="cursor-pointer hover:bg-muted/50 transition-colors "
                 onClick={() => customer.address && copyToClipboard(customer.address, 'address')}
               >
@@ -347,34 +343,9 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                   </p>
                 </CardContent>
               </Card>
-
-              <Card 
-                className="cursor-pointer hover:bg-muted/50 transition-colors "
-                onClick={() => customer.tags && customer.tags.length > 0 && copyToClipboard(customer.tags, 'tags')}
-              >
-                <CardContent className="pt-6">
-                  <div className="flex items-center space-x-2">
-                    <Tag className="h-4 w-4" />
-                    <span className="text-sm font-medium">Etiquetas</span>
-                    {copiedField === 'tags' && (
-                      <span className="text-xs text-green-600 font-medium">¡Copiado!</span>
-                    )}
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {customer.tags && customer.tags.length > 0 ? (() => {
-                      const tagsArray = customer.tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
-                      return tagsArray.map((tag, index) => (
-                        <Badge key={index} variant="secondary">
-                          {tag}
-                        </Badge>
-                      ));
-                    })() : (
-                      <span className="text-sm text-muted-foreground">Sin etiquetas</span>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
             </div>
+
+            {/* Address and Tags */}
 
             {/* Notes */}
             {customer.notes && (
@@ -486,8 +457,8 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                               <TableCell>{formatCurrency(inst.paid_amount)}</TableCell>
                               <TableCell>{formatCurrency(inst.balance)}</TableCell>
                               <TableCell>
-                                <Badge variant={new Date(inst.due_date) < new Date() ? 'destructive' : (inst.status === 'partial' ? 'secondary' : 'outline')}>
-                                  {new Date(inst.due_date) < new Date() ? 'Vencida' : (inst.status === 'partial' ? 'Parcial' : 'Pendiente')}
+                                <Badge variant={new Date(inst.due_date) < new Date() ? 'destructive' : (inst.status === 'overdue' ? 'destructive' : 'outline')}>
+                                  {new Date(inst.due_date) < new Date() ? 'Vencida' : (inst.status === 'overdue' ? 'Vencida' : 'Pendiente')}
                                 </Badge>
                               </TableCell>
                             </TableRow>

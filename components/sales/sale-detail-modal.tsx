@@ -9,9 +9,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
 import { 
   User, 
   Calendar, 
@@ -72,9 +69,8 @@ function formatDateTime(dateString: string): string {
 function getPaymentStatusBadge(status: Sale['payment_status']) {
   const variants = {
     paid: { variant: 'default' as const, label: 'Pagado', icon: CheckCircle, color: 'text-green-600' },
-    partial: { variant: 'secondary' as const, label: 'Parcial', icon: Clock, color: 'text-yellow-600' },
     unpaid: { variant: 'destructive' as const, label: 'Pendiente', icon: XCircle, color: 'text-red-600' },
-    overdue: { variant: 'destructive' as const, label: 'Vencido', icon: AlertTriangle, color: 'text-red-700' }
+    overdue: { variant: 'destructive' as const, label: 'Vencido', icon: AlertTriangle, color: 'text-orange-600' }
   };
   return variants[status] || variants.unpaid;
 }
@@ -82,9 +78,7 @@ function getPaymentStatusBadge(status: Sale['payment_status']) {
 function getPaymentTypeBadge(type: Sale['payment_type']) {
   const variants = {
     cash: { variant: 'outline' as const, label: 'Efectivo' },
-    credit: { variant: 'secondary' as const, label: 'Crédito' },
     installments: { variant: 'default' as const, label: 'Cuotas' },
-    mixed: { variant: 'secondary' as const, label: 'Mixto' }
   };
   return variants[type] || variants.cash;
 }
@@ -92,9 +86,7 @@ function getPaymentTypeBadge(type: Sale['payment_type']) {
 function getStatusBadge(status: Sale['status']) {
   const variants = {
     pending: { variant: 'secondary' as const, label: 'Pendiente', color: 'text-yellow-600' },
-    completed: { variant: 'default' as const, label: 'Completada', color: 'text-green-600' },
-    cancelled: { variant: 'destructive' as const, label: 'Cancelada', color: 'text-red-600' },
-    refunded: { variant: 'outline' as const, label: 'Reembolsada', color: 'text-blue-600' }
+    completed: { variant: 'default' as const, label: 'Completada', color: 'text-green-600' }
   };
   return variants[status] || variants.pending;
 }
@@ -160,8 +152,10 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
     window.print();
   };
 
-  const handleExportToPDF = () => {
+  const handleExportToPDF = async () => {
     try {
+      const { default: jsPDF } = await import('jspdf');
+      const autoTable = (await import('jspdf-autotable')).default;
       const doc = new jsPDF();
       let yPosition = 20;
 
@@ -200,10 +194,7 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
           const windowLabel = sale.payment_period ? (sale.payment_period === '1 to 10' ? '1 al 10' : '20 al 30') : 'N/A';
           doc.text(`Periodo: ${periodLabel} • Ventana: ${windowLabel}`, 14, yPosition);
           yPosition += 6;
-          if ((sale.advance_installments ?? 0) > 0) {
-            doc.text(`Cuotas adelantadas: ${sale.advance_installments}`, 14, yPosition);
-            yPosition += 6;
-          }
+          // No hay cuotas adelantadas
         }
       }
       yPosition += 5;
@@ -216,7 +207,6 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
       
       const financialData = [
         ['Subtotal', formatCurrency(sale?.subtotal ?? 0)],
-        ['Descuento', formatCurrency(sale?.discount_amount ?? 0)],
         ['Total', formatCurrency(sale?.total_amount ?? 0)]
       ];
 
@@ -265,12 +255,11 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
           item.product_name || 'Producto',
           item.quantity.toString(),
           formatCurrency(item.unit_price),
-          item.discount_per_item > 0 ? formatCurrency(item.discount_per_item) : '-',
           formatCurrency(item.line_total)
         ]);
 
          autoTable(doc, {
-            head: [['Producto', 'Cant.', 'Precio Unit.', 'Descuento', 'Total']],
+            head: [['Producto', 'Cant.', 'Precio Unit.', 'Total']],
             body: productsData,
             startY: yPosition,
             styles: { fontSize: 8 },
@@ -279,8 +268,7 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
               0: { cellWidth: 60 },
               1: { halign: 'center', cellWidth: 20 },
               2: { halign: 'right', cellWidth: 35 },
-              3: { halign: 'right', cellWidth: 35 },
-              4: { halign: 'right', cellWidth: 35 }
+              3: { halign: 'right', cellWidth: 35 }
             },
             margin: { left: 14, right: 14 }
           });
@@ -354,8 +342,9 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
     }
   };
 
-  const handleExportToExcel = () => {
+  const handleExportToExcel = async () => {
     try {
+      const XLSX = await import('xlsx');
       // Prepare sale data for Excel
       const periodLabel = sale?.payment_type === 'installments' ? (sale?.period_type === 'weekly' ? 'Semanal (1 y 15)' : 'Mensual') : 'N/A';
       const windowLabel = sale?.payment_type === 'installments' ? (sale?.payment_period ? (sale.payment_period === '1 to 10' ? '1 al 10' : '20 al 30') : 'N/A') : 'N/A';
@@ -367,13 +356,11 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
         'Teléfono secundario': customer?.secondary_phone || 'N/A',
         'Dirección': customer?.address || 'N/A',
         'Subtotal': formatCurrency(sale?.subtotal ?? 0),
-        'Descuento': formatCurrency(sale?.discount_amount ?? 0),
         'Total': formatCurrency(sale?.total_amount ?? 0),
         'Método de Pago': sale?.payment_type ? getPaymentTypeBadge(sale.payment_type).label : 'N/A',
         'Responsable': sale?.partner_name || 'N/A',
         'Periodo': periodLabel,
         'Ventana de pago': windowLabel,
-        'Cuotas adelantadas': sale?.advance_installments ?? 0,
         'Estado de Pago': sale?.payment_status ? getPaymentStatusBadge(sale.payment_status).label : 'N/A',
         'Estado': sale?.status ? getStatusBadge(sale.status).label : 'N/A',
         'Notas': sale?.notes || ''
@@ -391,7 +378,6 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
           'Producto': item.product_name || 'Producto',
           'Cantidad': item.quantity,
           'Precio Unitario': item.unit_price,
-          'Descuento': item.discount_per_item,
           'Total': item.line_total
         }));
         const productsSheet = XLSX.utils.json_to_sheet(productsData);
@@ -495,11 +481,6 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{formatCurrency(sale.total_amount)}</div>
-                  {sale.advance_installments > 0 && (
-                    <div className="text-sm text-muted-foreground">
-                      Cuotas adelantadas: {sale.advance_installments}
-                    </div>
-                  )}
                 </CardContent>
               </Card>
 
@@ -600,10 +581,6 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
                         <div className="flex justify-between">
                           <span className="text-sm font-medium">Subtotal:</span>
                           <span className="text-sm">{formatCurrency(sale.subtotal)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm font-medium">Descuento:</span>
-                          <span className="text-sm">{formatCurrency(sale.discount_amount)}</span>
                         </div>
                         <Separator />
                         <div className="flex justify-between font-medium">
@@ -746,7 +723,7 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
                               <TableHead>Producto</TableHead>
                               <TableHead className="text-center">Cantidad</TableHead>
                               <TableHead className="text-right">Precio Unit.</TableHead>
-                              <TableHead className="text-right">Descuento</TableHead>
+                              
                               <TableHead className="text-right">Total</TableHead>
                             </TableRow>
                           </TableHeader>
@@ -760,9 +737,7 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
                                 <TableCell className="text-right">
                                   {formatCurrency(item.unit_price)}
                                 </TableCell>
-                                <TableCell className="text-right">
-                                  {formatCurrency(item.discount_per_item || 0)}
-                                </TableCell>
+                                
                                 <TableCell className="text-right font-medium">
                                   {formatCurrency(item.line_total)}
                                 </TableCell>
@@ -802,9 +777,6 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
                       </CardTitle>
                       <CardDescription>
                         {sale.number_of_installments} cuotas de {formatCurrency(Math.round(sale.installment_amount || 0))}
-                        {sale.advance_installments > 0 && (
-                          <span> + {sale.advance_installments} cuotas adelantadas</span>
-                        )}
                       </CardDescription>
                     </CardHeader>
                     <CardContent>

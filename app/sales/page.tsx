@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DashboardLayout } from '@/components/dashboard-layout';
@@ -19,10 +19,12 @@ import { toast } from 'sonner';
 
 export default function SalesPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const highlightId = searchParams.get('highlight');
   const installmentDashboardRef = useRef<InstallmentDashboardRef>(null);
   const tabParam = searchParams.get('tab');
   const partnerParam = searchParams.get('partner');
+  const actionParam = searchParams.get('action');
   const [sales, setSales] = useState<Sale[]>([]);
   const [partners, setPartners] = useState<any[]>([]);
   const [selectedPartnerId, setSelectedPartnerId] = useState<number>(0);
@@ -61,8 +63,29 @@ export default function SalesPage() {
       loadSales();
       loadOverdueSales();
       loadPartners();
+
+      // Listen for partner changes to update filter list live
+      const onPartnersChanged = () => {
+        loadPartners();
+      };
+      try {
+        window.addEventListener('partners:changed', onPartnersChanged);
+      } catch {}
+      return () => {
+        try {
+          window.removeEventListener('partners:changed', onPartnersChanged);
+        } catch {}
+      };
     }
   }, [isElectron]);
+
+  // Open new sale form if action=new is present
+  useEffect(() => {
+    if (actionParam === 'new') {
+      setEditingSale(undefined);
+      setIsFormOpen(true);
+    }
+  }, [actionParam]);
 
   const loadPartners = async () => {
     try {
@@ -225,8 +248,6 @@ export default function SalesPage() {
         // Update existing sale - only pass fields that the update method accepts
         const updateData = {
           customer_id: saleData.customer_id,
-          tax_amount: saleData.tax_amount,
-          discount_amount: saleData.discount_amount,
           notes: saleData.notes
         };
         await window.electronAPI.database.sales.update(editingSale.id, updateData);
@@ -317,7 +338,7 @@ export default function SalesPage() {
       dataCache.invalidateCache('sales');
       await loadSales();
       await loadOverdueSales();
-      const statusLabel = status === 'paid' ? 'Pagadas' : status === 'partial' ? 'Parcial' : 'Pendientes';
+      const statusLabel = status === 'paid' ? 'Pagadas' : 'Pendientes';
       toast.success(`Estado actualizado a ${statusLabel}`);
     } catch (error) {
       console.error('Error actualizando estado de ventas:', error);
@@ -335,8 +356,25 @@ export default function SalesPage() {
     setIsFormOpen(open);
     if (!open) {
       setEditingSale(undefined);
+      // Remove action param from URL to avoid reopening on navigation
+      const params = new URLSearchParams(Array.from(searchParams.entries()));
+      params.delete('action');
+      const query = params.toString();
+      router.replace(query ? `/sales?${query}` : '/sales');
     }
   };
+
+  // Keyboard shortcut: Ctrl/Cmd + N opens new sale form
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        handleAddSale();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   const addMockSales = async () => {
     try {
@@ -362,18 +400,14 @@ export default function SalesPage() {
               product_id: products[0]?.id || 1,
               quantity: 2,
               unit_price: products[0]?.price || 159990,
-              discount_per_item: 0
             },
             {
               product_id: products[1]?.id || 2,
               quantity: 1,
               unit_price: products[1]?.price || 49990,
-              discount_per_item: 5000
             }
           ],
           payment_type: 'cash',
-          tax_amount: 0,
-          discount_amount: 0,
           notes: 'Venta de prueba - Cliente frecuente'
         },
         {
@@ -383,14 +417,10 @@ export default function SalesPage() {
               product_id: products[2]?.id || 3,
               quantity: 3,
               unit_price: products[2]?.price || 25990,
-              discount_per_item: 0
             }
           ],
           payment_type: 'installments',
           number_of_installments: 6,
-          advance_installments: 1,
-          tax_amount: 15000,
-          discount_amount: 0,
           notes: 'Venta en cuotas - 6 meses'
         },
         {
@@ -400,18 +430,14 @@ export default function SalesPage() {
               product_id: products[3]?.id || 4,
               quantity: 1,
               unit_price: products[3]?.price || 91990,
-              discount_per_item: 0
             },
             {
               product_id: products[4]?.id || 5,
               quantity: 2,
               unit_price: products[4]?.price || 59990,
-              discount_per_item: 10000
             }
           ],
-          payment_type: 'credit',
-          tax_amount: 0,
-          discount_amount: 20000,
+          payment_type: 'cash',
           notes: 'Venta a crédito - Descuento por volumen'
         },
         {
@@ -421,14 +447,10 @@ export default function SalesPage() {
               product_id: products[5]?.id || 6,
               quantity: 1,
               unit_price: products[5]?.price || 179990,
-              discount_per_item: 0
             }
           ],
           payment_type: 'installments',
           number_of_installments: 12,
-          advance_installments: 2,
-          tax_amount: 32000,
-          discount_amount: 0,
           notes: 'Plan de cuotas extendido - 12 meses'
         },
         {
@@ -438,18 +460,14 @@ export default function SalesPage() {
               product_id: products[0]?.id || 1,
               quantity: 1,
               unit_price: products[0]?.price || 159990,
-              discount_per_item: 0
             },
             {
               product_id: products[6]?.id || 7,
               quantity: 3,
               unit_price: products[6]?.price || 19990,
-              discount_per_item: 0
             }
           ],
           payment_type: "cash",
-          tax_amount: 0,
-          discount_amount: 15000,
         },
         {
           customer_id: customers[5]?.id || 6,
@@ -458,12 +476,9 @@ export default function SalesPage() {
               product_id: products[1]?.id || 2,
               quantity: 5,
               unit_price: products[1]?.price || 49990,
-              discount_per_item: 5000
             }
           ],
           payment_type: 'cash',
-          tax_amount: 0,
-          discount_amount: 0,
           notes: 'Compra al por mayor - Descuento por cantidad'
         },
         {
@@ -473,20 +488,18 @@ export default function SalesPage() {
               product_id: products[2]?.id || 3,
               quantity: 2,
               unit_price: products[2]?.price || 25990,
-              discount_per_item: 0
+
             },
             {
               product_id: products[3]?.id || 4,
               quantity: 1,
               unit_price: products[3]?.price || 91990,
-              discount_per_item: 0
+
             }
           ],
           payment_type: 'installments',
           number_of_installments: 3,
-          advance_installments: 0,
-          tax_amount: 25000,
-          discount_amount: 10000,
+
           notes: 'Plan de cuotas corto - 3 meses'
         },
         {
@@ -496,12 +509,10 @@ export default function SalesPage() {
               product_id: products[4]?.id || 5,
               quantity: 1,
               unit_price: products[4]?.price || 59990,
-              discount_per_item: 0
+
             }
           ],
           payment_type: 'cash',
-          tax_amount: 0,
-          discount_amount: 5000,
           notes: 'Venta rápida - Descuento por pronto pago'
         }
       ];
@@ -540,14 +551,11 @@ export default function SalesPage() {
             product_id: products[0]?.id ?? null,
             quantity: 1,
             unit_price: products[0]?.price,
-            discount_per_item: 0
           }
         ],
         payment_type: 'installments',
         number_of_installments: 6,
-        advance_installments: 0,
-        tax_amount: 0,
-        discount_amount: 0,
+
         notes: 'Venta de prueba con primera cuota vencida'
       };
 
@@ -583,7 +591,7 @@ export default function SalesPage() {
     installmentSales: sales.filter(sale => sale.payment_type === 'installments').length,
     overdueSales: overdueSales,
     paidSales: sales.filter(sale => sale.payment_status === 'paid').length,
-    pendingSales: sales.filter(sale => sale.payment_status === 'unpaid' || sale.payment_status === 'partial').length
+    pendingSales: sales.filter(sale => sale.payment_status === 'unpaid').length
   };
 
   // Show skeleton only if loading and no cached data

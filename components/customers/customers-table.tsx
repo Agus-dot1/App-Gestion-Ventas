@@ -1,9 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
+import { useState, useMemo, useEffect } from 'react';
+// Defer heavy PDF/Excel libraries until export is triggered
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -81,6 +79,46 @@ export function EnhancedCustomersTable({
     created_at: true,
   });
 
+  // Persist preferences in localStorage
+  const CUSTOMERS_PERSIST_KEY = 'customersTablePrefs';
+
+  // Load persisted preferences on mount
+  useEffect(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem(CUSTOMERS_PERSIST_KEY) : null;
+      if (raw) {
+        const prefs = JSON.parse(raw);
+        if (prefs?.columnVisibility) {
+          setColumnVisibility(prev => ({ ...prev, ...prefs.columnVisibility }));
+        }
+        if (prefs?.sortConfig) {
+          setSortConfig(prev => ({ ...prev, ...prefs.sortConfig }));
+        }
+        if (!serverSidePagination && typeof prefs?.searchTerm === 'string') {
+          setInternalSearchTerm(prefs.searchTerm);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load customers table prefs:', e);
+    }
+  }, [serverSidePagination]);
+
+  // Persist preferences when they change
+  useEffect(() => {
+    try {
+      const prefs = {
+        columnVisibility,
+        sortConfig,
+        searchTerm: serverSidePagination ? undefined : internalSearchTerm,
+      };
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(CUSTOMERS_PERSIST_KEY, JSON.stringify(prefs));
+      }
+    } catch (e) {
+      console.warn('Failed to save customers table prefs:', e);
+    }
+  }, [columnVisibility, sortConfig, internalSearchTerm, serverSidePagination]);
+
   // Bulk delete handler
   const handleBulkDelete = async () => {
     const selectedIds = Array.from(selectedCustomers);
@@ -132,8 +170,7 @@ export function EnhancedCustomersTable({
   const filteredCustomers = serverSidePagination ? customers : customers.filter(customer =>
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.tags?.toLowerCase().includes(searchTerm.toLowerCase())
+    customer.company?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Sort customers (apply to visible dataset; for server-side, sort current page)
@@ -171,7 +208,10 @@ export function EnhancedCustomersTable({
   // Clear selections when changing pages
   const handlePageChangeWithClear = (page: number) => {
     handlePageChange(page);
-    setSelectedCustomers(new Set());
+    // Preserve selections when using client-side pagination; clear for server-side
+    if (serverSidePagination) {
+      setSelectedCustomers(new Set());
+    }
   };
 
   const handleSelectCustomer = (customerId: number | undefined, checked: boolean) => {
@@ -231,6 +271,8 @@ export function EnhancedCustomersTable({
       selectedData = customers.filter(c => c.id && selectedCustomers.has(c.id));
     }
     
+    const { default: jsPDF } = await import('jspdf');
+    const autoTable = (await import('jspdf-autotable')).default;
     const doc = new jsPDF();
     
     // Add title
@@ -274,10 +316,10 @@ export function EnhancedCustomersTable({
       'Email': customer.email || '',
       'Teléfono': customer.phone || '',
       'Dirección': customer.address || '',
-      'Notas': customer.notes || '',
-      'Etiquetas': customer.tags || ''
+      'Notas': customer.notes || ''
     }));
     
+    const XLSX = await import('xlsx');
     const worksheet = XLSX.utils.json_to_sheet(worksheetData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Clientes');

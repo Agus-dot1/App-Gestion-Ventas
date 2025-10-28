@@ -98,6 +98,10 @@ export default function AjustesPage() {
     try {
       await window.electronAPI.database.partners.create({ name })
       setNewPartnerName('')
+      // Notify other UI parts to refresh partners immediately
+      try {
+        window.dispatchEvent(new CustomEvent('partners:changed'))
+      } catch {}
       await loadPartners()
       toast.success('Perfil agregado', {
         description: 'El nombre ahora aparece en Ventas y el formulario',
@@ -131,6 +135,10 @@ export default function AjustesPage() {
     try {
       await window.electronAPI.database.partners.update(editingPartnerId, { name })
       cancelEditPartner()
+      // Notify other UI parts to refresh partners immediately
+      try {
+        window.dispatchEvent(new CustomEvent('partners:changed'))
+      } catch {}
       await loadPartners()
       toast.success('Perfil actualizado', {
         description: 'Los cambios se reflejan en Ventas y el formulario',
@@ -150,6 +158,10 @@ export default function AjustesPage() {
   const handleDeletePartner = async (id: number) => {
     try {
       await window.electronAPI.database.partners.delete(id)
+      // Notify other UI parts to refresh partners immediately
+      try {
+        window.dispatchEvent(new CustomEvent('partners:changed'))
+      } catch {}
       await loadPartners()
       toast.success('Perfil eliminado', {
         description: 'Se removió de Ventas y el formulario',
@@ -850,21 +862,24 @@ export default function AjustesPage() {
                         <AlertTriangle className="h-5 w-5" />
                         ⚠️ CONFIRMAR ELIMINACIÓN TOTAL
                       </AlertDialogTitle>
-                      <AlertDialogDescription className="space-y-2">
-                        <p className="font-semibold text-red-700">
-                          Esta acción eliminará PERMANENTEMENTE:
-                        </p>
-                        <ul className="list-disc list-inside space-y-1 text-sm">
-                          <li>Todos los clientes</li>
-                          <li>Todos los productos</li>
-                          <li>Todas las ventas e instalments</li>
-                          <li>Todo el historial de pagos</li>
-                        </ul>
-                        <p className="font-semibold text-red-700 mt-3">
-                          Esta operación NO se puede deshacer. ¿Estás completamente seguro?
-                        </p>
+                      <AlertDialogDescription>
+                        Esta acción eliminará datos de forma permanente.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
+                    <div className="space-y-2 text-sm text-muted-foreground">
+                      <p className="font-semibold text-red-700">
+                        Esta acción eliminará PERMANENTEMENTE:
+                      </p>
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>Todos los clientes</li>
+                        <li>Todos los productos</li>
+                        <li>Todas las ventas e instalments</li>
+                        <li>Todo el historial de pagos</li>
+                      </ul>
+                      <p className="font-semibold text-red-700 mt-3">
+                        Esta operación NO se puede deshacer. ¿Estás completamente seguro?
+                      </p>
+                    </div>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancelar</AlertDialogCancel>
                       <AlertDialogAction 

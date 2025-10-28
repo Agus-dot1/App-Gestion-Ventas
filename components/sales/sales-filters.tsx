@@ -7,7 +7,11 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
-import { Calendar } from '@/components/ui/calendar';
+import dynamic from 'next/dynamic';
+// Lazy-load the Calendar to defer react-day-picker
+const Calendar = dynamic(() => import('@/components/ui/calendar').then(m => m.Calendar), {
+  ssr: false,
+});
 import { Separator } from '@/components/ui/separator';
 import { Filter, X, Calendar as CalendarIcon, SortAsc, SortDesc, RotateCcw, Search } from 'lucide-react';
 import { format } from 'date-fns';

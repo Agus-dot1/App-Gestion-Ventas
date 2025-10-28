@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import { SearchDialog } from '@/components/search/search-dialog';
 import { SearchTrigger } from '@/components/search/search-trigger';
 import { useSearchShortcut } from '@/hooks/use-search-shortcut';
@@ -48,7 +49,6 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
 
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const unreadCount = notifications.filter(n => !n.read_at).length;
 
   useEffect(() => {
     try {
@@ -66,12 +66,6 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
     }
   }, []);
 
-  const markNotificationRead = useCallback(async (id: number) => {
-    try {
-      await notificationsAdapter.markRead(id);
-      setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read_at: new Date().toISOString() } : n)));
-    } catch {}
-  }, []);
 
   // After mount, restore collapsed state from localStorage (first load may briefly flicker)
   useEffect(() => {
@@ -147,7 +141,21 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
         setPartners(list || []);
       } catch {}
     };
-    if (isElectron) loadPartners();
+    if (isElectron) {
+      loadPartners();
+      // Listen for global partner changes to refresh sidebar submenu
+      const handler = () => {
+        loadPartners();
+      };
+      try {
+        window.addEventListener('partners:changed', handler);
+      } catch {}
+      return () => {
+        try {
+          window.removeEventListener('partners:changed', handler);
+        } catch {}
+      };
+    }
   }, [isElectron]);
 
   const navigationItems = [
@@ -279,19 +287,21 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
                       </Button>
                     </Link>
 
-                    {!collapsed && salesExpanded && partners.length > 0 && (
-                      <div className="mt-1 ml-8 space-y-1">
-                        {partners.map((p: any) => (
-                          <Link key={p.id} href={`/sales?partner=${p.id}`} className="block">
-                            <Button
-                              variant={'ghost'}
-                              className={cn('w-full justify-start h-8 text-sm', 'gap-2')}
-                            >
-                              <span className="truncate">{p.name}</span>
-                            </Button>
-                          </Link>
-                        ))}
-                      </div>
+                    {partners.length > 0 && (
+                      <Collapsible open={!collapsed && salesExpanded}>
+                        <CollapsibleContent className="mt-1 ml-5 pl-5 space-y-1 border-l">
+                          {partners.map((p: any) => (
+                            <Link key={p.id} href={`/sales?partner=${p.id}`} className="block">
+                              <Button
+                                variant={'ghost'}
+                                className={cn('w-full justify-start h-7 text-sm', 'gap-2')}
+                              >
+                                <span className="truncate">{p.name}</span>
+                              </Button>
+                            </Link>
+                          ))}
+                        </CollapsibleContent>
+                      </Collapsible>
                     )}
                   </div>
                 );

@@ -28,7 +28,6 @@ export interface Customer {
   address?: string;
   company?: string;
   notes?: string;
-  tags?: string;
   payment_window?: '1 to 10' | '20 to 30';
   contact_info?: string;
   created_at?: string;
@@ -62,11 +61,10 @@ export interface SaleItem {
   product_id: number | null;
   quantity: number;
   unit_price: number;
-  discount_per_item: number;
   line_total: number;
   product_name: string;
   product_description?: string;
-  status: 'active' | 'returned' | 'exchanged';
+  status: 'active';
   returned_quantity: number;
 }
 
@@ -78,7 +76,7 @@ export interface Installment {
   amount: number;
   paid_amount: number;
   balance: number;
-  status: 'pending' | 'paid' | 'partial' | 'overdue' | 'cancelled';
+  status: 'pending' | 'paid' | 'overdue';
   paid_date?: string;
   days_overdue: number;
   late_fee: number;
@@ -96,18 +94,16 @@ export interface Sale {
   date: string;
   due_date?: string;
   subtotal: number;
-  tax_amount: number;
-  discount_amount: number;
   total_amount: number;
-  payment_type: 'cash' | 'installments' | 'credit';
-  payment_status: 'paid' | 'partial' | 'unpaid' | 'overdue';
+  payment_type: 'cash' | 'installments';
+  payment_status: 'paid' | 'unpaid' | 'overdue';
   payment_period?: '1 to 10' | '20 to 30';
-  period_type?: 'monthly' | 'weekly' | 'biweekly';
+  period_type?: 'monthly' | 'weekly';
   number_of_installments?: number;
   installment_amount?: number;
-  advance_installments: number;
-  transaction_type: 'sale' | 'return' | 'exchange' | 'refund';
-  status: 'pending' | 'completed' | 'cancelled' | 'refunded';
+  installment_payment_method?: 'cash' | 'credit_card' | 'debit_card' | 'bank_transfer' | 'check';
+  transaction_type: 'sale';
+  status: 'pending' | 'completed';
   created_by?: number;
   created_at?: string;
   updated_at?: string;
@@ -140,16 +136,12 @@ export interface SaleFormData {
     product_id: number | null;
     quantity: number;
     unit_price: number;
-    discount_per_item?: number;
     product_name?: string;
   }>;
-  payment_type: 'cash' | 'installments' | 'credit';
-  period_type?: 'monthly' | 'weekly' | 'biweekly';
+  payment_type: 'cash' | 'installments';
+  period_type?: 'monthly' | 'weekly';
   payment_period?: '1 to 10' | '20 to 30';
   number_of_installments?: number;
-  advance_installments?: number;
-  tax_amount?: number;
-  discount_amount?: number;
   notes?: string;
 }
 
@@ -274,7 +266,6 @@ export const customerOperations = {
       customer.address || null,
       customer.company || null,
       customer.notes || null,
-      customer.tags || null,
       normalizePaymentWindow(customer.payment_window as unknown as string | undefined) || null,
       customer.contact_info || null
     );
@@ -317,10 +308,6 @@ export const customerOperations = {
     if (customer.notes !== undefined) {
       fields.push('notes = ?');
       values.push(customer.notes);
-    }
-    if (customer.tags !== undefined) {
-      fields.push('tags = ?');
-      values.push(customer.tags);
     }
     if (customer.payment_window !== undefined) {
       fields.push('payment_window = ?');
@@ -428,7 +415,6 @@ export const customerOperations = {
         address: customer.address,
         company: customer.company,
         notes: customer.notes,
-        tags: customer.tags,
         contact_info: customer.contact_info,
         payment_window: normalizePaymentWindow(customer.payment_window),
       });
@@ -436,7 +422,7 @@ export const customerOperations = {
 
     const stmt = db.prepare(`
       INSERT INTO customers (
-        id, name, dni, email, phone, secondary_phone, address, company, notes, tags, contact_info, payment_window,
+        id, name, dni, email, phone, secondary_phone, address, company, notes, contact_info, payment_window,
         created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
     `);
@@ -450,7 +436,6 @@ export const customerOperations = {
       customer.address || null,
       customer.company || null,
       customer.notes || null,
-      customer.tags || null,
       customer.contact_info || null,
       normalizePaymentWindow(customer.payment_window) || null,
       customer.created_at || null,
@@ -739,9 +724,20 @@ export const partnerOperations = {
 
   delete: (id: number): void => {
     const db = getDatabase();
-    // Soft delete by setting is_active to false
-    const stmt = db.prepare('UPDATE partners SET is_active = 0 WHERE id = ?');
-    stmt.run(id);
+    // Hard delete: disassociate sales and remove partner row atomically
+    try {
+      db.exec('BEGIN');
+      // Disassociate any sales referencing this partner
+      const clearSales = db.prepare('UPDATE sales SET partner_id = NULL WHERE partner_id = ?');
+      clearSales.run(id);
+      // Remove partner row
+      const del = db.prepare('DELETE FROM partners WHERE id = ?');
+      del.run(id);
+      db.exec('COMMIT');
+    } catch (e) {
+      try { db.exec('ROLLBACK'); } catch {}
+      throw e;
+    }
   }
 };
 
@@ -956,9 +952,9 @@ export const saleOperations = {
     
     // Calculate totals
     const subtotal = saleData.items.reduce((sum, item) =>
-      sum + (item.quantity * item.unit_price) - (item.discount_per_item || 0), 0
+      sum + (item.quantity * item.unit_price), 0
     );
-    const totalAmount = subtotal + (saleData.tax_amount || 0) - (saleData.discount_amount || 0);
+    const totalAmount = subtotal;
     
     // Generate sale number with a more readable format
     const now = new Date();
@@ -984,7 +980,7 @@ export const saleOperations = {
         discount_amount, total_amount, payment_type, payment_status, period_type,
         number_of_installments, installment_amount, advance_installments,
         transaction_type, status, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
     `);
     
     const installmentAmount = saleData.payment_type === 'installments' && saleData.number_of_installments
@@ -998,15 +994,12 @@ export const saleOperations = {
       new Date().toISOString(),
       null, // due_date
       subtotal,
-      saleData.tax_amount || 0,
-      saleData.discount_amount || 0,
       totalAmount,
       saleData.payment_type,
       saleData.payment_type === 'cash' ? 'paid' : 'unpaid',
       saleData.period_type || null,
       saleData.number_of_installments || null,
       installmentAmount,
-      saleData.advance_installments || 0, // advance_installments
       'sale',
       'completed',
       saleData.notes || null
@@ -1019,11 +1012,11 @@ export const saleOperations = {
       INSERT INTO sale_items (
         sale_id, product_id, quantity, unit_price, discount_per_item,
         line_total, product_name, status, returned_quantity
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, 0, ?, ?, 'active', 0)
     `);
     
     for (const item of saleData.items) {
-      const lineTotal = (item.quantity * item.unit_price) - (item.discount_per_item || 0);
+      const lineTotal = (item.quantity * item.unit_price);
       let productName: string | null = null;
       if (item.product_id != null) {
         try {
@@ -1042,11 +1035,8 @@ export const saleOperations = {
         item.product_id,
         item.quantity,
         item.unit_price,
-        item.discount_per_item || 0,
         lineTotal,
-        productName,
-        'active',
-        0
+        productName
       );
 
       // Decrement product stock if the item references a catalog product
@@ -1067,7 +1057,6 @@ export const saleOperations = {
     // Create installments if needed
     if (saleData.payment_type === 'installments' && saleData.number_of_installments) {
       const monthlyAmount = Math.round(totalAmount / saleData.number_of_installments);
-      const advanceInstallments = saleData.advance_installments || 0;
 
       // Determine customer's payment window anchor day (end of window)
       const customerWindowRow = db.prepare('SELECT payment_window FROM customers WHERE id = ?').get(saleData.customer_id) as { payment_window?: string } | undefined;
@@ -1107,50 +1096,18 @@ export const saleOperations = {
         const day = Math.min(anchorDay, lastDayOfTargetMonth);
         const dueDate = new Date(targetYear, normalizedMonth, day);
 
-        // Mark advance installments as paid
-        const isPaid = i <= advanceInstallments;
-
         installmentStmt.run(
           saleId,
           i,
           dueDate.toISOString().split('T')[0],
           monthlyAmount,
-          isPaid ? monthlyAmount : 0,
-          isPaid ? 0 : monthlyAmount,
-          isPaid ? 'paid' : 'pending',
+          0,
+          monthlyAmount,
+          'pending',
           0,
           0,
           0
         );
-      }
-      
-      // Create payment transactions for advance installments
-      if (advanceInstallments > 0) {
-        const paymentStmt = db.prepare(`
-           INSERT INTO payment_transactions (
-             sale_id, installment_id, amount, payment_method, payment_reference,
-             transaction_date, status
-           ) VALUES (?, ?, ?, ?, ?, ?, ?)
-         `);
-        
-        // Get the created installment IDs for advance payments
-        const installmentIds = db.prepare(`
-          SELECT id FROM installments 
-          WHERE sale_id = ? AND installment_number <= ?
-          ORDER BY installment_number
-        `).all(saleId, advanceInstallments);
-        
-        installmentIds.forEach((installment: any) => {
-          paymentStmt.run(
-            saleId,
-            installment.id,
-            monthlyAmount,
-            'cash',
-            'Pago adelantado',
-            new Date().toISOString(),
-            'completed'
-          );
-        });
       }
     }
     
@@ -1162,7 +1119,6 @@ export const saleOperations = {
     product_id: number;
     quantity: number;
     unit_price: number;
-    discount_per_item?: number;
     product_name?: string;
   }> }): number => {
     const db = getDatabase();
@@ -1196,18 +1152,15 @@ export const saleOperations = {
 
     const date = sale.date || new Date().toISOString();
     const subtotal = typeof sale.subtotal === 'number' ? sale.subtotal : 0;
-    const taxAmount = typeof sale.tax_amount === 'number' ? sale.tax_amount : 0;
-    const discountAmount = typeof sale.discount_amount === 'number' ? sale.discount_amount : 0;
-    const totalAmount = typeof sale.total_amount === 'number' ? sale.total_amount : (subtotal + taxAmount - discountAmount);
-    const paymentType = sale.payment_type || 'cash';
-    const paymentStatus = sale.payment_status || (paymentType === 'cash' ? 'paid' : 'unpaid');
+    const totalAmount = typeof sale.total_amount === 'number' ? sale.total_amount : subtotal;
+    const paymentType: 'cash' | 'installments' = (sale.payment_type === 'installments') ? 'installments' : 'cash';
+    const paymentStatus: 'paid' | 'unpaid' = (sale.payment_status === 'paid' || paymentType === 'cash') ? 'paid' : 'unpaid';
     const numberOfInstallments = sale.number_of_installments || null;
     const installmentAmount = typeof sale.installment_amount === 'number'
       ? sale.installment_amount
       : (numberOfInstallments ? Math.round(totalAmount / numberOfInstallments) : null);
-    const advanceInstallments = sale.advance_installments || 0;
-    const status = sale.status || 'completed';
-    const transactionType = sale.transaction_type || 'sale';
+    const status: 'pending' | 'completed' = sale.status === 'pending' ? 'pending' : 'completed';
+    const transactionType: 'sale' = 'sale';
     const notes = sale.notes || null;
 
     // Insert sale row
@@ -1217,7 +1170,7 @@ export const saleOperations = {
         discount_amount, total_amount, payment_type, payment_status, period_type,
         number_of_installments, installment_amount, advance_installments,
         transaction_type, status, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
     `);
 
     const saleResult = saleStmt.run(
@@ -1226,15 +1179,13 @@ export const saleOperations = {
       date,
       sale.due_date || null,
       subtotal,
-      taxAmount,
-      discountAmount,
+      
       totalAmount,
       paymentType,
       paymentStatus,
       sale.period_type || null,
       numberOfInstallments,
       installmentAmount,
-      advanceInstallments,
       transactionType,
       status,
       notes
@@ -1248,10 +1199,10 @@ export const saleOperations = {
         INSERT INTO sale_items (
           sale_id, product_id, quantity, unit_price, discount_per_item,
           line_total, product_name, product_description, status, returned_quantity
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, 'active', 0)
       `);
       for (const item of sale.items) {
-        const lineTotal = (item.quantity * item.unit_price) - (item.discount_per_item || 0);
+        const lineTotal = (item.quantity * item.unit_price);
         let productName = item.product_name || null;
         if (!productName) {
           try {
@@ -1269,11 +1220,9 @@ export const saleOperations = {
           item.product_id,
           item.quantity,
           item.unit_price,
-          item.discount_per_item || 0,
           lineTotal,
           productName,
-          'active',
-          0
+          null
         );
       }
     }
@@ -1302,46 +1251,18 @@ export const saleOperations = {
         const lastDayOfTargetMonth = new Date(targetYear, normalizedMonth + 1, 0).getDate();
         const day = Math.min(anchorDay, lastDayOfTargetMonth);
         const dueDate = new Date(targetYear, normalizedMonth, day);
-        const isPaid = i <= advanceInstallments;
         installmentStmt.run(
           saleId,
           i,
           dueDate.toISOString().split('T')[0],
           monthlyAmount,
-          isPaid ? monthlyAmount : 0,
-          isPaid ? 0 : monthlyAmount,
-          isPaid ? 'paid' : 'pending',
+          0,
+          monthlyAmount,
+          'pending',
           0,
           0,
           0
         );
-      }
-
-      // Create payment transactions for advance installments
-      if (advanceInstallments > 0) {
-        const paymentStmt = db.prepare(`
-           INSERT INTO payment_transactions (
-             sale_id, installment_id, amount, payment_method, payment_reference,
-             transaction_date, status
-           ) VALUES (?, ?, ?, ?, ?, ?, ?)
-         `);
-        const installmentIds = db.prepare(`
-          SELECT id FROM installments 
-          WHERE sale_id = ? AND installment_number <= ?
-          ORDER BY installment_number
-        `).all(saleId, advanceInstallments);
-
-        installmentIds.forEach((installment: any) => {
-          paymentStmt.run(
-            saleId,
-            installment.id,
-            monthlyAmount,
-            'cash',
-            'Pago adelantado (import)',
-            new Date().toISOString(),
-            'completed'
-          );
-        });
       }
     }
 
@@ -1390,8 +1311,7 @@ export const saleOperations = {
     const db = getDatabase();
     const stmt = db.prepare(`
       SELECT COALESCE(SUM(total_amount), 0) as total
-      FROM sales 
-      WHERE status != 'refunded'
+      FROM sales
     `);
     const result = stmt.get() as { total: number };
     return result.total;
@@ -1417,7 +1337,7 @@ export const saleOperations = {
         COUNT(*) as sales,
         COALESCE(SUM(total_amount), 0) as revenue
       FROM sales 
-      WHERE status != 'cancelled' AND date >= date('now', '-' || ? || ' days')
+      WHERE date >= date('now', '-' || ? || ' days')
       GROUP BY strftime('%Y-%m-%d', date)
       ORDER BY date
     `);
@@ -1500,7 +1420,6 @@ export const saleItemOperations = {
       saleItem.product_id,
       saleItem.quantity,
       saleItem.unit_price,
-      saleItem.discount_per_item,
       saleItem.line_total,
       saleItem.product_name,
       saleItem.product_description || null,
@@ -1549,10 +1468,9 @@ export const installmentOperations = {
       FROM installments i
       JOIN sales s ON i.sale_id = s.id
       JOIN customers c ON s.customer_id = c.id
-      WHERE i.status IN ('pending', 'partial') 
+      WHERE i.status IN ('pending') 
       AND i.due_date < date('now')
       AND i.balance > 0
-      AND s.status != 'cancelled'
       ORDER BY i.due_date
     `);
     return stmt.all() as Installment[];
@@ -1569,11 +1487,10 @@ export const installmentOperations = {
       FROM installments i
       JOIN sales s ON i.sale_id = s.id
       JOIN customers c ON s.customer_id = c.id
-      WHERE i.status IN ('pending', 'partial') 
+      WHERE i.status IN ('pending') 
       AND i.due_date >= date('now')
-      AND i.due_date <= date('now', '+14 days')
+      AND i.due_date <= date('now', '+30 days')
       AND i.balance > 0
-      AND s.status != 'cancelled'
       ORDER BY i.due_date ASC
       LIMIT ?
     `);
@@ -1589,10 +1506,14 @@ export const installmentOperations = {
       throw new Error(`Installment with id ${installmentId} not found`);
     }
     
-    // Update installment
-    const newPaidAmount = installment.paid_amount + amount;
-    const newBalance = installment.amount - newPaidAmount;
-    const newStatus = newBalance <= 0 ? 'paid' : 'partial';
+    // Enforce full-payment only
+    const expectedAmount = installment.amount - installment.paid_amount;
+    if (amount !== expectedAmount) {
+      throw new Error(`Solo se permiten pagos completos. Monto esperado: ${expectedAmount}`);
+    }
+    const newPaidAmount = installment.amount;
+    const newBalance = 0;
+    const newStatus: 'paid' = 'paid';
     
     const updateStmt = db.prepare(`
       UPDATE installments
@@ -1611,7 +1532,7 @@ export const installmentOperations = {
     paymentStmt.run(
       installment.sale_id,
       installmentId,
-      amount,
+      expectedAmount,
       paymentMethod,
       reference || null,
       new Date().toISOString(),
@@ -1646,10 +1567,13 @@ export const installmentOperations = {
       throw new Error(`Installment with id ${installmentId} not found`);
     }
     
-    // Calculate new values after reverting the payment
-    const newPaidAmount = installment.paid_amount - transaction.amount;
-    const newBalance = installment.amount - newPaidAmount;
-    const newStatus = newBalance <= 0 ? 'paid' : newBalance === installment.amount ? 'pending' : 'partial';
+    // Only allow revert if it reverts a full payment to pending
+    if (installment.paid_amount !== installment.amount || transaction.amount !== installment.amount) {
+      throw new Error('Solo se puede revertir pagos completos de la cuota');
+    }
+    const newPaidAmount = 0;
+    const newBalance = installment.amount;
+    const newStatus: 'pending' = 'pending';
     
     // Update installment
     const updateStmt = db.prepare(`
