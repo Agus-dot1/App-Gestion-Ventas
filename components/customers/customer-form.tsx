@@ -19,7 +19,6 @@ interface CustomerFormState {
   secondary_phone: string;
   address: string;
   notes: string;
-  tags: string;
   payment_window?: PaymentWindow;
 }
 
@@ -38,7 +37,6 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
     secondary_phone: customer?.secondary_phone || '',
     address: customer?.address || '',
     notes: customer?.notes || '',
-    tags: customer?.tags || '',
     payment_window: customer?.payment_window ?? undefined
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -54,7 +52,6 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
         secondary_phone: customer.secondary_phone || '',
         address: customer.address || '',
         notes: customer.notes || '',
-        tags: customer.tags || '',
         payment_window: customer.payment_window ?? undefined
       });
     } else {
@@ -65,7 +62,6 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
         secondary_phone: '',
         address: '',  
         notes: '',
-        tags: '',
         payment_window: undefined
       });
     }
@@ -124,7 +120,6 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
         secondary_phone: formData.secondary_phone.trim() || undefined,
         address: formData.address.trim() || undefined,
         notes: formData.notes.trim() || undefined,
-        tags: formData.tags.trim() || undefined,
         payment_window: formData.payment_window,
         contact_info: buildContactInfo() // Keep for backward compatibility
       });
@@ -137,7 +132,6 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
         secondary_phone: '',
         address: '',
         notes: '',
-        tags: '',
         payment_window: undefined
       });
       setErrors({});
@@ -273,22 +267,6 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
                       onChange={(e) => handleInputChange('address', e.target.value)}
                       placeholder="Calle 123, Ciudad, CP"
                       rows={2}
-                      className="pl-10"
-                    />
-                  </div>
-                </div>
-
-
-                {/* Tags */}
-                <div className="space-y-2">
-                  <Label htmlFor="tags">Etiquetas</Label>
-                  <div className="relative">
-                    <Tag className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="tags"
-                      value={formData.tags}
-                      onChange={(e) => handleInputChange('tags', e.target.value)}
-                      placeholder="VIP, Mayorista, Frecuente (separadas por comas)"
                       className="pl-10"
                     />
                   </div>

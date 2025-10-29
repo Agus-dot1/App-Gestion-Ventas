@@ -31,7 +31,16 @@ export default function SalesPage() {
   const [overdueSales, setOverdueSales] = useState<number>(0);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | undefined>();
-  const [isElectron] = useState(() => typeof window !== 'undefined' && !!window.electronAPI);
+  const [isElectron, setIsElectron] = useState(false);
+  const [hasHydrated, setHasHydrated] = useState(false);
+  useEffect(() => {
+    setHasHydrated(true);
+    try {
+      setIsElectron(!!(window as any)?.electronAPI);
+    } catch {
+      setIsElectron(false);
+    }
+  }, []);
   const [activeTab, setActiveTab] = useState(() => tabParam || 'sales');
   const [isLoading, setIsLoading] = useState(false); // Start with false for optimistic navigation
   const [searchTerm, setSearchTerm] = useState('');
@@ -594,12 +603,12 @@ export default function SalesPage() {
     pendingSales: sales.filter(sale => sale.payment_status === 'unpaid').length
   };
 
-  // Show skeleton only if loading and no cached data
-  if (isLoading && sales.length === 0) {
+  // Show skeleton before hydration to keep SSR and client initial render identical
+  if (!hasHydrated) {
     return <SalesSkeleton />;
   }
 
-  // Show skeleton if not in Electron environment
+  // Show skeleton if not in Electron environment (after hydration)
   if (!isElectron) {
     return <SalesSkeleton />;
   }

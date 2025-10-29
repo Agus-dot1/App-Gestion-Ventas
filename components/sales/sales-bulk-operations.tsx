@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-// Defer heavy PDF/Excel libraries until export is triggered
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -46,6 +45,14 @@ function getPaymentStatusBadge(status: Sale['payment_status']) {
   return statusConfig[status] || statusConfig.unpaid;
 }
 
+function getPaymentTypeLabel(type: Sale['payment_type']) {
+  const types = {
+    cash: 'Efectivo',
+    installments: 'Cuotas',
+  } as const;
+  return types[type] || 'N/A';
+}
+
 export function SalesBulkOperations({
   selectedSales,
   sales,
@@ -78,65 +85,128 @@ export function SalesBulkOperations({
   const exportToPDF = async () => {
     const { default: jsPDF } = await import('jspdf');
     const autoTable = (await import('jspdf-autotable')).default;
-    const doc = new jsPDF();
-    
-    // Add title
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const now = new Date();
+    const currencyTotal = selectedSalesData.reduce((sum, sale) => sum + (sale.total_amount || 0), 0);
+    const unpaidTotal = selectedSalesData.filter(s => s.payment_status === 'unpaid').reduce((sum, s) => sum + (s.total_amount || 0), 0);
+    const paidTotal = selectedSalesData.filter(s => s.payment_status === 'paid').reduce((sum, s) => sum + (s.total_amount || 0), 0);
+    const overdueTotal = selectedSalesData.filter(s => s.payment_status === 'overdue').reduce((sum, s) => sum + (s.total_amount || 0), 0);
+
+    // Header
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(16);
-    doc.text('Reporte de Ventas Seleccionadas', 14, 22);
-    
-    // Add summary
-    const totalAmount = selectedSalesData.reduce((sum, sale) => sum + sale.total_amount, 0);
-    doc.setFontSize(12);
-    doc.text(`Total de ventas: ${selectedSalesData.length}`, 14, 35);
-    doc.text(`Monto total: ${formatCurrency(totalAmount)}`, 14, 42);
-    
-    // Prepare data for table
+    doc.text('Reporte de Ventas', 14, 16);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.text(`Generado: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`, 14, 22);
+    doc.text(`Total de registros: ${selectedSalesData.length}`, 14, 28);
+
+    // Summary block
+    doc.setFontSize(10);
+    doc.text(`Total general: ${formatCurrency(currencyTotal)}`, 120, 16);
+    doc.text(`Pendiente: ${formatCurrency(unpaidTotal)}`, 120, 22);
+    doc.text(`Pagado: ${formatCurrency(paidTotal)}`, 120, 28);
+    doc.text(`Vencido: ${formatCurrency(overdueTotal)}`, 120, 34);
+
+    // Table data
     const tableData = selectedSalesData.map(sale => [
       sale.sale_number,
-      sale.customer_name || 'N/A',
       formatDate(sale.date),
+      sale.customer_name || 'N/A',
+      getPaymentTypeLabel(sale.payment_type) ?? 'N/A',
       getPaymentStatusBadge(sale.payment_status).label,
-      formatCurrency(sale.total_amount)
+      formatCurrency(sale.total_amount),
+      sale.partner_name ?? '—'
     ]);
-    
-    // Add table
+
     autoTable(doc, {
-      head: [['N° Venta', 'Cliente', 'Fecha', 'Estado', 'Total']],
+      head: [['N° Venta', 'Fecha', 'Cliente', 'Método', 'Estado', 'Total', 'Responsable']],
       body: tableData,
-      startY: 50,
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [41, 128, 185] }
+      startY: 40,
+      styles: { fontSize: 9, cellPadding: 2 },
+      headStyles: { fillColor: [41, 128, 185], textColor: 255 },
+      columnStyles: {
+        0: { cellWidth: 22 },
+        1: { cellWidth: 24 },
+        2: { cellWidth: 45 },
+        3: { cellWidth: 22 },
+        4: { cellWidth: 22 },
+        5: { cellWidth: 24, halign: 'right' },
+        6: { cellWidth: 28 }
+      },
+      didDrawPage: (data: any) => {
+        const str = `Página ${(doc as any).getNumberOfPages ? (doc as any).getNumberOfPages() : (doc as any).internal?.pages?.length || 1}`;
+        doc.setFontSize(9);
+        doc.text(str, data.settings.margin.left, (doc as any).internal.pageSize.getHeight() - 8);
+      },
+      foot: [[
+        '', '', '', '', 'Total general', formatCurrency(currencyTotal), ''
+      ]],
+      footStyles: { fillColor: [245, 245, 245], textColor: 20, fontStyle: 'bold' }
     });
-    
-    doc.save('ventas_seleccionadas.pdf');
+
+    doc.save(`ventas_${now.toISOString().split('T')[0]}.pdf`);
   };
 
   const exportToExcel = async () => {
-    const worksheetData = selectedSalesData.map(sale => ({
-      'N° Venta': sale.sale_number,
-      'Cliente': sale.customer_name || 'N/A',
-      'Fecha': formatDate(sale.date),
-      'Fecha Vencimiento': sale.due_date ? formatDate(sale.due_date) : '',
-      'Subtotal': sale.subtotal,
-      'Total': sale.total_amount,
-      'Tipo de Pago': sale.payment_type === 'cash' ? 'Efectivo' : 
-                     sale.payment_type === 'installments' ? 'Cuotas' :
-                     sale.payment_type === 'credit' ? 'Crédito' : 'Mixto',
-      'Estado de Pago': getPaymentStatusBadge(sale.payment_status).label,
-      'Cuotas': sale.number_of_installments || '',
-      'Monto Cuota': sale.installment_amount ? Math.round(sale.installment_amount) : '',
-      'Estado': sale.status === 'pending' ? 'Pendiente' :
-               sale.status === 'completed' ? 'Completada' :
-               sale.status === 'cancelled' ? 'Cancelada' : 'Reembolsada',
-      'Notas': sale.notes || ''
-    }));
-    
     const XLSX = await import('xlsx');
-    const worksheet = XLSX.utils.json_to_sheet(worksheetData);
+    // Keep numbers as numbers so Excel can sum/filter properly
+    const rows = selectedSalesData.map(sale => ({
+      'N° Venta': sale.sale_number,
+      'Fecha': XLSX.SSF.format('yyyy-mm-dd', new Date(sale.date)),
+      'Cliente': sale.customer_name || 'N/A',
+      'Método de Pago': getPaymentTypeLabel(sale.payment_type) ?? 'N/A',
+      'Estado de Pago': getPaymentStatusBadge(sale.payment_status).label,
+      'Subtotal': sale.subtotal ?? 0,
+      'Total': sale.total_amount ?? 0,
+      'Cuotas': sale.number_of_installments ?? '',
+      'Monto Cuota': sale.installment_amount ?? '',
+      'Responsable': sale.partner_name ?? '',
+      'Notas': sale.notes ?? ''
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
+
+    // Header info
+    const headers = Object.keys(rows[0] || {});
+
+    // Column widths
+    (worksheet as any)['!cols'] = [
+      { wch: 10 }, // N° Venta
+      { wch: 12 }, // Fecha
+      { wch: 24 }, // Cliente
+      { wch: 16 }, // Método
+      { wch: 16 }, // Estado
+      { wch: 12 }, // Subtotal
+      { wch: 12 }, // Total
+      { wch: 8 },  // Cuotas
+      { wch: 12 }, // Monto Cuota
+      { wch: 16 }, // Responsable
+      { wch: 40 }, // Notas
+    ];
+
+    // AutoFilter over header row
+    (worksheet as any)['!autofilter'] = { ref: `A1:${String.fromCharCode(64 + headers.length)}1` };
+
+    // Append and write
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Ventas');
-    
-    XLSX.writeFile(workbook, 'ventas_seleccionadas.xlsx');
+
+    // Summary sheet
+    const total = selectedSalesData.reduce((sum, s) => sum + (s.total_amount || 0), 0);
+    const unpaid = selectedSalesData.filter(s => s.payment_status === 'unpaid').reduce((sum, s) => sum + (s.total_amount || 0), 0);
+    const paid = selectedSalesData.filter(s => s.payment_status === 'paid').reduce((sum, s) => sum + (s.total_amount || 0), 0);
+    const overdue = selectedSalesData.filter(s => s.payment_status === 'overdue').reduce((sum, s) => sum + (s.total_amount || 0), 0);
+    const summarySheet = XLSX.utils.aoa_to_sheet([
+      ['Resumen'],
+      ['Total general', total],
+      ['Pendiente', unpaid],
+      ['Pagado', paid],
+      ['Vencido', overdue],
+    ]);
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Resumen');
+
+    XLSX.writeFile(workbook, `ventas_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   if (selectedSales.size === 0) {

@@ -32,6 +32,120 @@ const handlers_1 = require("../notifications/ipc/handlers");
 const scheduler_1 = require("../notifications/scheduler");
 const isDev = process.env.NODE_ENV === 'development';
 let mainWindow;
+let tray = null;
+let isQuiting = false;
+let notificationsMuted = false;
+function getBaseUrl() {
+    if (isDev) {
+        return process.env.ELECTRON_DEV_URL || 'http://localhost:3001';
+    }
+    // Base file URL pointing to Next.js export directory
+    const outDir = path.join(__dirname, '../../../out').replace(/\\/g, '/');
+    return `file:///${outDir}`;
+}
+function navigateTo(route) {
+    if (!mainWindow)
+        return;
+    const base = getBaseUrl();
+    const target = isDev ? `${base}${route}` : `${base}${route}`;
+    try {
+        mainWindow.loadURL(target);
+    }
+    catch (e) {
+        console.error('Navigation failed:', e);
+    }
+}
+function toggleMainWindowVisibility() {
+    if (!mainWindow)
+        return;
+    if (mainWindow.isVisible()) {
+        mainWindow.hide();
+    }
+    else {
+        mainWindow.show();
+        mainWindow.focus();
+    }
+}
+function resolveTrayIcon() {
+    // Prefer an .ico if present; fall back to tiny transparent PNG
+    const candidates = [
+        // Dev path under repo root
+        path.join(process.cwd(), 'assets', 'tray.ico'),
+        // Built path alongside main bundle
+        path.join(__dirname, '../assets/tray.ico'),
+        // Alternative built path
+        path.join(__dirname, '../../assets/tray.ico'),
+    ];
+    for (const p of candidates) {
+        try {
+            if (fs.existsSync(p)) {
+                console.log(`Found tray icon at: ${p}`);
+                const img = electron_1.nativeImage.createFromPath(p);
+                if (!img.isEmpty())
+                    return img;
+            }
+        }
+        catch (err) {
+            console.log(`Failed to load tray icon from ${p}:`, err);
+        }
+    }
+    console.log('Using fallback transparent icon');
+    // 1x1 transparent PNG as last resort (base64)
+    const transparent1x1 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAOeYw2kAAAAASUVORK5CYII=';
+    return electron_1.nativeImage.createFromDataURL(transparent1x1);
+}
+function createTray() {
+    try {
+        const icon = resolveTrayIcon();
+        tray = new electron_1.Tray(icon);
+        tray.setToolTip('Gestión de Ventas');
+        const contextMenu = electron_1.Menu.buildFromTemplate([
+            {
+                label: 'Mostrar/Ocultar ventana',
+                click: () => toggleMainWindowVisibility(),
+            },
+            { type: 'separator' },
+            {
+                label: 'Ventas',
+                click: () => navigateTo('/sales'),
+            },
+            {
+                label: 'Clientes',
+                click: () => navigateTo('/customers'),
+            },
+            {
+                label: 'Productos',
+                click: () => navigateTo('/products'),
+            },
+            { type: 'separator' },
+            {
+                label: 'Silenciar notificaciones',
+                type: 'checkbox',
+                checked: notificationsMuted,
+                click: (menuItem) => {
+                    notificationsMuted = !!menuItem.checked;
+                    tray?.setToolTip(notificationsMuted ? 'Gestión de Ventas (silenciado)' : 'Gestión de Ventas');
+                },
+            },
+            { type: 'separator' },
+            {
+                label: 'Salir',
+                click: () => {
+                    isQuiting = true;
+                    electron_1.app.quit();
+                },
+            },
+        ]);
+        tray.setContextMenu(contextMenu);
+        // Left-click toggles visibility
+        tray.on('click', () => toggleMainWindowVisibility());
+        // Right-click shows context menu explicitly (redundant but explicit)
+        tray.on('right-click', () => tray?.popUpContextMenu());
+    }
+    catch (e) {
+        console.error('Failed to create tray:', e);
+    }
+}
 function createWindow() {
     // Create the browser window
     mainWindow = new electron_1.BrowserWindow({
@@ -70,6 +184,17 @@ function createWindow() {
     // Show window when ready to prevent visual flash
     mainWindow.once('ready-to-show', () => {
         mainWindow?.show();
+    });
+    // Hide to tray on minimize (no event object for 'minimize')
+    mainWindow.on('minimize', () => {
+        mainWindow?.minimize();
+    });
+    // Hide to tray on close unless quitting via menu
+    mainWindow.on('close', (e) => {
+        if (!isQuiting) {
+            e.preventDefault();
+            mainWindow?.hide();
+        }
     });
     // Handle window closed
     mainWindow.on('closed', () => {
@@ -352,21 +477,22 @@ electron_1.app.whenReady().then(() => {
     // Set up IPC handlers
     setupIpcHandlers();
     // Centralizar IPC de notificaciones
-    (0, handlers_1.setupNotificationIpcHandlers)(() => mainWindow);
+    // Respetar silencio: si está silenciado, no emitimos eventos al renderer
+    (0, handlers_1.setupNotificationIpcHandlers)(() => (notificationsMuted ? null : mainWindow));
     // Start background scheduler for notifications (centralizado)
     // Permitir configurar el intervalo vía variable de entorno sin cambiar defaults
     const rawInterval = process.env.NOTIFICATIONS_SCHEDULER_INTERVAL_MS || process.env.NOTIFICATIONS_INTERVAL_MS;
     if (rawInterval) {
         const parsed = parseInt(rawInterval, 10);
         if (!Number.isNaN(parsed) && parsed > 0) {
-            (0, scheduler_1.setupNotificationScheduler)(() => mainWindow, parsed);
+            (0, scheduler_1.setupNotificationScheduler)(() => (notificationsMuted ? null : mainWindow), parsed);
         }
         else {
-            (0, scheduler_1.setupNotificationScheduler)(() => mainWindow);
+            (0, scheduler_1.setupNotificationScheduler)(() => (notificationsMuted ? null : mainWindow));
         }
     }
     else {
-        (0, scheduler_1.setupNotificationScheduler)(() => mainWindow);
+        (0, scheduler_1.setupNotificationScheduler)(() => (notificationsMuted ? null : mainWindow));
     }
     // Register protocol handler globally before creating windows
     const { session } = require('electron');
@@ -521,6 +647,10 @@ electron_1.app.whenReady().then(() => {
         }
     });
     createWindow();
+    // Create system tray (Windows-focused behavior)
+    if (process.platform === 'win32' || process.platform === 'darwin') {
+        createTray();
+    }
     // On macOS, re-create window when dock icon is clicked
     electron_1.app.on('activate', () => {
         if (electron_1.BrowserWindow.getAllWindows().length === 0) {
@@ -530,11 +660,16 @@ electron_1.app.whenReady().then(() => {
 });
 // Quit when all windows are closed
 electron_1.app.on('window-all-closed', () => {
-    // Close database connection
-    (0, database_1.closeDatabase)();
-    if (process.platform !== 'darwin') {
-        electron_1.app.quit();
+    // On Windows/Linux, keep the app running in the tray unless explicitly quitting
+    // Only quit if we're actually quitting (not just hiding to tray)
+    if (isQuiting) {
+        // Close database connection
+        (0, database_1.closeDatabase)();
+        if (process.platform !== 'darwin') {
+            electron_1.app.quit();
+        }
     }
+    // If not quitting, keep the app alive in the tray
 });
 // Close database when app is quitting
 electron_1.app.on('before-quit', () => {

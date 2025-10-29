@@ -112,7 +112,7 @@ exports.customerOperations = {
       INSERT INTO customers (name, dni, email, phone, secondary_phone, address, company, notes, tags, payment_window, contact_info) 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-        const result = stmt.run(customer.name, customer.dni || null, customer.email || null, customer.phone || null, customer.secondary_phone || null, customer.address || null, customer.company || null, customer.notes || null, customer.tags || null, normalizePaymentWindow(customer.payment_window) || null, customer.contact_info || null);
+        const result = stmt.run(customer.name, customer.dni || null, customer.email || null, customer.phone || null, customer.secondary_phone || null, customer.address || null, customer.company || null, customer.notes || null, normalizePaymentWindow(customer.payment_window) || null, customer.contact_info || null);
         return result.lastInsertRowid;
     },
     update: (id, customer) => {
@@ -150,10 +150,6 @@ exports.customerOperations = {
         if (customer.notes !== undefined) {
             fields.push('notes = ?');
             values.push(customer.notes);
-        }
-        if (customer.tags !== undefined) {
-            fields.push('tags = ?');
-            values.push(customer.tags);
         }
         if (customer.payment_window !== undefined) {
             fields.push('payment_window = ?');
@@ -251,18 +247,17 @@ exports.customerOperations = {
                 address: customer.address,
                 company: customer.company,
                 notes: customer.notes,
-                tags: customer.tags,
                 contact_info: customer.contact_info,
                 payment_window: normalizePaymentWindow(customer.payment_window),
             });
         }
         const stmt = db.prepare(`
       INSERT INTO customers (
-        id, name, dni, email, phone, secondary_phone, address, company, notes, tags, contact_info, payment_window,
+        id, name, dni, email, phone, secondary_phone, address, company, notes, contact_info, payment_window,
         created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
     `);
-        const result = stmt.run(customer.id, customer.name, customer.dni || null, customer.email || null, customer.phone || null, customer.secondary_phone || null, customer.address || null, customer.company || null, customer.notes || null, customer.tags || null, customer.contact_info || null, normalizePaymentWindow(customer.payment_window) || null, customer.created_at || null, customer.updated_at || null);
+        const result = stmt.run(customer.id, customer.name, customer.dni || null, customer.email || null, customer.phone || null, customer.secondary_phone || null, customer.address || null, customer.company || null, customer.notes || null, customer.contact_info || null, normalizePaymentWindow(customer.payment_window) || null, customer.created_at || null, customer.updated_at || null);
         return result.lastInsertRowid;
     }
 };
@@ -486,9 +481,24 @@ exports.partnerOperations = {
     },
     delete: (id) => {
         const db = (0, database_1.getDatabase)();
-        // Soft delete by setting is_active to false
-        const stmt = db.prepare('UPDATE partners SET is_active = 0 WHERE id = ?');
-        stmt.run(id);
+        // Hard delete: disassociate sales and remove partner row atomically
+        try {
+            db.exec('BEGIN');
+            // Disassociate any sales referencing this partner
+            const clearSales = db.prepare('UPDATE sales SET partner_id = NULL WHERE partner_id = ?');
+            clearSales.run(id);
+            // Remove partner row
+            const del = db.prepare('DELETE FROM partners WHERE id = ?');
+            del.run(id);
+            db.exec('COMMIT');
+        }
+        catch (e) {
+            try {
+                db.exec('ROLLBACK');
+            }
+            catch { }
+            throw e;
+        }
     }
 };
 exports.saleOperations = {
@@ -681,16 +691,16 @@ exports.saleOperations = {
         const saleStmt = db.prepare(`
       INSERT INTO sales (
         customer_id, partner_id, sale_number, date, due_date, subtotal, tax_amount,
-        discount_amount, total_amount, payment_type, payment_status, period_type,
+        discount_amount, total_amount, payment_type, payment_method, payment_status, period_type,
         number_of_installments, installment_amount, advance_installments,
         transaction_type, status, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
     `);
         const installmentAmount = saleData.payment_type === 'installments' && saleData.number_of_installments
             ? Math.round(totalAmount / saleData.number_of_installments)
             : null;
         const saleResult = saleStmt.run(saleData.customer_id, saleData.partner_id || null, saleNumber, new Date().toISOString(), null, // due_date
-        subtotal, totalAmount, saleData.payment_type, saleData.payment_type === 'cash' ? 'paid' : 'unpaid', saleData.period_type || null, saleData.number_of_installments || null, installmentAmount, 'sale', 'completed', saleData.notes || null);
+        subtotal, totalAmount, saleData.payment_type, saleData.payment_method || null, saleData.payment_type === 'cash' ? 'paid' : 'unpaid', saleData.period_type || null, saleData.number_of_installments || null, installmentAmount, 'sale', 'completed', saleData.notes || null);
         const saleId = saleResult.lastInsertRowid;
         // Insert sale items
         const itemStmt = db.prepare(`
@@ -817,12 +827,12 @@ exports.saleOperations = {
         const saleStmt = db.prepare(`
       INSERT INTO sales (
         customer_id, sale_number, date, due_date, subtotal, tax_amount,
-        discount_amount, total_amount, payment_type, payment_status, period_type,
+        discount_amount, total_amount, payment_type, payment_method, payment_status, period_type,
         number_of_installments, installment_amount, advance_installments,
         transaction_type, status, notes
-      ) VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
     `);
-        const saleResult = saleStmt.run(sale.customer_id, saleNumber, date, sale.due_date || null, subtotal, totalAmount, paymentType, paymentStatus, sale.period_type || null, numberOfInstallments, installmentAmount, transactionType, status, notes);
+        const saleResult = saleStmt.run(sale.customer_id, saleNumber, date, sale.due_date || null, subtotal, totalAmount, paymentType, sale.payment_method || null, paymentStatus, sale.period_type || null, numberOfInstallments, installmentAmount, transactionType, status, notes);
         const saleId = saleResult.lastInsertRowid;
         // Insert sale items if provided in backup
         if (sale.items && Array.isArray(sale.items) && sale.items.length > 0) {
@@ -1066,7 +1076,7 @@ exports.installmentOperations = {
       JOIN customers c ON s.customer_id = c.id
       WHERE i.status IN ('pending') 
       AND i.due_date >= date('now')
-      AND i.due_date <= date('now', '+14 days')
+      AND i.due_date <= date('now', '+30 days')
       AND i.balance > 0
       ORDER BY i.due_date ASC
       LIMIT ?

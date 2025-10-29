@@ -37,6 +37,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
     customer_id: 0,
     partner_id: 0,
     payment_type: 'cash' as 'cash' | 'installments',
+    payment_method: 'cash' as 'cash' | 'bank_transfer',
     payment_period: '1 to 10' as '1 to 10' | '20 to 30',
     period_type: 'monthly' as 'monthly' | 'weekly',
     number_of_installments: 6,
@@ -64,6 +65,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         customer_id: sale.customer_id,
         partner_id: sale.partner_id || 0,
         payment_type: sale.payment_type,
+        payment_method: (sale as any).payment_method || 'cash',
         payment_period: sale.payment_period || '1 to 10',
         period_type: sale.period_type || 'monthly',
         number_of_installments: sale.number_of_installments || 6,
@@ -75,6 +77,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         customer_id: 0,
         partner_id: 0,
         payment_type: 'cash',
+        payment_method: 'cash',
         payment_period: '1 to 10',
         period_type: 'monthly',
         number_of_installments: 6,
@@ -270,6 +273,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
           product_name: item.product_name
         })),
         payment_type,
+        payment_method: formData.payment_method,
         payment_period: payment_type === 'installments' ? formData.payment_period : undefined,
         period_type: payment_type === 'installments' ? formData.period_type : undefined,
         number_of_installments: payment_type === 'installments' ? formData.number_of_installments : undefined,
@@ -282,6 +286,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         customer_id: 0,
         partner_id: 0,
         payment_type: 'cash',
+        payment_method: 'cash',
         payment_period: '1 to 10',
         period_type: 'monthly',
         number_of_installments: 6,
@@ -394,6 +399,21 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                       <SelectContent>
                         <SelectItem value="cash">Al contado</SelectItem>
                         <SelectItem value="installments">Cuotas</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs mb-1.5 block">Método de cobro</Label>
+                    <Select
+                      value={formData.payment_method}
+                      onValueChange={(value: any) => setFormData(prev => ({ ...prev, payment_method: value }))}
+                    >
+                      <SelectTrigger className="h-10">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cash">Efectivo</SelectItem>
+                        <SelectItem value="bank_transfer">Transferencia</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

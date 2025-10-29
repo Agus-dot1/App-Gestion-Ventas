@@ -630,6 +630,23 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
     });
   };
 
+  // New helpers to clarify sale-level period/window
+  // Infer period type from installment due dates when not explicitly set on sale
+  const inferPeriodType = (installments: Installment[]): 'monthly' | 'weekly' => {
+    if (!installments || installments.length === 0) return 'monthly';
+    const uniqueDays = new Set(installments.map(i => new Date(i.due_date).getDate()));
+    const isOneAndFifteenOnly = Array.from(uniqueDays).every(d => d === 1 || d === 15);
+    return isOneAndFifteenOnly ? 'weekly' : 'monthly';
+  };
+
+  const getSaleEffectiveWindow = (installments: Installment[]): PaymentWindow | null => {
+    if (!installments || installments.length === 0) return null;
+    const earliest = [...installments]
+      .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
+    const day = new Date(earliest.due_date).getDate();
+    return day <= 15 ? '1 to 10' : '20 to 30';
+  };
+
   const getInstallmentStatusBadge = (installment: Installment) => {
     const isOverdue = new Date(installment.due_date) < new Date() && installment.status !== 'paid';
 
@@ -1004,7 +1021,7 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                                         ) : (
                                           <ChevronRight className="h-4 w-4" />
                                         )}
-                                        {(() => {
+                                      {(() => {
                                           const items = sale.items ?? [];
                                           if (items.length === 0) {
                                             return <span className="font-medium">Venta #{sale.sale_number}</span>;
@@ -1042,6 +1059,27 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                                                   </PopoverContent>
                                                 </Popover>
                                               )}
+                                              {/* Sale-level period/window badges for clarity */}
+                                              {(() => {
+                                                const salePeriod = sale.period_type ?? inferPeriodType(saleInstallments);
+                                                return (
+                                                  <Badge variant="secondary" className="text-xs">
+                                                    {salePeriod === 'monthly' ? 'Mensual' : 'Semanal (1 y 15)'}
+                                                  </Badge>
+                                                );
+                                              })()}
+                                              {(() => {
+                                                const salePeriod = sale.period_type ?? inferPeriodType(saleInstallments);
+                                                if (salePeriod !== 'monthly') return null;
+                                                const saleWin = getSaleEffectiveWindow(saleInstallments);
+                                                if (!saleWin) return null;
+                                                const winLabel = saleWin === '1 to 10' ? '1-10' : '20-30';
+                                                return (
+                                                  <Badge variant="outline" className="text-xs">
+                                                    Ventana {winLabel} · vence el {getAnchorDay(saleWin)}
+                                                  </Badge>
+                                                );
+                                              })()}
                                             </div>
                                           );
                                         })()}
@@ -1131,7 +1169,13 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                                                   </TableCell>
                                                   <TableCell>
                                                     <div className="text-sm text-muted-foreground">
-                                                      {formatPaymentPeriod(customer.payment_window, installment.due_date)}
+                                                      {(() => {
+                                                        const salePeriod = sale.period_type ?? inferPeriodType(saleInstallments);
+                                                        if (salePeriod === 'monthly') {
+                                                          return `Mensual (${formatPaymentPeriod(customer.payment_window, installment.due_date)})`;
+                                                        }
+                                                        return 'Semanal (1 y 15)';
+                                                      })()}
                                                     </div>
                                                   </TableCell>
                                                   <TableCell>{formatCurrency(installment.amount)}</TableCell>

@@ -205,7 +205,7 @@ function createTables() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       customer_id INTEGER,
       partner_id INTEGER,
-      sale_number TEXT NOT NULL,
+      sale_number TEXT NOT NULL UNIQUE,
       date DATETIME DEFAULT CURRENT_TIMESTAMP,
       due_date DATETIME,
       subtotal DECIMAL(10,2) NOT NULL,
@@ -213,6 +213,7 @@ function createTables() {
       discount_amount DECIMAL(10,2) DEFAULT 0,
       total_amount DECIMAL(10,2) NOT NULL,
       payment_type TEXT CHECK(payment_type IN ('cash', 'installments', 'credit', 'mixed')) NOT NULL,
+      payment_method TEXT,
       payment_status TEXT CHECK(payment_status IN ('paid', 'partial', 'unpaid', 'overdue')) DEFAULT 'unpaid',
       period_type TEXT CHECK(period_type IN ('monthly', 'weekly', 'biweekly')),
        number_of_installments INTEGER,
@@ -446,6 +447,7 @@ function runMigrations() {
   // Check if partner_id column exists
   const hasPartnerId = columnNames.includes('partner_id');
   const hasPeriodType = columnNames.includes('period_type');
+  const hasPaymentMethod = columnNames.includes('payment_method');
   
   // Check if sale_items table needs to be migrated to allow NULL product_id
   const saleItemsTableInfo = db.prepare("PRAGMA table_info(sale_items)").all();
@@ -455,6 +457,7 @@ function runMigrations() {
   // SAFE MIGRATION: only missing partner_id -> add column without dropping tables
   const onlyMissingPartnerId = missingColumns.length === 0 && !needsProductIDMigration && !hasPartnerId;
   const onlyMissingPeriodType = missingColumns.length === 0 && !needsProductIDMigration && !hasPeriodType;
+  const onlyMissingPaymentMethod = missingColumns.length === 0 && !needsProductIDMigration && !hasPaymentMethod;
   if (onlyMissingPartnerId) {
     try {
       db.exec('ALTER TABLE sales ADD COLUMN partner_id INTEGER');
@@ -471,7 +474,7 @@ function runMigrations() {
     }
 
     // No further action required in this specific migration path
-    return;
+     return;
    }
    
      // SAFE MIGRATION: only missing period_type -> add column without dropping tables
@@ -481,6 +484,17 @@ function runMigrations() {
          console.log('Successfully added period_type column to sales table');
        } catch (e) {
          console.error('Error adding period_type column to sales table:', e);
+       }
+       return;
+     }
+
+     // SAFE MIGRATION: only missing payment_method -> add column
+     if (onlyMissingPaymentMethod) {
+       try {
+         db.exec('ALTER TABLE sales ADD COLUMN payment_method TEXT');
+         console.log('Successfully added payment_method column to sales table');
+       } catch (e) {
+         console.error('Error adding payment_method column to sales table:', e);
        }
        return;
      }
@@ -522,6 +536,24 @@ function runMigrations() {
   } catch (e) {
     console.error('Error migrating partners table (is_active backfill):', e);
   }
+
+  // Ensure unique index on sales.sale_number when safe
+  try {
+    const duplicates = db.prepare(`
+      SELECT sale_number, COUNT(*) as c
+      FROM sales
+      GROUP BY sale_number
+      HAVING c > 1
+    `).all();
+    if (duplicates.length === 0) {
+      db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_sale_number_unique ON sales(sale_number)');
+      console.log('Ensured unique index on sales.sale_number');
+    } else {
+      console.warn('Skipped unique index on sales.sale_number due to duplicates:', duplicates.length);
+    }
+  } catch (e) {
+    console.error('Error ensuring unique index for sales.sale_number:', e);
+  }
 }
 
 function createSalesRelatedTables() {
@@ -541,6 +573,7 @@ function createSalesRelatedTables() {
       discount_amount DECIMAL(10,2) DEFAULT 0,
       total_amount DECIMAL(10,2) NOT NULL,
       payment_type TEXT CHECK(payment_type IN ('cash', 'installments', 'credit', 'mixed')) NOT NULL,
+      payment_method TEXT,
       payment_status TEXT CHECK(payment_status IN ('paid', 'partial', 'unpaid', 'overdue')) DEFAULT 'unpaid',
       period_type TEXT CHECK(period_type IN ('monthly', 'weekly', 'biweekly')),
        number_of_installments INTEGER,

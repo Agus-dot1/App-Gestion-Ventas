@@ -246,15 +246,7 @@ export function applyCustomerFilters(customers: Customer[], filters: CustomerFil
   if (filters.search) {
     filtered = searchCustomersWithFuzzy(filtered, filters.search);
   }
-
-  // Tags filter
-  if (filters.tags.length > 0) {
-    filtered = filtered.filter(c => {
-      const customerTags = c.tags?.split(',').map(t => t.trim()) || [];
-      return filters.tags.some(tag => customerTags.includes(tag));
-    });
-  }
-
+  
   // hasEmail filter
   if (filters.hasEmail !== null) {
     filtered = filtered.filter(c => (filters.hasEmail ? !!c.email : !c.email));

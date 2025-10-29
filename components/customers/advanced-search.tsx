@@ -181,25 +181,6 @@ export function AdvancedSearch({
         }
       }
 
-      // Tag suggestions
-      if (customer.tags) {
-        const tags = customer.tags.split(',').map(tag => tag.trim());
-        tags.forEach(tag => {
-          const tagMatch = fuzzyMatch(tag, queryTrimmed);
-          if (tagMatch.score > 0) {
-            newSuggestions.push({
-              id: `tag-${customer.id}-${tag}`,
-              type: 'tag',
-              label: `${customer.name} (#${tag})`,
-              value: tag,
-              customer,
-              icon: Tag,
-              score: tagMatch.score,
-              matches: tagMatch.matches
-            });
-          }
-        });
-      }
     });
 
     // Sort by score and limit results
@@ -426,14 +407,7 @@ export function searchCustomersWithFuzzy(customers: Customer[], query: string): 
       totalScore += notesMatch.score;
     }
     
-    // Search in tags
-    if (customer.tags) {
-      const tags = customer.tags.split(',').map(tag => tag.trim());
-      tags.forEach(tag => {
-        const tagMatch = fuzzyMatch(tag, queryTrimmed);
-        totalScore += tagMatch.score * 1.5;
-      });
-    }
+
     
     if (totalScore > 0) {
       results.push({ customer, score: totalScore });

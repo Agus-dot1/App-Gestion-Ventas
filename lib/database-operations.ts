@@ -2,6 +2,53 @@
 
 import { getDatabase } from './database';
 
+function generateSaleNumberBase(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const todayStart = `${year}-${month}-${day}`;
+  const db = getDatabase();
+  const todayCountStmt = db.prepare(`
+    SELECT COUNT(*) as count FROM sales 
+    WHERE date(date) = date(?)
+  `);
+  const todayCount = (todayCountStmt.get(todayStart) as { count: number }).count + 1;
+  const sequentialNumber = String(todayCount).padStart(3, '0');
+  return `VENTA-${sequentialNumber}-${year}${month}${day}`;
+}
+
+function saleNumberExists(candidate: string): boolean {
+  const db = getDatabase();
+  const row = db.prepare('SELECT 1 FROM sales WHERE sale_number = ?').get(candidate);
+  return !!row;
+}
+
+function generateUniqueSaleNumber(): string {
+  // Try base first (sequential per day)
+  const base = generateSaleNumberBase();
+  if (!saleNumberExists(base)) return base;
+  // Add a short random suffix until unique
+  for (let i = 0; i < 5; i++) {
+    const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+    const candidate = `${base}-${suffix}`;
+    if (!saleNumberExists(candidate)) return candidate;
+  }
+  // Fallback: timestamp-based code
+  return `VENTA-${Date.now()}`;
+}
+
+function ensureUniqueSaleNumber(preferred?: string): string {
+  const base = preferred || generateSaleNumberBase();
+  if (!saleNumberExists(base)) return base;
+  for (let i = 0; i < 5; i++) {
+    const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+    const candidate = `${base}-${suffix}`;
+    if (!saleNumberExists(candidate)) return candidate;
+  }
+  return `VENTA-${Date.now()}`;
+}
+
 // Normalize legacy/variant payment window values to the canonical union
 function normalizePaymentWindow(value?: string): '1 to 10' | '20 to 30' | undefined {
   if (!value) return undefined;
@@ -96,6 +143,7 @@ export interface Sale {
   subtotal: number;
   total_amount: number;
   payment_type: 'cash' | 'installments';
+  payment_method?: 'cash' | 'bank_transfer';
   payment_status: 'paid' | 'unpaid' | 'overdue';
   payment_period?: '1 to 10' | '20 to 30';
   period_type?: 'monthly' | 'weekly';
@@ -139,6 +187,7 @@ export interface SaleFormData {
     product_name?: string;
   }>;
   payment_type: 'cash' | 'installments';
+  payment_method?: 'cash' | 'bank_transfer';
   period_type?: 'monthly' | 'weekly';
   payment_period?: '1 to 10' | '20 to 30';
   number_of_installments?: number;
@@ -956,31 +1005,17 @@ export const saleOperations = {
     );
     const totalAmount = subtotal;
     
-    // Generate sale number with a more readable format
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    
-    // Get the count of sales for today to create a sequential number
-    const todayStart = `${year}-${month}-${day}`;
-    const todayCountStmt = db.prepare(`
-      SELECT COUNT(*) as count FROM sales 
-      WHERE date(date) = date(?)
-    `);
-    const todayCount = (todayCountStmt.get(todayStart) as { count: number }).count + 1;
-    const sequentialNumber = String(todayCount).padStart(3, '0');
-    
-    const saleNumber = `VENTA-${sequentialNumber}-${year}${month}${day}`;
+    // Generate unique sale number
+    const saleNumber = generateUniqueSaleNumber();
     
     // Insert sale
     const saleStmt = db.prepare(`
       INSERT INTO sales (
         customer_id, partner_id, sale_number, date, due_date, subtotal, tax_amount,
-        discount_amount, total_amount, payment_type, payment_status, period_type,
+        discount_amount, total_amount, payment_type, payment_method, payment_status, period_type,
         number_of_installments, installment_amount, advance_installments,
         transaction_type, status, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
     `);
     
     const installmentAmount = saleData.payment_type === 'installments' && saleData.number_of_installments
@@ -996,6 +1031,7 @@ export const saleOperations = {
       subtotal,
       totalAmount,
       saleData.payment_type,
+      saleData.payment_method || null,
       saleData.payment_type === 'cash' ? 'paid' : 'unpaid',
       saleData.period_type || null,
       saleData.number_of_installments || null,
@@ -1135,20 +1171,7 @@ export const saleOperations = {
       } as Customer);
     }
 
-    const saleNumber = sale.sale_number || (() => {
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      const todayStart = `${year}-${month}-${day}`;
-      const todayCountStmt = db.prepare(`
-        SELECT COUNT(*) as count FROM sales 
-        WHERE date(date) = date(?)
-      `);
-      const todayCount = (todayCountStmt.get(todayStart) as { count: number }).count + 1;
-      const sequentialNumber = String(todayCount).padStart(3, '0');
-      return `VENTA-${sequentialNumber}-${year}${month}${day}`;
-    })();
+    const saleNumber = ensureUniqueSaleNumber(sale.sale_number);
 
     const date = sale.date || new Date().toISOString();
     const subtotal = typeof sale.subtotal === 'number' ? sale.subtotal : 0;
@@ -1167,10 +1190,10 @@ export const saleOperations = {
     const saleStmt = db.prepare(`
       INSERT INTO sales (
         customer_id, sale_number, date, due_date, subtotal, tax_amount,
-        discount_amount, total_amount, payment_type, payment_status, period_type,
+        discount_amount, total_amount, payment_type, payment_method, payment_status, period_type,
         number_of_installments, installment_amount, advance_installments,
         transaction_type, status, notes
-      ) VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
     `);
 
     const saleResult = saleStmt.run(
@@ -1182,6 +1205,7 @@ export const saleOperations = {
       
       totalAmount,
       paymentType,
+      sale.payment_method || null,
       paymentStatus,
       sale.period_type || null,
       numberOfInstallments,

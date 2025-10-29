@@ -215,6 +215,7 @@ function createTables() {
       discount_amount DECIMAL(10,2) DEFAULT 0,
       total_amount DECIMAL(10,2) NOT NULL,
       payment_type TEXT CHECK(payment_type IN ('cash', 'installments', 'credit', 'mixed')) NOT NULL,
+      payment_method TEXT,
       payment_status TEXT CHECK(payment_status IN ('paid', 'partial', 'unpaid', 'overdue')) DEFAULT 'unpaid',
       period_type TEXT CHECK(period_type IN ('monthly', 'weekly', 'biweekly')),
        number_of_installments INTEGER,
@@ -438,6 +439,7 @@ function runMigrations() {
     // Check if partner_id column exists
     const hasPartnerId = columnNames.includes('partner_id');
     const hasPeriodType = columnNames.includes('period_type');
+    const hasPaymentMethod = columnNames.includes('payment_method');
     // Check if sale_items table needs to be migrated to allow NULL product_id
     const saleItemsTableInfo = db.prepare("PRAGMA table_info(sale_items)").all();
     const product_id_column = saleItemsTableInfo.find((col) => col.name === 'product_id');
@@ -445,6 +447,7 @@ function runMigrations() {
     // SAFE MIGRATION: only missing partner_id -> add column without dropping tables
     const onlyMissingPartnerId = missingColumns.length === 0 && !needsProductIDMigration && !hasPartnerId;
     const onlyMissingPeriodType = missingColumns.length === 0 && !needsProductIDMigration && !hasPeriodType;
+    const onlyMissingPaymentMethod = missingColumns.length === 0 && !needsProductIDMigration && !hasPaymentMethod;
     if (onlyMissingPartnerId) {
         try {
             db.exec('ALTER TABLE sales ADD COLUMN partner_id INTEGER');
@@ -471,6 +474,17 @@ function runMigrations() {
         }
         catch (e) {
             console.error('Error adding period_type column to sales table:', e);
+        }
+        return;
+    }
+    // SAFE MIGRATION: only missing payment_method -> add column
+    if (onlyMissingPaymentMethod) {
+        try {
+            db.exec('ALTER TABLE sales ADD COLUMN payment_method TEXT');
+            console.log('Successfully added payment_method column to sales table');
+        }
+        catch (e) {
+            console.error('Error adding payment_method column to sales table:', e);
         }
         return;
     }
@@ -527,6 +541,7 @@ function createSalesRelatedTables() {
       discount_amount DECIMAL(10,2) DEFAULT 0,
       total_amount DECIMAL(10,2) NOT NULL,
       payment_type TEXT CHECK(payment_type IN ('cash', 'installments', 'credit', 'mixed')) NOT NULL,
+      payment_method TEXT,
       payment_status TEXT CHECK(payment_status IN ('paid', 'partial', 'unpaid', 'overdue')) DEFAULT 'unpaid',
       period_type TEXT CHECK(period_type IN ('monthly', 'weekly', 'biweekly')),
        number_of_installments INTEGER,

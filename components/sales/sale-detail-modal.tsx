@@ -77,10 +77,16 @@ function getPaymentStatusBadge(status: Sale['payment_status']) {
 
 function getPaymentTypeBadge(type: Sale['payment_type']) {
   const variants = {
-    cash: { variant: 'outline' as const, label: 'Efectivo' },
+    cash: { variant: 'outline' as const, label: 'Al Contado' },
     installments: { variant: 'default' as const, label: 'Cuotas' },
   };
   return variants[type] || variants.cash;
+}
+
+function getPaymentMethodLabel(method: Sale['payment_method']) {
+  if (method === 'bank_transfer') return 'Transferencia';
+  if (method === 'cash') return 'Efectivo';
+  return 'N/A';
 }
 
 function getStatusBadge(status: Sale['status']) {
@@ -156,25 +162,39 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
     try {
       const { default: jsPDF } = await import('jspdf');
       const autoTable = (await import('jspdf-autotable')).default;
-      const doc = new jsPDF();
-      let yPosition = 20;
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      let yPosition = 16;
+      const now = new Date();
 
-      // Add title
+      // Header (Factura estilo profesional)
       doc.setFontSize(18);
       doc.setFont('helvetica', 'bold');
-      doc.text('Detalle de Venta', 14, yPosition);
-      yPosition += 10;
+      doc.text('Factura', 14, yPosition);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Generado: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`, 14, yPosition + 6);
+      // Metadatos a la derecha
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Venta #${sale?.sale_number ?? 'N/A'}`, 200 - 14, yPosition, { align: 'right' });
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Fecha: ${sale?.date ? formatDate(sale.date) : 'N/A'}`, 200 - 14, yPosition + 6, { align: 'right' });
+      if (sale?.due_date) {
+        doc.text(`Vence: ${formatDate(sale.due_date)}`, 200 - 14, yPosition + 12, { align: 'right' });
+      }
+      yPosition += 14;
 
       // Add sale info
       doc.setFontSize(12);
       doc.setFont('helvetica', 'normal');
-      doc.text(`Venta #${sale?.sale_number ?? 'N/A'}`, 14, yPosition);
-      doc.text(`Fecha: ${sale?.date ? formatDate(sale.date) : 'N/A'}`, 120, yPosition);
-      yPosition += 8;
+      // Bloque Cliente (Bill To)
+      doc.setFont('helvetica', 'bold');
+      doc.text('Cliente:', 14, yPosition);
+      doc.setFont('helvetica', 'normal');
+      yPosition += 6;
 
       // Add customer info
       if (customer) {
-        doc.text(`Cliente: ${customer.name}`, 14, yPosition);
+        doc.text(`${customer.name}`, 14, yPosition);
         yPosition += 6;
 
         if (customer.phone) {
@@ -199,7 +219,7 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
       }
       yPosition += 5;
 
-      // Add financial summary
+      // Resumen financiero
       doc.setFont('helvetica', 'bold');
       doc.text('Resumen Financiero:', 14, yPosition);
       yPosition += 8;
@@ -227,6 +247,7 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
       // Add payment info
       const paymentInfo = [
         ['Método de Pago', sale?.payment_type ? getPaymentTypeBadge(sale.payment_type).label : 'N/A'],
+        ['Método de cobro', sale?.payment_method ? getPaymentMethodLabel(sale.payment_method) : 'N/A'],
         ['Estado de Pago', sale?.payment_status ? getPaymentStatusBadge(sale.payment_status).label : 'N/A'],
         ['Estado', sale?.status ? getStatusBadge(sale.status).label : 'N/A']
       ];
@@ -259,25 +280,53 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
         ]);
 
          autoTable(doc, {
-            head: [['Producto', 'Cant.', 'Precio Unit.', 'Total']],
+            head: [['Descripción', 'Cantidad', 'Precio Unit.', 'Importe']],
             body: productsData,
             startY: yPosition,
-            styles: { fontSize: 8 },
-            headStyles: { fillColor: [41, 128, 185] },
+            styles: { fontSize: 9, lineColor: [220, 220, 220], lineWidth: 0.1 },
+            headStyles: { fillColor: [232, 232, 232], textColor: [20, 20, 20], fontStyle: 'bold' },
             columnStyles: {
-              0: { cellWidth: 60 },
+              0: { cellWidth: 90 },
               1: { halign: 'center', cellWidth: 20 },
               2: { halign: 'right', cellWidth: 35 },
               3: { halign: 'right', cellWidth: 35 }
             },
+            foot: [[ '', '', 'Subtotal', formatCurrency(saleItems.reduce((sum, i) => sum + (i.line_total || 0), 0)) ]],
+            footStyles: { fillColor: [245, 245, 245], fontStyle: 'bold' },
             margin: { left: 14, right: 14 }
           });
 
-        yPosition = (doc as any).lastAutoTable.finalY + 15;
+        yPosition = (doc as any).lastAutoTable.finalY + 8;
+
+        // Bloque TOTAL (gris) y TOTAL A PAGAR (negro) estilo factura
+        const pageWidth = (doc as any).internal.pageSize.getWidth();
+        const left = pageWidth - 100; // ancho del bloque
+        const width = 86;
+        const height = 10;
+
+        // TOTAL (gris)
+        doc.setFillColor(230, 230, 230);
+        doc.rect(left, yPosition, width, height, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(0, 0, 0);
+        doc.text(`TOTAL (ARS):`, left + 4, yPosition + 7);
+        doc.text(`${formatCurrency(sale?.subtotal ?? sale?.total_amount ?? 0)}`, left + width - 4, yPosition + 7, { align: 'right' });
+        yPosition += height + 4;
+
+        // TOTAL A PAGAR (negro)
+        doc.setFillColor(0, 0, 0);
+        doc.rect(left, yPosition, width, height, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(10);
+        doc.text(`TOTAL A PAGAR (ARS):`, left + 4, yPosition + 7);
+        doc.text(`${formatCurrency(sale?.total_amount ?? 0)}`, left + width - 4, yPosition + 7, { align: 'right' });
+        doc.setTextColor(0, 0, 0);
+        yPosition += height + 12;
       }
 
-      // Add installments table if available
-      if (installments.length > 0) {
+      // Add installments table only for ventas con cuotas
+      if (sale?.payment_type === 'installments' && installments.length > 0) {
         // Check if we need a new page
         if (yPosition > 250) {
           doc.addPage();
@@ -311,6 +360,8 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
               4: { halign: 'right', cellWidth: 30 },
               5: { cellWidth: 25 }
             },
+            foot: [[ '', '', 'Total cuotas', formatCurrency(installments.reduce((sum, i) => sum + (i.amount || 0), 0)), '', '' ]],
+            footStyles: { fillColor: [245, 245, 245], fontStyle: 'bold' },
             margin: { left: 14, right: 14 }
           });
 
@@ -355,9 +406,10 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
         'Teléfono': customer?.phone || 'N/A',
         'Teléfono secundario': customer?.secondary_phone || 'N/A',
         'Dirección': customer?.address || 'N/A',
-        'Subtotal': formatCurrency(sale?.subtotal ?? 0),
-        'Total': formatCurrency(sale?.total_amount ?? 0),
+        'Subtotal': sale?.subtotal ?? 0,
+        'Total': sale?.total_amount ?? 0,
         'Método de Pago': sale?.payment_type ? getPaymentTypeBadge(sale.payment_type).label : 'N/A',
+        'Método de cobro': sale?.payment_method ? getPaymentMethodLabel(sale.payment_method) : 'N/A',
         'Responsable': sale?.partner_name || 'N/A',
         'Periodo': periodLabel,
         'Ventana de pago': windowLabel,
@@ -370,6 +422,11 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
 
       // Add sale details sheet
       const saleSheet = XLSX.utils.json_to_sheet([saleData]);
+      // Column widths and autofilter
+      saleSheet['!cols'] = [
+        { wch: 16 }, { wch: 14 }, { wch: 22 }, { wch: 14 }, { wch: 18 }, { wch: 28 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 12 }
+      ];
+      saleSheet['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 0, c: 13 } }) };
       XLSX.utils.book_append_sheet(workbook, saleSheet, 'Detalle de Venta');
 
       // Add products sheet if available
@@ -381,6 +438,10 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
           'Total': item.line_total
         }));
         const productsSheet = XLSX.utils.json_to_sheet(productsData);
+        productsSheet['!cols'] = [
+          { wch: 28 }, { wch: 10 }, { wch: 14 }, { wch: 14 }
+        ];
+        productsSheet['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 0, c: 3 } }) };
         XLSX.utils.book_append_sheet(workbook, productsSheet, 'Productos');
       }
 
@@ -395,8 +456,27 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
           'Estado': installment.status
         }));
         const installmentsSheet = XLSX.utils.json_to_sheet(installmentsData);
+        installmentsSheet['!cols'] = [
+          { wch: 8 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }
+        ];
+        installmentsSheet['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }) };
         XLSX.utils.book_append_sheet(workbook, installmentsSheet, 'Cuotas');
       }
+
+      // Summary sheet
+      const productsTotal = saleItems.reduce((sum, i) => sum + (i.line_total || 0), 0);
+      const installmentsTotal = installments.reduce((sum, i) => sum + (i.amount || 0), 0);
+      const summaryRows = [
+        { Concepto: 'Subtotal', Valor: sale?.subtotal ?? 0 },
+        { Concepto: 'Total', Valor: sale?.total_amount ?? 0 },
+        { Concepto: 'Productos (total $)', Valor: productsTotal },
+        { Concepto: 'Cuotas (total $)', Valor: installmentsTotal },
+        { Concepto: 'Productos (cantidad)', Valor: saleItems.length },
+        { Concepto: 'Cuotas (cantidad)', Valor: installments.length }
+      ];
+      const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
+      summarySheet['!cols'] = [ { wch: 24 }, { wch: 16 } ];
+      XLSX.utils.book_append_sheet(workbook, summarySheet, 'Resumen');
 
       // Save the Excel file
       XLSX.writeFile(workbook, `${sale?.sale_number ?? 'unknown'}-${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -491,10 +571,13 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
                     Método de Pago
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="flex gap-2">
                   <Badge variant={paymentTypeBadge.variant}>
                     {paymentTypeBadge.label}
                   </Badge>
+                  {sale.payment_method && (
+                      <Badge variant={paymentTypeBadge.variant}>{getPaymentMethodLabel(sale.payment_method)}</Badge>
+                  )}
                   {sale.payment_type === 'installments' && sale.number_of_installments && (
                     <div className="text-sm text-muted-foreground mt-1">
                       {sale.number_of_installments} cuotas
