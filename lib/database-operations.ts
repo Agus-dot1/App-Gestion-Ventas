@@ -49,6 +49,39 @@ function ensureUniqueSaleNumber(preferred?: string): string {
   return `VENTA-${Date.now()}`;
 }
 
+// --- Reference code (numeric) generation helpers ---
+function referenceCodeExists(candidate: string): boolean {
+  const db = getDatabase();
+  const row = db.prepare('SELECT 1 FROM sales WHERE reference_code = ?').get(candidate);
+  return !!row;
+}
+
+function generateNumericReferenceCode(length: number = 8): string {
+  let code = '';
+  for (let i = 0; i < length; i++) {
+    code += Math.floor(Math.random() * 10).toString();
+  }
+  return code;
+}
+
+function generateUniqueReferenceCode(): string {
+  // Try 8 digits; on collision, increase length
+  let attempts = 0;
+  while (attempts < 10) {
+    const length = attempts < 3 ? 8 : attempts < 6 ? 9 : 12;
+    const candidate = generateNumericReferenceCode(length);
+    if (!referenceCodeExists(candidate)) return candidate;
+    attempts++;
+  }
+  // Fallback to timestamp
+  return String(Date.now());
+}
+
+function ensureUniqueReferenceCode(preferred?: string): string {
+  if (preferred && !referenceCodeExists(preferred)) return preferred;
+  return generateUniqueReferenceCode();
+}
+
 // Normalize legacy/variant payment window values to the canonical union
 function normalizePaymentWindow(value?: string): '1 to 10' | '20 to 30' | undefined {
   if (!value) return undefined;
@@ -73,7 +106,6 @@ export interface Customer {
   phone?: string;
   secondary_phone?: string;
   address?: string;
-  company?: string;
   notes?: string;
   payment_window?: '1 to 10' | '20 to 30';
   contact_info?: string;
@@ -138,6 +170,7 @@ export interface Sale {
   customer_id: number;
   partner_id?: number;
   sale_number: string;
+  reference_code?: string;
   date: string;
   due_date?: string;
   subtotal: number;
@@ -221,12 +254,10 @@ export const customerOperations = {
         dni LIKE ? OR
         name LIKE ? OR 
         email LIKE ? OR 
-        company LIKE ? OR 
-        tags LIKE ? OR
         phone LIKE ? OR
         secondary_phone LIKE ?`;
       const searchPattern = `%${searchTerm.trim()}%`;
-      params = [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern];
+      params = [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern];
     }
 
     const countStmt = db.prepare(`SELECT COUNT(*) as total FROM customers ${whereClause}`);
@@ -261,8 +292,6 @@ export const customerOperations = {
         dni LIKE ? OR
         name LIKE ? OR 
         email LIKE ? OR 
-        company LIKE ? OR 
-        tags LIKE ? OR
         phone LIKE ? OR
         secondary_phone LIKE ?
       ORDER BY 
@@ -271,8 +300,7 @@ export const customerOperations = {
           WHEN dni LIKE ? THEN 2
           WHEN name LIKE ? THEN 3
           WHEN email LIKE ? THEN 4
-          WHEN company LIKE ? THEN 5
-          ELSE 6
+          ELSE 5
         END,
         name
       LIMIT ?
@@ -283,8 +311,11 @@ export const customerOperations = {
     const exactMatch = searchTerm.trim();
     
     const rows = stmt.all(
-      searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
+      // WHERE clause (5 placeholders)
+      searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
+      // ORDER BY CASE (dni = ?, then 4 LIKE ?)
       exactMatch, exactPattern, exactPattern, exactPattern, exactPattern,
+      // LIMIT
       limit
     ) as Customer[];
     return rows.map(normalizeCustomer);
@@ -303,8 +334,8 @@ export const customerOperations = {
   create: (customer: Omit<Customer, 'id' | 'created_at' | 'updated_at'>): number => {
     const db = getDatabase();
     const stmt = db.prepare(`
-      INSERT INTO customers (name, dni, email, phone, secondary_phone, address, company, notes, tags, payment_window, contact_info) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO customers (name, dni, email, phone, secondary_phone, address, notes, payment_window, contact_info) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const result = stmt.run(
       customer.name,
@@ -313,7 +344,6 @@ export const customerOperations = {
       customer.phone || null,
       customer.secondary_phone || null,
       customer.address || null,
-      customer.company || null,
       customer.notes || null,
       normalizePaymentWindow(customer.payment_window as unknown as string | undefined) || null,
       customer.contact_info || null
@@ -349,10 +379,6 @@ export const customerOperations = {
     if (customer.address !== undefined) {
       fields.push('address = ?');
       values.push(customer.address);
-    }
-    if (customer.company !== undefined) {
-      fields.push('company = ?');
-      values.push(customer.company);
     }
     if (customer.notes !== undefined) {
       fields.push('notes = ?');
@@ -462,7 +488,6 @@ export const customerOperations = {
         phone: customer.phone,
         secondary_phone: customer.secondary_phone,
         address: customer.address,
-        company: customer.company,
         notes: customer.notes,
         contact_info: customer.contact_info,
         payment_window: normalizePaymentWindow(customer.payment_window),
@@ -471,7 +496,7 @@ export const customerOperations = {
 
     const stmt = db.prepare(`
       INSERT INTO customers (
-        id, name, dni, email, phone, secondary_phone, address, company, notes, contact_info, payment_window,
+        id, name, dni, email, phone, secondary_phone, address, notes, contact_info, payment_window,
         created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
     `);
@@ -483,7 +508,6 @@ export const customerOperations = {
       customer.phone || null,
       customer.secondary_phone || null,
       customer.address || null,
-      customer.company || null,
       customer.notes || null,
       customer.contact_info || null,
       normalizePaymentWindow(customer.payment_window) || null,
@@ -819,9 +843,9 @@ export const saleOperations = {
     let params: any[] = [];
     
     if (searchTerm.trim()) {
-      whereClause = 'WHERE s.sale_number LIKE ? OR c.name LIKE ? OR s.notes LIKE ?';
+      whereClause = 'WHERE s.sale_number LIKE ? OR s.reference_code LIKE ? OR c.name LIKE ? OR s.notes LIKE ?';
       const searchPattern = `%${searchTerm.trim()}%`;
-      params = [searchPattern, searchPattern, searchPattern];
+      params = [searchPattern, searchPattern, searchPattern, searchPattern];
     }
     
     // Get total count for pagination
@@ -875,14 +899,16 @@ export const saleOperations = {
       LEFT JOIN customers c ON s.customer_id = c.id
       WHERE 
         s.sale_number LIKE ? OR 
+        s.reference_code LIKE ? OR 
         c.name LIKE ? OR 
         s.notes LIKE ?
       ORDER BY 
         CASE 
           WHEN s.sale_number LIKE ? THEN 1
-          WHEN c.name LIKE ? THEN 2
-          WHEN s.notes LIKE ? THEN 3
-          ELSE 4
+          WHEN s.reference_code LIKE ? THEN 2
+          WHEN c.name LIKE ? THEN 3
+          WHEN s.notes LIKE ? THEN 4
+          ELSE 5
         END,
         s.date DESC
       LIMIT ?
@@ -892,8 +918,8 @@ export const saleOperations = {
     const exactPattern = `${searchTerm.trim()}%`;
     
     return stmt.all(
-      searchPattern, searchPattern, searchPattern,
-      exactPattern, exactPattern, exactPattern,
+      searchPattern, searchPattern, searchPattern, searchPattern,
+      exactPattern, exactPattern, exactPattern, exactPattern,
       limit
     ) as Sale[];
   },
@@ -953,9 +979,9 @@ export const saleOperations = {
     let params: any[] = [partnerId];
     
     if (searchTerm.trim()) {
-      whereClause += ' AND (s.sale_number LIKE ? OR c.name LIKE ? OR s.notes LIKE ?)';
+      whereClause += ' AND (s.sale_number LIKE ? OR s.reference_code LIKE ? OR c.name LIKE ? OR s.notes LIKE ?)';
       const searchPattern = `%${searchTerm.trim()}%`;
-      params.push(searchPattern, searchPattern, searchPattern);
+      params.push(searchPattern, searchPattern, searchPattern, searchPattern);
     }
     
     // Get total count for pagination
@@ -1007,15 +1033,17 @@ export const saleOperations = {
     
     // Generate unique sale number
     const saleNumber = generateUniqueSaleNumber();
+    // Generate unique numeric reference code
+    const referenceCode = generateUniqueReferenceCode();
     
     // Insert sale
     const saleStmt = db.prepare(`
       INSERT INTO sales (
-        customer_id, partner_id, sale_number, date, due_date, subtotal, tax_amount,
+        customer_id, partner_id, sale_number, reference_code, date, due_date, subtotal, tax_amount,
         discount_amount, total_amount, payment_type, payment_method, payment_status, period_type,
         number_of_installments, installment_amount, advance_installments,
         transaction_type, status, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
     `);
     
     const installmentAmount = saleData.payment_type === 'installments' && saleData.number_of_installments
@@ -1026,6 +1054,7 @@ export const saleOperations = {
       saleData.customer_id,
       saleData.partner_id || null,
       saleNumber,
+      referenceCode,
       new Date().toISOString(),
       null, // due_date
       subtotal,
@@ -1172,6 +1201,9 @@ export const saleOperations = {
     }
 
     const saleNumber = ensureUniqueSaleNumber(sale.sale_number);
+    const referenceCode = ensureUniqueReferenceCode(
+      sale.reference_code ? String(sale.reference_code) : undefined
+    );
 
     const date = sale.date || new Date().toISOString();
     const subtotal = typeof sale.subtotal === 'number' ? sale.subtotal : 0;
@@ -1189,20 +1221,20 @@ export const saleOperations = {
     // Insert sale row
     const saleStmt = db.prepare(`
       INSERT INTO sales (
-        customer_id, sale_number, date, due_date, subtotal, tax_amount,
+        customer_id, sale_number, reference_code, date, due_date, subtotal, tax_amount,
         discount_amount, total_amount, payment_type, payment_method, payment_status, period_type,
         number_of_installments, installment_amount, advance_installments,
         transaction_type, status, notes
-      ) VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
     `);
 
     const saleResult = saleStmt.run(
       sale.customer_id!,
       saleNumber,
+      referenceCode,
       date,
       sale.due_date || null,
       subtotal,
-      
       totalAmount,
       paymentType,
       sale.payment_method || null,
@@ -1512,8 +1544,8 @@ export const installmentOperations = {
       JOIN sales s ON i.sale_id = s.id
       JOIN customers c ON s.customer_id = c.id
       WHERE i.status IN ('pending') 
-      AND i.due_date >= date('now')
-      AND i.due_date <= date('now', '+30 days')
+      AND DATE(i.due_date) >= DATE('now')
+      AND DATE(i.due_date) <= DATE('now', '+3 days')
       AND i.balance > 0
       ORDER BY i.due_date ASC
       LIMIT ?
@@ -1780,7 +1812,7 @@ export interface NotificationRecord {
   id?: number;
   user_id?: number;
   message: string;
-  type: 'attention' | 'alert' | 'info';
+  type: 'reminder' | 'alert' | 'info';
   read_at?: string;
   created_at?: string;
   deleted_at?: string;
@@ -1815,11 +1847,12 @@ export const notificationOperations = {
     const db = getDatabase();
     db.prepare("UPDATE notifications SET deleted_at = datetime('now') WHERE message_key = ? AND date(created_at) = date('now') AND deleted_at IS NULL").run(key);
   },
-  create: (message: string, type: 'attention' | 'alert' | 'info' = 'info', message_key?: string): number => {
+  create: (message: string, type: 'reminder' | 'alert' | 'info' = 'info', message_key?: string): number => {
     const db = getDatabase();
+    const normalizedType: 'reminder' | 'alert' | 'info' = ((type as any) === 'attention' ? 'reminder' : type);
     const res = db
       .prepare('INSERT INTO notifications (message, type, message_key) VALUES (?, ?, ?)')
-      .run(message, type, message_key ?? null);
+      .run(message, normalizedType, message_key ?? null);
     return res.lastInsertRowid as number;
   },
   existsTodayWithMessage: (message: string): boolean => {

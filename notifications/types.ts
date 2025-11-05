@@ -32,12 +32,14 @@ export interface NotificationItem {
   meta?: {
     category?: 'client' | 'system' | 'stock'
     customerName?: string
+    customerNames?: string[]
     systemStatus?: string
     stockStatus?: string
     due_at?: string
     duration_ms?: number
     amount?: number
     actionLabel?: string
+    route?: string
     customer?: string
     customerCount?: number
     customerPhone?: string

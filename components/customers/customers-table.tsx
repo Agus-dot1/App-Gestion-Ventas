@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 // Defer heavy PDF/Excel libraries until export is triggered
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -66,6 +66,9 @@ export function EnhancedCustomersTable({
   onGetCustomersByIds
 }: EnhancedCustomersTableProps) {
   const [internalSearchTerm, setInternalSearchTerm] = useState('');
+  // Local input value to allow typing without immediate server reloads
+  const [inputValue, setInputValue] = useState(externalSearchTerm || '');
+  const debounceRef = useRef<number | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: keyof Customer; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
   const [internalCurrentPage, setInternalCurrentPage] = useState(1);
   const [selectedCustomers, setSelectedCustomers] = useState<Set<number>>(new Set());
@@ -136,14 +139,28 @@ export function EnhancedCustomersTable({
   
   const handleSearchChange = (term: string) => {
     if (serverSidePagination && onSearchChange) {
-      onSearchChange(term);
-      // Reset to first page when searching
-      if (onPageChange) onPageChange(1);
+      // Update local input value immediately
+      setInputValue(term);
+      // Debounce emitting the server-side search to avoid locking the input
+      if (debounceRef.current) {
+        window.clearTimeout(debounceRef.current);
+      }
+      debounceRef.current = window.setTimeout(() => {
+        onSearchChange(term);
+        if (onPageChange) onPageChange(1);
+      }, 300);
     } else {
       setInternalSearchTerm(term);
       setInternalCurrentPage(1);
     }
   };
+
+  // Keep local input in sync if external search term changes (e.g., cleared)
+  useEffect(() => {
+    if (serverSidePagination) {
+      setInputValue(externalSearchTerm || '');
+    }
+  }, [externalSearchTerm, serverSidePagination]);
   
   const handlePageChange = (page: number) => {
     if (serverSidePagination && onPageChange) {
@@ -169,8 +186,7 @@ export function EnhancedCustomersTable({
   // Client-side filtering and sorting (only when not using server-side pagination)
   const filteredCustomers = serverSidePagination ? customers : customers.filter(customer =>
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.company?.toLowerCase().includes(searchTerm.toLowerCase())
+    customer.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Sort customers (apply to visible dataset; for server-side, sort current page)
@@ -205,13 +221,9 @@ export function EnhancedCustomersTable({
   const endIndex = startIndex + itemsPerPage;
   const paginatedCustomers = serverSidePagination ? sortedCustomers : sortedCustomers.slice(startIndex, endIndex);
 
-  // Clear selections when changing pages
+  // Mantener selecciones al cambiar de página (incluyendo server-side)
   const handlePageChangeWithClear = (page: number) => {
     handlePageChange(page);
-    // Preserve selections when using client-side pagination; clear for server-side
-    if (serverSidePagination) {
-      setSelectedCustomers(new Set());
-    }
   };
 
   const handleSelectCustomer = (customerId: number | undefined, checked: boolean) => {
@@ -233,18 +245,28 @@ export function EnhancedCustomersTable({
     }
   };
 
-  const handleSelectAll = (checked: boolean) => {
+  const handleSelectAll = async (checked: boolean) => {
     if (serverSidePagination && onSelectAll) {
-      // For server-side pagination, delegate to parent component
+      // Delegar al padre (para cargar IDs si hace falta)
       onSelectAll(checked);
       if (checked) {
-        // Select all customer IDs provided by parent
-        setSelectedCustomers(new Set(allCustomerIds));
+        if (allCustomerIds.length === 0 && typeof window !== 'undefined') {
+          try {
+            const all = await window.electronAPI?.database?.customers?.getAll();
+            const ids = (all || []).map(c => c.id).filter(id => id !== undefined) as number[];
+            setSelectedCustomers(new Set(ids));
+          } catch (e) {
+            console.error('Error al cargar todos los IDs de clientes para seleccionar todo:', e);
+            setSelectedCustomers(new Set(sortedCustomers.map(c => c.id!).filter(id => id !== undefined) as number[]));
+          }
+        } else {
+          setSelectedCustomers(new Set(allCustomerIds));
+        }
       } else {
         setSelectedCustomers(new Set());
       }
     } else {
-      // For client-side pagination, select all in current filtered dataset
+      // Client-side: seleccionar todo del dataset filtrado
       if (checked) {
         setSelectedCustomers(new Set(sortedCustomers.map(c => c.id).filter(id => id !== undefined) as number[]));
       } else {
@@ -258,73 +280,123 @@ export function EnhancedCustomersTable({
     ? allCustomerIds.length > 0 && selectedCustomers.size === allCustomerIds.length
     : sortedCustomers.length > 0 && selectedCustomers.size === sortedCustomers.filter(c => c.id !== undefined).length;
 
-  // Export functions
+  // Export functions (actualizadas con más campos y mejor formato)
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return '-';
+    try {
+      return new Date(dateString).toLocaleDateString('es-AR', {
+        year: 'numeric', month: 'short', day: 'numeric'
+      });
+    } catch {
+      return dateString;
+    }
+  };
+
   const exportToPDF = async () => {
     let selectedData: Customer[];
-    
     if (serverSidePagination && onGetCustomersByIds && selectedCustomers.size > 0) {
-      // For server-side pagination, fetch all selected customers from database
       const selectedIds = Array.from(selectedCustomers);
       selectedData = await onGetCustomersByIds(selectedIds);
     } else {
-      // For client-side pagination, filter from current customers array
       selectedData = customers.filter(c => c.id && selectedCustomers.has(c.id));
     }
-    
+
     const { default: jsPDF } = await import('jspdf');
     const autoTable = (await import('jspdf-autotable')).default;
-    const doc = new jsPDF();
-    
-    // Add title
-    doc.setFontSize(16);
-    doc.text('Lista de Clientes', 14, 22);
-    
-    // Prepare data for table
-    const tableData = selectedData.map(customer => [
-      customer.name,
-      customer.email || '-',
-      customer.phone || '-',
-      customer.address || '-'
+    // Usamos orientación horizontal para dar más ancho a las columnas
+    const doc = new jsPDF({ orientation: 'landscape' });
+
+    doc.setFontSize(18);
+    doc.text('Listado de Clientes', 14, 18);
+    doc.setFontSize(11);
+    doc.text(`Fecha: ${new Date().toLocaleDateString('es-AR')}`, 14, 26);
+    doc.text(`Seleccionados: ${selectedData.length}`, 14, 32);
+
+    const tableData = selectedData.map(c => [
+      c.id ?? '-',
+      c.name,
+      c.dni || '-',
+      c.phone || '-',
+      c.secondary_phone || '-',
+      c.address || '-',
+      c.notes || '-',
+      formatDate(c.created_at),
     ]);
-    
-    // Add table
+
     autoTable(doc, {
-      head: [['Nombre', 'Email', 'Teléfono', 'Dirección']],
+      head: [[
+        'ID', 'Nombre', 'DNI', 'Teléfono', 'Teléfono 2', 'Dirección', 'Notas', 'Creado'
+      ]],
       body: tableData,
-      startY: 30,
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [41, 128, 185] }
+      startY: 40,
+      margin: { left: 14, right: 14 },
+      styles: { fontSize: 8, cellPadding: 2, halign: 'left' },
+      headStyles: { fillColor: [30, 30, 30], textColor: 255, fontStyle: 'bold', halign: 'center', valign: 'middle', fontSize: 10 },
+      // Anchos pensados para A4 horizontal: ajustan mejor y evitan que los encabezados se rompan letra por letra
+      columnStyles: {
+        0: { cellWidth: 10 }, // ID
+        1: { cellWidth: 28 }, // Nombre
+        2: { cellWidth: 18 }, // DNI
+        3: { cellWidth: 22 }, // Teléfono
+        4: { cellWidth: 22 }, // Teléfono 2
+        5: { cellWidth: 30 }, // Dirección
+        7: { cellWidth: 30 }, // Notas
+        9: { cellWidth: 14 }, // Creado
+      },
+      didDrawPage: (data: any) => {
+        const pageCount = (doc as any).internal?.getNumberOfPages
+          ? (doc as any).internal.getNumberOfPages()
+          : 1;
+        const pageNum = (data as any)?.pageNumber ?? pageCount;
+        const str = `Página ${pageNum} de ${pageCount}`;
+        const width = (doc as any).internal?.pageSize?.getWidth
+          ? (doc as any).internal.pageSize.getWidth()
+          : (doc as any).internal?.pageSize?.width;
+        const height = (doc as any).internal?.pageSize?.getHeight
+          ? (doc as any).internal.pageSize.getHeight()
+          : (doc as any).internal?.pageSize?.height;
+        doc.setFontSize(9);
+        doc.text(str, (width || 210) - 60, (height || 297) - 10);
+      }
     });
-    
-    doc.save('clientes_seleccionados.pdf');
+
+    doc.save(`clientes_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
   const exportToExcel = async () => {
     let selectedData: Customer[];
-    
     if (serverSidePagination && onGetCustomersByIds && selectedCustomers.size > 0) {
-      // For server-side pagination, fetch all selected customers from database
       const selectedIds = Array.from(selectedCustomers);
       selectedData = await onGetCustomersByIds(selectedIds);
     } else {
-      // For client-side pagination, filter from current customers array
       selectedData = customers.filter(c => c.id && selectedCustomers.has(c.id));
     }
-    
-    const worksheetData = selectedData.map(customer => ({
-      'Nombre': customer.name,
-      'Email': customer.email || '',
-      'Teléfono': customer.phone || '',
-      'Dirección': customer.address || '',
-      'Notas': customer.notes || ''
-    }));
-    
+
     const XLSX = await import('xlsx');
-    const worksheet = XLSX.utils.json_to_sheet(worksheetData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Clientes');
-    
-    XLSX.writeFile(workbook, 'clientes_seleccionados.xlsx');
+    const rows = selectedData.map(c => ({
+      ID: c.id ?? '',
+      Nombre: c.name,
+      DNI: c.dni || '',
+      Teléfono: c.phone || '',
+      'Teléfono 2': c.secondary_phone || '',
+      Dirección: c.address || '',
+      Notas: c.notes || '',
+      Creado: formatDate(c.created_at),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 6 },  // ID
+      { wch: 30 }, // Nombre
+      { wch: 14 }, // DNI
+      { wch: 28 }, // Teléfono
+      { wch: 28 }, // Teléfono 2
+      { wch: 40 }, // Dirección
+      { wch: 40 }, // Notas
+      { wch: 16 }, // Creado
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Clientes');
+    XLSX.writeFile(wb, `clientes_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   return (
@@ -337,10 +409,9 @@ export function EnhancedCustomersTable({
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Buscar cliente..."
-                  value={searchTerm}
+                  value={serverSidePagination ? inputValue : searchTerm}
                   onChange={(e) => handleSearchChange(e.target.value)}
                   className="pl-8"
-                  disabled={isLoading}
                 />
               </div>
               <CustomersColumnToggle
@@ -396,7 +467,7 @@ export function EnhancedCustomersTable({
                     <TableHead className="w-12">
                       <Checkbox
                         checked={isAllSelected}
-                        onCheckedChange={handleSelectAll}
+                        onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
                         aria-label="Seleccionar todos"
                         disabled={isLoading}
                       />

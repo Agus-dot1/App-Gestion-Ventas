@@ -11,6 +11,9 @@
     "node_modules/**/*",
     "package.json"
   ],
+  "extraResources": [
+    "assets/**"
+  ],
   "asar": true,
   "nsis": {
     "oneClick": false,
@@ -21,6 +24,7 @@
       "target": "dir",
       "arch": ["x64"]
     },
+    "icon": "assets/icon.ico",
     "sign": false,
     "verifyUpdateCodeSignature": false,
     "certificateFile": null,

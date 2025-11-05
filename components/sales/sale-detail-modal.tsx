@@ -97,6 +97,13 @@ function getStatusBadge(status: Sale['status']) {
   return variants[status] || variants.pending;
 }
 
+// Traduce el estado de la cuota a etiqueta en español para exportaciones
+function getInstallmentStatusLabel(status: Installment['status']): string {
+  if (status === 'paid') return 'Pagada';
+  if (status === 'overdue') return 'Vencida';
+  return 'Pendiente';
+}
+
 export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetailModalProps) {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
@@ -166,111 +173,86 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
       let yPosition = 16;
       const now = new Date();
 
-      // Header (Factura estilo profesional)
-      doc.setFontSize(18);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Factura', 14, yPosition);
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Generado: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`, 14, yPosition + 6);
-      // Metadatos a la derecha
-      doc.setFont('helvetica', 'bold');
-      doc.text(`Venta #${sale?.sale_number ?? 'N/A'}`, 200 - 14, yPosition, { align: 'right' });
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Fecha: ${sale?.date ? formatDate(sale.date) : 'N/A'}`, 200 - 14, yPosition + 6, { align: 'right' });
-      if (sale?.due_date) {
-        doc.text(`Vence: ${formatDate(sale.due_date)}`, 200 - 14, yPosition + 12, { align: 'right' });
-      }
-      yPosition += 14;
+      // Encabezado tipo banner (similar al ejemplo)
+      autoTable(doc, {
+        body: [[
+          {
+            content: 'Factura',
+            styles: { halign: 'left', fontSize: 18, textColor: '#ffffff' }
+          },
+        ]],
+        theme: 'plain',
+        styles: { fillColor: '#1e1e1e' },
+        margin: { left: 14, right: 14 },
+        startY: yPosition
+      });
+      yPosition = (doc as any).lastAutoTable.finalY + 6;
 
-      // Add sale info
-      doc.setFontSize(12);
-      doc.setFont('helvetica', 'normal');
-      // Bloque Cliente (Bill To)
-      doc.setFont('helvetica', 'bold');
-      doc.text('Cliente:', 14, yPosition);
-      doc.setFont('helvetica', 'normal');
-      yPosition += 6;
+      // Bloques de direcciones (left) and reference block (right) side-by-side
+      const billedTo = (
+        'Facturado a:' +
+        `\n${customer?.name ?? 'N/A'}` +
+        (customer?.address ? `\n${customer.address}` : '') +
+        (customer?.phone ? `\nTel: ${customer.phone}` : '') +
+        (customer?.secondary_phone ? `\nTel 2: ${customer.secondary_phone}` : '')
+      );
 
-      // Add customer info
-      if (customer) {
-        doc.text(`${customer.name}`, 14, yPosition);
-        yPosition += 6;
-
-        if (customer.phone) {
-          doc.text(`Teléfono: ${customer.phone}`, 14, yPosition);
-          yPosition += 6;
-        }
-        if (customer.secondary_phone) {
-          doc.text(`Teléfono secundario: ${customer.secondary_phone}`, 14, yPosition);
-          yPosition += 6;
-        }
-        if (sale?.partner_name) {
-          doc.text(`Responsable: ${sale.partner_name}`, 14, yPosition);
-          yPosition += 6;
-        }
-        if (sale?.payment_type === 'installments') {
-          const periodLabel = sale.period_type === 'weekly' ? 'Semanal (1 y 15)' : 'Mensual';
-          const windowLabel = sale.payment_period ? (sale.payment_period === '1 to 10' ? '1 al 10' : '20 al 30') : 'N/A';
-          doc.text(`Periodo: ${periodLabel} • Ventana: ${windowLabel}`, 14, yPosition);
-          yPosition += 6;
-          // No hay cuotas adelantadas
-        }
-      }
-      yPosition += 5;
-
-      // Resumen financiero
-      doc.setFont('helvetica', 'bold');
-      doc.text('Resumen Financiero:', 14, yPosition);
-      yPosition += 8;
-      doc.setFont('helvetica', 'normal');
-      
-      const financialData = [
-        ['Subtotal', formatCurrency(sale?.subtotal ?? 0)],
-        ['Total', formatCurrency(sale?.total_amount ?? 0)]
-      ];
+      const referenceBlock = (
+        `Referencia: #${sale?.reference_code ?? sale?.sale_number ?? 'N/A'}` +
+        `\nFecha: ${sale?.date ? formatDate(sale.date) : 'N/A'}` +
+        `\nNúmero de factura: ${sale?.sale_number ?? 'N/A'}`
+      );
 
       autoTable(doc, {
-        body: financialData,
-        startY: yPosition,
+        body: [[
+          { content: billedTo, styles: { halign: 'left' } },
+          { content: referenceBlock, styles: { halign: 'right' } }
+        ]],
         theme: 'plain',
-        styles: { fontSize: 10 },
+        startY: yPosition,
+        margin: { left: 14, right: 14 },
         columnStyles: {
-          0: { fontStyle: 'bold', cellWidth: 40 },
-          1: { halign: 'right', cellWidth: 40 }
-        },
-        margin: { left: 14 }
+          0: { cellWidth: 'auto' },
+          1: { cellWidth: 'auto' }
+        }
       });
-
-      yPosition = (doc as any).lastAutoTable.finalY + 10;
-
-      // Add payment info
+      yPosition = (doc as any).lastAutoTable.finalY + 8;
+      // Información de pago y monto adeudado lado a lado
       const paymentInfo = [
         ['Método de Pago', sale?.payment_type ? getPaymentTypeBadge(sale.payment_type).label : 'N/A'],
         ['Método de cobro', sale?.payment_method ? getPaymentMethodLabel(sale.payment_method) : 'N/A'],
-        ['Estado de Pago', sale?.payment_status ? getPaymentStatusBadge(sale.payment_status).label : 'N/A'],
-        ['Estado', sale?.status ? getStatusBadge(sale.status).label : 'N/A']
+        ['Estado de Pago', sale?.payment_status ? getPaymentStatusBadge(sale.payment_status).label : 'N/A']
       ];
 
       autoTable(doc, {
-        body: paymentInfo,
-        startY: yPosition,
+        body: [
+          [
+            {
+              content: paymentInfo.map(row => `${row[0]}: ${row[1]}`).join('\n'),
+              styles: { halign: 'left', fontSize: 10 }
+            },
+          ]
+        ],
         theme: 'plain',
-        styles: { fontSize: 10 },
+        startY: yPosition,
+        margin: { left: 14, right: 14 },
         columnStyles: {
-          0: { fontStyle: 'bold', cellWidth: 40 },
-          1: { cellWidth: 40 }
-        },
-        margin: { left: 14 }
+          0: { cellWidth: 'auto' },
+          1: { cellWidth: 'auto' }
+        }
       });
 
       yPosition = (doc as any).lastAutoTable.finalY + 15;
 
-      // Add products table if available
+      // Productos
       if (saleItems.length > 0) {
-        doc.setFont('helvetica', 'bold');
-        doc.text('Productos:', 14, yPosition);
-        yPosition += 5;
+        autoTable(doc, {
+          body: [[{ content: 'Producto(s)', styles: { halign: 'left', fontSize: 12 } }]],
+          theme: 'plain',
+          startY: yPosition,
+          margin: { left: 14, right: 14 }
+        });
+        yPosition = (doc as any).lastAutoTable.finalY + 4;
 
         const productsData = saleItems.map(item => [
           item.product_name || 'Producto',
@@ -291,8 +273,6 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
               2: { halign: 'right', cellWidth: 35 },
               3: { halign: 'right', cellWidth: 35 }
             },
-            foot: [[ '', '', 'Subtotal', formatCurrency(saleItems.reduce((sum, i) => sum + (i.line_total || 0), 0)) ]],
-            footStyles: { fillColor: [245, 245, 245], fontStyle: 'bold' },
             margin: { left: 14, right: 14 }
           });
 
@@ -303,29 +283,19 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
         const left = pageWidth - 100; // ancho del bloque
         const width = 86;
         const height = 10;
-
-        // TOTAL (gris)
-        doc.setFillColor(230, 230, 230);
-        doc.rect(left, yPosition, width, height, 'F');
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        doc.setTextColor(0, 0, 0);
-        doc.text(`TOTAL (ARS):`, left + 4, yPosition + 7);
-        doc.text(`${formatCurrency(sale?.subtotal ?? sale?.total_amount ?? 0)}`, left + width - 4, yPosition + 7, { align: 'right' });
-        yPosition += height + 4;
-
+          
         // TOTAL A PAGAR (negro)
-        doc.setFillColor(0, 0, 0);
+        doc.setFillColor(30, 30, 30);
         doc.rect(left, yPosition, width, height, 'F');
         doc.setTextColor(255, 255, 255);
         doc.setFontSize(10);
-        doc.text(`TOTAL A PAGAR (ARS):`, left + 4, yPosition + 7);
+        doc.text(`TOTAL A PAGAR:`, left + 4, yPosition + 7);
         doc.text(`${formatCurrency(sale?.total_amount ?? 0)}`, left + width - 4, yPosition + 7, { align: 'right' });
         doc.setTextColor(0, 0, 0);
         yPosition += height + 12;
       }
 
-      // Add installments table only for ventas con cuotas
+      // Cuotas (si aplica)
       if (sale?.payment_type === 'installments' && installments.length > 0) {
         // Check if we need a new page
         if (yPosition > 250) {
@@ -343,7 +313,7 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
           formatCurrency(installment.amount),
           formatCurrency(installment.paid_amount),
           formatCurrency(installment.balance),
-          installment.status
+          getInstallmentStatusLabel(installment.status)
         ]);
 
          autoTable(doc, {
@@ -351,38 +321,19 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
             body: installmentsData,
             startY: yPosition,
             styles: { fontSize: 8 },
-            headStyles: { fillColor: [41, 128, 185] },
+            headStyles: { fillColor: [30, 30, 30] },
             columnStyles: {
-              0: { halign: 'center', cellWidth: 15 },
-              1: { cellWidth: 35 },
-              2: { halign: 'right', cellWidth: 30 },
-              3: { halign: 'right', cellWidth: 30 },
-              4: { halign: 'right', cellWidth: 30 },
+              0: { halign: 'left', cellWidth: 15 },
+              1: { halign: 'left', cellWidth: 40 },
+              2: { halign: 'left', cellWidth: 35 },
+              3: { halign: 'left', cellWidth: 35 },
+              4: { halign: 'left', cellWidth: 30 },
               5: { cellWidth: 25 }
             },
-            foot: [[ '', '', 'Total cuotas', formatCurrency(installments.reduce((sum, i) => sum + (i.amount || 0), 0)), '', '' ]],
-            footStyles: { fillColor: [245, 245, 245], fontStyle: 'bold' },
-            margin: { left: 14, right: 14 }
+            margin: { left: 14, right: 0 }
           });
 
         yPosition = (doc as any).lastAutoTable.finalY + 15;
-      }
-
-      // Add notes if available
-      if (sale?.notes) {
-        // Check if we need a new page
-        if (yPosition > 250) {
-          doc.addPage();
-          yPosition = 20;
-        }
-
-        doc.setFont('helvetica', 'bold');
-        doc.text('Notas:', 14, yPosition);
-        yPosition += 8;
-        doc.setFont('helvetica', 'normal');
-        
-        const splitNotes = doc.splitTextToSize(sale.notes, 180);
-        doc.text(splitNotes, 14, yPosition);
       }
 
       // Save the PDF
@@ -400,6 +351,7 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
       const periodLabel = sale?.payment_type === 'installments' ? (sale?.period_type === 'weekly' ? 'Semanal (1 y 15)' : 'Mensual') : 'N/A';
       const windowLabel = sale?.payment_type === 'installments' ? (sale?.payment_period ? (sale.payment_period === '1 to 10' ? '1 al 10' : '20 al 30') : 'N/A') : 'N/A';
       const saleData = {
+        'Referencia': sale?.reference_code ?? sale?.sale_number ?? 'N/A',
         'Número de Venta': sale?.sale_number ?? 'N/A',
         'Fecha': sale?.date ? formatDate(sale.date) : 'N/A',
         'Cliente': customer?.name || 'N/A',
@@ -577,11 +529,6 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
                   </Badge>
                   {sale.payment_method && (
                       <Badge variant={paymentTypeBadge.variant}>{getPaymentMethodLabel(sale.payment_method)}</Badge>
-                  )}
-                  {sale.payment_type === 'installments' && sale.number_of_installments && (
-                    <div className="text-sm text-muted-foreground mt-1">
-                      {sale.number_of_installments} cuotas
-                    </div>
                   )}
                 </CardContent>
               </Card>

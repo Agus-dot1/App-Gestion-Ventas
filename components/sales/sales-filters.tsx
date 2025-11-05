@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils';
 
 export interface SalesFilters {
   search: string;
-  sortBy: 'sale_number' | 'customer_name' | 'date' | 'total_amount' | 'payment_status' | 'payment_type';
+  sortBy: 'sale_number' | 'customer_name' | 'date' | 'total_amount' | 'payment_status' | 'payment_type' | 'reference_code';
   sortOrder: 'asc' | 'desc';
   paymentStatus: string[];
   paymentType: string[];
@@ -301,6 +301,7 @@ export function applySalesFilters(sales: Sale[], filters: SalesFilters): Sale[] 
     const searchTerm = filters.search.toLowerCase();
     filtered = filtered.filter(sale =>
       sale.sale_number.toLowerCase().includes(searchTerm) ||
+      (sale.reference_code ? sale.reference_code.toLowerCase().includes(searchTerm) : false) ||
       sale.customer_name?.toLowerCase().includes(searchTerm) ||
       sale.notes?.toLowerCase().includes(searchTerm)
     );
@@ -351,6 +352,10 @@ export function applySalesFilters(sales: Sale[], filters: SalesFilters): Sale[] 
       case 'sale_number':
         aValue = a.sale_number;
         bValue = b.sale_number;
+        break;
+      case 'reference_code':
+        aValue = a.reference_code || '';
+        bValue = b.reference_code || '';
         break;
       case 'customer_name':
         aValue = a.customer_name || '';

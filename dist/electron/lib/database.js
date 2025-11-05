@@ -45,9 +45,7 @@ function createTables() {
       phone TEXT,
       secondary_phone TEXT,
       address TEXT,
-      company TEXT,
       notes TEXT,
-      tags TEXT,
       payment_window TEXT,
       contact_info TEXT, -- Keep for backward compatibility
       created_at DATETIME DEFAULT (datetime('now')),
@@ -76,15 +74,7 @@ function createTables() {
     }
     catch (e) { /* Column already exists */ }
     try {
-        db.exec('ALTER TABLE customers ADD COLUMN company TEXT');
-    }
-    catch (e) { /* Column already exists */ }
-    try {
         db.exec('ALTER TABLE customers ADD COLUMN notes TEXT');
-    }
-    catch (e) { /* Column already exists */ }
-    try {
-        db.exec('ALTER TABLE customers ADD COLUMN tags TEXT');
     }
     catch (e) { /* Column already exists */ }
     try {
@@ -207,7 +197,7 @@ function createTables() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       customer_id INTEGER,
       partner_id INTEGER,
-      sale_number TEXT NOT NULL,
+      sale_number TEXT NOT NULL UNIQUE,
       date DATETIME DEFAULT CURRENT_TIMESTAMP,
       due_date DATETIME,
       subtotal DECIMAL(10,2) NOT NULL,
@@ -377,11 +367,10 @@ function createTables() {
      CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email);
      CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
      CREATE INDEX IF NOT EXISTS idx_customers_secondary_phone ON customers(secondary_phone);
-     CREATE INDEX IF NOT EXISTS idx_customers_company ON customers(company);
      CREATE INDEX IF NOT EXISTS idx_customers_created_at ON customers(created_at);
      CREATE INDEX IF NOT EXISTS idx_customers_updated_at ON customers(updated_at);
      CREATE INDEX IF NOT EXISTS idx_customers_name_email ON customers(name, email);
-     CREATE INDEX IF NOT EXISTS idx_customers_search ON customers(name, email, company, tags);
+     CREATE INDEX IF NOT EXISTS idx_customers_search ON customers(name, email);
     
     -- Product table indexes
     CREATE INDEX IF NOT EXISTS idx_products_name ON products(name);
@@ -440,6 +429,7 @@ function runMigrations() {
     const hasPartnerId = columnNames.includes('partner_id');
     const hasPeriodType = columnNames.includes('period_type');
     const hasPaymentMethod = columnNames.includes('payment_method');
+    const hasReferenceCode = columnNames.includes('reference_code');
     // Check if sale_items table needs to be migrated to allow NULL product_id
     const saleItemsTableInfo = db.prepare("PRAGMA table_info(sale_items)").all();
     const product_id_column = saleItemsTableInfo.find((col) => col.name === 'product_id');
@@ -448,6 +438,7 @@ function runMigrations() {
     const onlyMissingPartnerId = missingColumns.length === 0 && !needsProductIDMigration && !hasPartnerId;
     const onlyMissingPeriodType = missingColumns.length === 0 && !needsProductIDMigration && !hasPeriodType;
     const onlyMissingPaymentMethod = missingColumns.length === 0 && !needsProductIDMigration && !hasPaymentMethod;
+    const onlyMissingReferenceCode = missingColumns.length === 0 && !needsProductIDMigration && !hasReferenceCode;
     if (onlyMissingPartnerId) {
         try {
             db.exec('ALTER TABLE sales ADD COLUMN partner_id INTEGER');
@@ -488,6 +479,88 @@ function runMigrations() {
         }
         return;
     }
+    // SAFE MIGRATION: only missing reference_code -> add column and backfill unique codes
+    if (onlyMissingReferenceCode) {
+        try {
+            db.exec('ALTER TABLE sales ADD COLUMN reference_code TEXT');
+            console.log('Successfully added reference_code column to sales table');
+        }
+        catch (e) {
+            console.error('Error adding reference_code column to sales table:', e);
+        }
+        // Backfill reference_code for existing rows with unique numeric codes
+        try {
+            const selectStmt = db.prepare("SELECT id FROM sales WHERE reference_code IS NULL OR reference_code = ''");
+            const updateStmt = db.prepare('UPDATE sales SET reference_code = ? WHERE id = ?');
+            const existsStmt = db.prepare('SELECT COUNT(1) as c FROM sales WHERE reference_code = ?');
+            const generateCode = (length = 8) => {
+                let code = '';
+                for (let i = 0; i < length; i++) {
+                    code += Math.floor(Math.random() * 10).toString();
+                }
+                return code;
+            };
+            const rows = selectStmt.all();
+            for (const row of rows) {
+                let code = generateCode(8);
+                // Ensure uniqueness by checking collisions; expand length on rare collisions
+                let attempts = 0;
+                while (true) {
+                    const { c } = existsStmt.get(code);
+                    if (c === 0)
+                        break;
+                    code = generateCode(attempts < 3 ? 9 : 12);
+                    attempts++;
+                }
+                updateStmt.run(code, row.id);
+            }
+            // Create unique index (NULLs allowed; but we backfilled all)
+            db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_reference_code_unique ON sales(reference_code)');
+            console.log('Backfilled and ensured unique index on sales.reference_code');
+        }
+        catch (e) {
+            console.error('Error backfilling reference_code:', e);
+        }
+        return;
+    }
+    // Column exists: ensure backfill for any rows missing reference_code and enforce unique index
+    if (hasReferenceCode) {
+        try {
+            const needBackfill = db.prepare("SELECT COUNT(1) as c FROM sales WHERE reference_code IS NULL OR reference_code = ''").get();
+            if (needBackfill.c > 0) {
+                const selectStmt = db.prepare("SELECT id FROM sales WHERE reference_code IS NULL OR reference_code = ''");
+                const updateStmt = db.prepare('UPDATE sales SET reference_code = ? WHERE id = ?');
+                const existsStmt = db.prepare('SELECT COUNT(1) as c FROM sales WHERE reference_code = ?');
+                const generateCode = (length = 8) => {
+                    let code = '';
+                    for (let i = 0; i < length; i++) {
+                        code += Math.floor(Math.random() * 10).toString();
+                    }
+                    return code;
+                };
+                const rows = selectStmt.all();
+                for (const row of rows) {
+                    let code = generateCode(8);
+                    let attempts = 0;
+                    while (true) {
+                        const { c } = existsStmt.get(code);
+                        if (c === 0)
+                            break;
+                        code = generateCode(attempts < 3 ? 9 : 12);
+                        attempts++;
+                    }
+                    updateStmt.run(code, row.id);
+                }
+                console.log(`Backfilled reference_code for ${rows.length} sale(s)`);
+            }
+            // Ensure unique index exists even if column was already present
+            db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_reference_code_unique ON sales(reference_code)');
+            console.log('Ensured unique index on sales.reference_code');
+        }
+        catch (e) {
+            console.error('Error ensuring reference_code backfill/index:', e);
+        }
+    }
     if (missingColumns.length > 0 || needsProductIDMigration) {
         console.log('Missing columns detected or sale_items table needs migration:', missingColumns);
         // Backup existing data if any
@@ -523,6 +596,25 @@ function runMigrations() {
     catch (e) {
         console.error('Error migrating partners table (is_active backfill):', e);
     }
+    // Ensure unique index on sales.sale_number when safe
+    try {
+        const duplicates = db.prepare(`
+      SELECT sale_number, COUNT(*) as c
+      FROM sales
+      GROUP BY sale_number
+      HAVING c > 1
+    `).all();
+        if (duplicates.length === 0) {
+            db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_sale_number_unique ON sales(sale_number)');
+            console.log('Ensured unique index on sales.sale_number');
+        }
+        else {
+            console.warn('Skipped unique index on sales.sale_number due to duplicates:', duplicates.length);
+        }
+    }
+    catch (e) {
+        console.error('Error ensuring unique index for sales.sale_number:', e);
+    }
 }
 function createSalesRelatedTables() {
     if (!db)
@@ -534,6 +626,7 @@ function createSalesRelatedTables() {
       customer_id INTEGER,
       partner_id INTEGER,
       sale_number TEXT NOT NULL,
+      reference_code TEXT,
       date DATETIME DEFAULT CURRENT_TIMESTAMP,
       due_date DATETIME,
       subtotal DECIMAL(10,2) NOT NULL,

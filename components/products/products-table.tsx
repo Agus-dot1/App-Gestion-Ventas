@@ -123,6 +123,33 @@ export function ProductsTable({
     return sorted;
   })();
 
+  // Inline editing state per product
+  const [editing, setEditing] = useState<Record<number, { price?: number; cost_price?: number; stock?: number; saving?: boolean }>>({});
+
+  const setEditingField = (id: number, field: 'price' | 'cost_price' | 'stock', value: number | undefined) => {
+    setEditing(prev => ({
+      ...prev,
+      [id]: {
+        ...prev[id],
+        [field]: value,
+      }
+    }));
+  };
+
+  const saveEditingField = async (id: number, field: 'price' | 'cost_price' | 'stock', value: number | undefined) => {
+    // Basic validation: ensure value is a finite number for updates
+    const num = value;
+    if (num === undefined || Number.isNaN(num)) return;
+    setEditing(prev => ({ ...prev, [id]: { ...prev[id], saving: true } }));
+    try {
+      await window.electronAPI?.database?.products?.update(id, { [field]: num } as any);
+    } catch (e) {
+      console.error('Failed to update product', id, field, e);
+    } finally {
+      setEditing(prev => ({ ...prev, [id]: { ...prev[id], saving: false } }));
+    }
+  };
+
   // Persist preferences in localStorage
   const PRODUCTS_PERSIST_KEY = 'productsTablePrefs';
 
@@ -206,11 +233,23 @@ export function ProductsTable({
     }).format(price);
   };
 
-  const handleSelectAll = (checked: boolean) => {
+  const handleSelectAll = async (checked: boolean) => {
     setSelectAll(checked);
     if (checked) {
-      const allProductIds = new Set(filteredProducts.map(p => p.id!));
-      setSelectedProducts(allProductIds);
+      if (serverSidePagination) {
+        try {
+          const allProducts = await window.electronAPI?.database?.products?.getAll();
+          const ids = (allProducts || []).map(p => p.id).filter(id => id !== undefined) as number[];
+          setSelectedProducts(new Set(ids));
+        } catch (e) {
+          console.error('Error cargando todos los IDs de productos para seleccionar todo:', e);
+          const allProductIds = new Set(filteredProducts.map(p => p.id!).filter(Boolean));
+          setSelectedProducts(allProductIds);
+        }
+      } else {
+        const allProductIds = new Set(sortedProducts.map(p => p.id!).filter(Boolean));
+        setSelectedProducts(allProductIds);
+      }
     } else {
       setSelectedProducts(new Set());
     }
@@ -225,43 +264,141 @@ export function ProductsTable({
     }
     setSelectedProducts(newSelected);
     
-    // Update select all state
-    if (newSelected.size === filteredProducts.length) {
-      setSelectAll(true);
+    // Actualizar estado de "seleccionar todo"
+    if (serverSidePagination) {
+      const total = paginationInfo?.total || 0;
+      setSelectAll(total > 0 && newSelected.size === total);
+    } else {
+      setSelectAll(filteredProducts.length > 0 && newSelected.size === filteredProducts.length);
     }
   };
 
-  const exportSelectedProducts = async () => {
-    const selectedProductsData = products.filter(p => selectedProducts.has(p.id!));
+  const formatCurrency = (value: number | undefined) => {
+    if (value === undefined || value === null) return '-';
+    try {
+      return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(value));
+    } catch {
+      return `$${Number(value).toFixed(2)}`;
+    }
+  };
+
+  const formatDate = (date?: string) => {
+    if (!date) return '-';
+    try {
+      return new Date(date).toLocaleDateString('es-AR', { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch {
+      return date;
+    }
+  };
+
+  const exportProductsPDF = async () => {
+    let selectedProductsData: Product[] = [];
+    if (serverSidePagination) {
+      try {
+        const allProducts = await window.electronAPI?.database?.products?.getAll();
+        selectedProductsData = (allProducts || []).filter(p => p.id && selectedProducts.has(p.id));
+      } catch (e) {
+        console.error('Error exportando productos seleccionados (fallback a página actual):', e);
+        selectedProductsData = products.filter(p => selectedProducts.has(p.id!));
+      }
+    } else {
+      selectedProductsData = products.filter(p => selectedProducts.has(p.id!));
+    }
+
     const { default: jsPDF } = await import('jspdf');
     const autoTable = (await import('jspdf-autotable')).default;
     const doc = new jsPDF();
-    doc.setFontSize(20);
-    doc.text('Productos Seleccionados', 14, 22);
-    doc.setFontSize(12);
-    doc.text(`Fecha: ${new Date().toLocaleDateString()}`, 14, 32);
-    doc.text(`Total de productos: ${selectedProductsData.length}`, 14, 40);
-    const tableData = selectedProductsData.map(product => [
-      product.name,
-      product.category,
-      `$${product.price.toFixed(2)}`,
-      product.cost_price != null ? `$${Number(product.cost_price).toFixed(2)}` : '-',
-      product.stock?.toString() ?? '0',
-      product.description || '-'
+
+    // Encabezado
+    doc.setFontSize(18);
+    doc.text('Listado de Productos', 14, 18);
+    doc.setFontSize(11);
+    doc.text(`Fecha: ${new Date().toLocaleDateString('es-AR')}`, 14, 26);
+    doc.text(`Seleccionados: ${selectedProductsData.length}`, 14, 32);
+
+    const tableData = selectedProductsData.map(p => [
+      p.id ?? '-',
+      p.name,
+      formatCurrency(p.price),
+      formatCurrency(p.cost_price ?? undefined),
+      p.stock ?? 0,
+      p.description || '-'
     ]);
+
     autoTable(doc, {
-      head: [['Nombre', 'Categoría', 'Precio', 'Costo', 'Stock', 'Descripción']],
+      head: [[
+        'ID', 'Nombre', 'Precio', 'Costo', 'Stock', 'Descripción'
+      ]],
       body: tableData,
-      startY: 60,
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [41, 128, 185] }
+      startY: 40,
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [30, 30, 30], textColor: 255, fontStyle: 'bold' },
+      columnStyles: {
+        9: { cellWidth: 60 } // Descripción más ancha
+      },
+      didDrawPage: (data: any) => {
+        const pageCount = (doc as any).internal?.getNumberOfPages
+          ? (doc as any).internal.getNumberOfPages()
+          : 1;
+        const pageNum = (data as any)?.pageNumber ?? pageCount;
+        const str = `Página ${pageNum} de ${pageCount}`;
+        const width = (doc as any).internal?.pageSize?.getWidth
+          ? (doc as any).internal.pageSize.getWidth()
+          : (doc as any).internal?.pageSize?.width;
+        const height = (doc as any).internal?.pageSize?.getHeight
+          ? (doc as any).internal.pageSize.getHeight()
+          : (doc as any).internal?.pageSize?.height;
+        doc.setFontSize(9);
+        doc.text(str, (width || 210) - 60, (height || 297) - 10);
+      }
     });
-    doc.save(`productos_seleccionados_${new Date().toISOString().split('T')[0]}.pdf`);
+
+    doc.save(`productos_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  const exportProductsExcel = async () => {
+    let selectedProductsData: Product[] = [];
+    if (serverSidePagination) {
+      try {
+        const allProducts = await window.electronAPI?.database?.products?.getAll();
+        selectedProductsData = (allProducts || []).filter(p => p.id && selectedProducts.has(p.id));
+      } catch (e) {
+        console.error('Error exportando productos seleccionados a Excel (fallback a página actual):', e);
+        selectedProductsData = products.filter(p => selectedProducts.has(p.id!));
+      }
+    } else {
+      selectedProductsData = products.filter(p => selectedProducts.has(p.id!));
+    }
+
+    const XLSX = await import('xlsx');
+    const rows = selectedProductsData.map(p => ({
+      ID: p.id ?? '',
+      Nombre: p.name,
+      Precio: typeof p.price === 'number' ? Number(p.price) : '',
+      Costo: p.cost_price != null ? Number(p.cost_price) : '',
+      Stock: p.stock ?? 0,
+      Descripción: p.description || ''
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    // Tamaños de columnas más agradables
+    ws['!cols'] = [
+      { wch: 6 },  // ID
+      { wch: 30 }, // Nombre
+      { wch: 12 }, // Precio
+      { wch: 12 }, // Costo
+      { wch: 8 },  // Stock
+      { wch: 40 }, // Descripción
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Productos');
+    XLSX.writeFile(wb, `productos_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   // Derive "select all" state from current selection vs filtered dataset,
   // so it stays accurate across pagination and filtering changes.
-  const isAllSelected = filteredProducts.length > 0 && selectedProducts.size === filteredProducts.length;
+  const isAllSelected = serverSidePagination
+    ? ((paginationInfo?.total || 0) > 0 && selectedProducts.size === (paginationInfo?.total || 0))
+    : (filteredProducts.length > 0 && selectedProducts.size === filteredProducts.length);
 
 
   // No additional filters; search bar only.
@@ -295,11 +432,20 @@ export function ProductsTable({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={exportSelectedProducts}
+                      onClick={exportProductsPDF}
+                      className="h-8"
+                    >
+                      <FileText className="h-4 w-4 mr-1" />
+                      PDF
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={exportProductsExcel}
                       className="h-8"
                     >
                       <Download className="h-4 w-4 mr-1" />
-                      Exportar
+                      Excel
                     </Button>
                     <Button
                       variant="destructive"
@@ -388,7 +534,7 @@ export function ProductsTable({
                     <TableHead className="w-[50px]">
                       <Checkbox
                         checked={isAllSelected}
-                        onCheckedChange={handleSelectAll}
+                        onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
                         aria-label="Seleccionar todos los productos"
                         disabled={isLoading}
                       />
@@ -498,31 +644,83 @@ export function ProductsTable({
                       )}
                       {columnVisibility.price && (
                         <TableCell>
-                          <span className="font-semibold text-lg text-white">
-                            {formatPrice(product.price)}
-                          </span>
+                          <div className="flex items-center">
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={(editing[product.id!]?.price ?? product.price)?.toString()}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setEditingField(product.id!, 'price', v === '' ? undefined : Number(v));
+                              }}
+                              onBlur={() => saveEditingField(product.id!, 'price', editing[product.id!]?.price ?? product.price)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.currentTarget.blur();
+                                } else if (e.key === 'Escape') {
+                                  setEditingField(product.id!, 'price', product.price);
+                                }
+                              }}
+                              disabled={editing[product.id!]?.saving}
+                              className="w-28 h-8"
+                            />
+                          </div>
                         </TableCell>
                       )}
                       {columnVisibility.cost && (
                         <TableCell>
-                          {typeof product.cost_price === 'number' ? (
-                            <span className="text-white">{formatPrice(product.cost_price)}</span>
-                          ) : (
-                            <span className="text-muted-foreground italic text-sm">Sin costo</span>
-                          )}
+                          <div className="flex items-center">
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={(editing[product.id!]?.cost_price ?? (typeof product.cost_price === 'number' ? product.cost_price : 0))?.toString()}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setEditingField(product.id!, 'cost_price', v === '' ? undefined : Number(v));
+                              }}
+                              onBlur={() => saveEditingField(product.id!, 'cost_price', editing[product.id!]?.cost_price ?? (typeof product.cost_price === 'number' ? product.cost_price : 0))}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.currentTarget.blur();
+                                } else if (e.key === 'Escape') {
+                                  setEditingField(product.id!, 'cost_price', typeof product.cost_price === 'number' ? product.cost_price : 0);
+                                }
+                              }}
+                              disabled={editing[product.id!]?.saving}
+                              className="w-28 h-8"
+                            />
+                          </div>
                         </TableCell>
                       )}
                       {columnVisibility.stock && (
                         <TableCell>
-                           {typeof product.stock === 'number' ? (
-                             <div className="flex items-center gap-1">
-                               <span className="font-medium">{product.stock}</span>
-                               <span className="text-muted-foreground text-sm">unidades</span>
-                             </div>
-                           ) : (
-                             <span className="text-muted-foreground italic text-sm">No especificado</span>
-                           )}
-                         </TableCell>
+                          <div className="flex items-center gap-1">
+                            <Input
+                              type="number"
+                              step="1"
+                              min="0"
+                              value={(editing[product.id!]?.stock ?? (typeof product.stock === 'number' ? product.stock : 0))?.toString()}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                const num = v === '' ? undefined : Number(v);
+                                setEditingField(product.id!, 'stock', num);
+                              }}
+                              onBlur={() => saveEditingField(product.id!, 'stock', editing[product.id!]?.stock ?? (typeof product.stock === 'number' ? product.stock : 0))}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.currentTarget.blur();
+                                } else if (e.key === 'Escape') {
+                                  setEditingField(product.id!, 'stock', typeof product.stock === 'number' ? product.stock : 0);
+                                }
+                              }}
+                              disabled={editing[product.id!]?.saving}
+                              className="w-20 h-8"
+                            />
+                            <span className="text-muted-foreground text-sm">unidades</span>
+                          </div>
+                        </TableCell>
                       )}
                       {columnVisibility.description && (
                         <TableCell className="max-w-[300px]">

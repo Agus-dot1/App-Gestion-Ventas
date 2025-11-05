@@ -76,7 +76,8 @@ export function SalesTable({
     date: true,
     payment_type: true,
     total_amount: true,
-    payment_status: true
+    payment_status: true,
+    reference_code: true
   });
   const [detailSale, setDetailSale] = useState<Sale | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -241,6 +242,8 @@ export function SalesTable({
       switch (k) {
         case 'sale_number':
           return 'sale_number';
+        case 'reference_code':
+          return 'reference_code';
         case 'customer_name':
           return 'customer_name';
         case 'date':
@@ -269,6 +272,8 @@ export function SalesTable({
       switch (k) {
         case 'sale_number':
           return 'sale_number';
+        case 'reference_code':
+          return 'reference_code';
         case 'customer_name':
           return 'customer_name';
         case 'date':
@@ -487,6 +492,18 @@ export function SalesTable({
                         </Button>
                       </TableHead>
                     )}
+                    {columnVisibility.reference_code && (
+                      <TableHead>
+                        <Button 
+                          variant="ghost" 
+                          onClick={() => handleSort('reference_code')}
+                          className="h-auto p-0 font-semibold hover:bg-transparent"
+                        >
+                          Referencia
+                          {getSortIcon('reference_code')}
+                        </Button>
+                      </TableHead>
+                    )}
                     {columnVisibility.customer_name && (
                       <TableHead>
                         <Button 
@@ -566,6 +583,11 @@ export function SalesTable({
                           </div>
                         </TableCell>
                       )}
+                      {columnVisibility.reference_code && (
+                        <TableCell>
+                          <Skeleton className="h-4 w-24" />
+                        </TableCell>
+                      )}
                       {columnVisibility.customer_name && (
                         <TableCell>
                           <div className="flex items-center gap-2">
@@ -634,6 +656,18 @@ export function SalesTable({
                         >
                           Venta #
                           {getSortIcon('sale_number')}
+                        </Button>
+                      </TableHead>
+                    )}
+                    {columnVisibility.reference_code && (
+                      <TableHead>
+                        <Button 
+                          variant="ghost" 
+                          onClick={() => handleSort('reference_code')}
+                          className="h-auto p-0 font-semibold hover:bg-transparent"
+                        >
+                          Referencia
+                          {getSortIcon('reference_code')}
                         </Button>
                       </TableHead>
                     )}
@@ -722,6 +756,13 @@ export function SalesTable({
                       {columnVisibility.sale_number && (
                         <TableCell className="font-medium">
                           {renderProductsCell(sale)}
+                        </TableCell>
+                      )}
+                      {columnVisibility.reference_code && (
+                        <TableCell>
+                          <div className="text-sm">
+                            {sale.reference_code ? `#${sale.reference_code}` : '-'}
+                          </div>
                         </TableCell>
                       )}
                       {columnVisibility.customer_name && (

@@ -40,8 +40,38 @@ function deriveCategory(type: NotificationTypeUi, message: string, message_key?:
 
 function parseClientFields(message: string): Partial<NotificationItem['meta']> {
   try {
+    // Caso especial: Recordatorio semanal agregador (no contiene la palabra "cuota")
+    const weeklyPattern = /Recordatorio\s*\(Semanal\).*revisar pago/i
+    if (weeklyPattern.test(message)) {
+      const parts = message.split('—').map(s => s.trim())
+      // Estructura generada por el scheduler:
+      // "Recordatorio (Semanal): Mañana X — revisar pago — Nombre1, Nombre2, Nombre3 y +N"
+      const namesPart = parts[2] || parts[parts.length - 1] || ''
+      let namesStr = namesPart
+      let extraCount: number | undefined
+
+      // Remover sufijo "y +N" y calcular cantidad total
+      const extrasMatch = namesStr.match(/\+\s*(\d+)/)
+      if (extrasMatch) {
+        const plusN = parseInt(extrasMatch[1], 10)
+        if (!Number.isNaN(plusN)) extraCount = plusN
+        namesStr = namesStr.replace(/\s*y\s*\+\s*\d+\s*$/i, '').trim()
+      }
+
+      const names = namesStr.split(',').map(s => s.trim()).filter(Boolean)
+      const customerCount = typeof extraCount === 'number' ? names.length + extraCount : names.length
+
+      return {
+        category: CATEGORY.client,
+        customerName: names[0],
+        customerNames: names,
+        customerCount,
+      }
+    }
+
+    // Manejo habitual: mensajes que contienen "cuota"
     if (!CLIENT_ALERT_REGEX.test(message)) return {}
-    
+
     // Handle simple format like "Cuota vencida hoy"
     if (message.toLowerCase().includes('cuota vencida hoy')) {
       return { 
@@ -50,7 +80,7 @@ function parseClientFields(message: string): Partial<NotificationItem['meta']> {
         due_at: new Date().toISOString(), // Today's date for "hoy"
       }
     }
-    
+
     const parts = message.split('—').map(s => s.trim())
     // Ejemplos:
     // "Cuota vencida — Nombre — 30/9/2024 — $ 10.000"

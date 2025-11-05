@@ -345,7 +345,6 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
               </Card>
             </div>
 
-            {/* Address and Tags */}
 
             {/* Notes */}
             {customer.notes && (

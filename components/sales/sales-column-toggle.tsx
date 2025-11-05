@@ -12,6 +12,7 @@ export interface ColumnVisibility {
   payment_type: boolean;
   total_amount: boolean;
   payment_status: boolean;
+  reference_code: boolean;
 }
 
 interface SalesColumnToggleProps {
@@ -25,7 +26,8 @@ const columnLabels: Record<keyof ColumnVisibility, string> = {
   date: 'Fecha',
   payment_type: 'Método de pago',
   total_amount: 'Total',
-  payment_status: 'Estado del pago'
+  payment_status: 'Estado del pago',
+  reference_code: 'Referencia'
 };
 
 export function SalesColumnToggle({ columnVisibility, onColumnVisibilityChange }: SalesColumnToggleProps) {

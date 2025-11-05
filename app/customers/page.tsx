@@ -73,12 +73,12 @@ export default function CustomersPage() {
   }, [isElectron, dataCache]);
 
   // Reload customers when search term or page changes
+  // Previously this only reloaded if we already had data, which
+  // caused an issue when clearing the search while the list was empty.
+  // Now we always trigger a reload when filters change.
   useEffect(() => {
-    if (isElectron && customers.length > 0) {
-      // Only reload if we already have data loaded
-      setTimeout(() => {
-        loadCustomers();
-      }, 0);
+    if (isElectron) {
+      loadCustomers();
     }
   }, [searchTerm, currentPage]);
 
@@ -213,8 +213,6 @@ export default function CustomersPage() {
         email: 'lucia.fernandez@example.com',
         phone: '+54 11 55551234',
         address: 'Av. Santa Fe 1234, CABA',
-        company: 'Fernández & Co.',
-        tags: 'vip, recurrente',
         payment_window: '1 to 10',
         notes: 'Prefiere contacto por email'
       },
@@ -224,7 +222,6 @@ export default function CustomersPage() {
         email: 'martin.gomez@example.com',
         phone: '+54 11 55554444',
         address: 'Belgrano 2200, CABA',
-        tags: 'nuevo',
         payment_window: '20 to 30'
       },
       {
@@ -233,8 +230,6 @@ export default function CustomersPage() {
         email: 'carla.rodriguez@example.com',
         phone: '+54 9 11 56781234',
         address: 'Ituzaingó 450, Lanús',
-        company: 'CR Estudio',
-        tags: 'mayorista',
         payment_window: '20 to 30'
       },
       {
@@ -251,7 +246,6 @@ export default function CustomersPage() {
         email: 'valentina.lopez@example.com',
         phone: '+54 11 44443333',
         address: 'Rivadavia 789, Morón',
-        tags: 'vip',
         payment_window: '20 to 30'
       },
       {
@@ -260,8 +254,6 @@ export default function CustomersPage() {
         email: 'nicolas.duarte@example.com',
         phone: '+54 11 55557777',
         address: 'San Martín 150, Ramos Mejía',
-        company: 'Duarte Servicios',
-        tags: 'recurrente',
         payment_window: '1 to 10'
       },
       {
@@ -278,7 +270,6 @@ export default function CustomersPage() {
         dni: '33445566',
         phone: '+54 11 55551111',
         address: 'Córdoba 1200, Rosario',
-        tags: 'evento',
         payment_window: '20 to 30'
       },
       {
@@ -287,8 +278,6 @@ export default function CustomersPage() {
         email: 'camila.herrera@example.com',
         phone: '+54 9 11 62341234',
         address: 'Sarmiento 540, Lomas',
-        company: 'Herrera Boutique',
-        tags: 'mayorista, vip',
         payment_window: '1 to 10'
       },
       {

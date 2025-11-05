@@ -111,22 +111,31 @@ export function setupNotificationScheduler(getMainWindow: () => BrowserWindow | 
         if (tDay === 1 || tDay === 15) {
           const weeklySales = (saleOperations.getAll() || []).filter((s: any) => s?.payment_type === 'installments' && s?.period_type === 'weekly')
           if (weeklySales.length > 0) {
-            weeklySales.forEach((s: any) => {
-              try {
-                // Si la venta no tiene saldo pendiente, no avisamos
+            try {
+              const customers: string[] = []
+              for (const s of weeklySales) {
+                if (!s?.id || !s?.customer_id || !s?.customer_name || s?.payment_type !== 'installments' || s?.period_type !== 'weekly') continue
                 const installments = installmentOperations.getBySale(s.id) || []
                 const hasPending = installments.some((i: any) => i?.status === 'pending' && i?.balance > 0)
-                if (!hasPending) return
+                if (!hasPending) continue
+                const cid = s.customer_id
+                const customer = s.customer_name || (typeof cid === 'number' ? customerOperations.getById(cid).name : undefined) || 'Cliente'
+                customers.push(customer)
+              }
 
-                const customer = s.customer_name || customerOperations.getById(s.customer_id)?.name || 'Cliente'
+              if (customers.length > 0) {
                 const cycleLabel = tDay === 1 ? '1 del mes' : '15 del mes'
-                const msg = `Recordatorio (Semanal): Mañana ${cycleLabel} — revisar pago — ${customer}`
-                const key = `weekly_precheck|sale|${s.id}|${tomorrow.toISOString().slice(0,10)}`
+                const listPreview = customers.slice(0, 3).join(', ')
+                const extras = Math.max(0, customers.length - 3)
+                const msg = extras > 0
+                  ? `Recordatorio (Semanal): Mañana ${cycleLabel} — revisar pago — ${listPreview} y +${extras}`
+                  : `Recordatorio (Semanal): Mañana ${cycleLabel} — revisar pago — ${listPreview}`
+                const key = `weekly_precheck|summary|${tomorrow.toISOString().slice(0,10)}`
 
                 const existsActive = notificationOperations.existsActiveWithKey(key)
                 const existsToday = notificationOperations.existsTodayWithKey(key)
                 if (!existsActive && !existsToday) {
-                  const nid = notificationOperations.create(msg, 'attention' as any, key as any)
+                  const nid = notificationOperations.create(msg, 'reminder' as any, key as any)
                   const win = getMainWindow()
                   if (win) {
                     const latest = notificationOperations.getLatestByKey(key)
@@ -137,18 +146,21 @@ export function setupNotificationScheduler(getMainWindow: () => BrowserWindow | 
                       type: 'attention',
                       meta: {
                         message_key: key,
-                        customerName: customer,
+                        customerName: customers[0],
+                        customerNames: customers.slice(0, 3),
+                        customerCount: customers.length,
                         due_at: tomorrow.toISOString(),
                         actionLabel: 'Revisar',
+                        route: '/sales?tab=installments',
                         ...(createdAt ? { created_at: createdAt } : {}),
                       }
                     })
                   }
                 }
-              } catch (e) {
-                console.error('Error creating weekly precheck notification:', e)
               }
-            })
+            } catch (e) {
+              console.error('Error creating weekly precheck notification:', e)
+            }
           }
         }
       } catch (e) {

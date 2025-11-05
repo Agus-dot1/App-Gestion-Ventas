@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Search, X, User, Mail, Building, Tag, Phone, MapPin, CreditCard } from 'lucide-react';
+import { Search, X, User, Mail, Building, Phone, MapPin, CreditCard } from 'lucide-react';
 import type { Customer } from '@/lib/database-operations';
 import { cn } from '@/lib/utils';
 
@@ -55,7 +55,7 @@ function fuzzyMatch(text: string, query: string): { score: number; matches: numb
 
 interface SearchSuggestion {
   id: string;
-  type: 'customer' | 'email' | 'company' | 'phone' | 'tag' | 'dni';
+  type: 'customer' | 'email' | 'phone' | 'dni';
   label: string;
   value: string;
   customer?: Customer;
@@ -147,22 +147,6 @@ export function AdvancedSearch({
         }
       }
 
-      // Company suggestions
-      if (customer.company) {
-        const companyMatch = fuzzyMatch(customer.company, queryTrimmed);
-        if (companyMatch.score > 0) {
-          newSuggestions.push({
-            id: `company-${customer.id}`,
-            type: 'company',
-            label: `${customer.name} (${customer.company})`,
-            value: customer.company,
-            customer,
-            icon: Building,
-            score: companyMatch.score,
-            matches: companyMatch.matches
-          });
-        }
-      }
 
       // Phone suggestions
       if (customer.phone) {
@@ -329,18 +313,13 @@ export function AdvancedSearch({
                               {suggestion.customer.email && (
                                 <span className="mr-2">{suggestion.customer.email}</span>
                               )}
-                              {suggestion.customer.company && (
-                                <span>{suggestion.customer.company}</span>
-                              )}
                             </div>
                           )}
                         </div>
                         <Badge variant="secondary" className="text-xs">
                           {suggestion.type === 'customer' && 'Cliente'}
                           {suggestion.type === 'email' && 'Email'}
-                          {suggestion.type === 'company' && 'Empresa'}
                           {suggestion.type === 'phone' && 'Teléfono'}
-                          {suggestion.type === 'tag' && 'Etiqueta'}
                         </Badge>
                       </CommandItem>
                     );
@@ -383,11 +362,6 @@ export function searchCustomersWithFuzzy(customers: Customer[], query: string): 
       totalScore += emailMatch.score * 2;
     }
     
-    // Search in company
-    if (customer.company) {
-      const companyMatch = fuzzyMatch(customer.company, queryTrimmed);
-      totalScore += companyMatch.score * 2;
-    }
     
     // Search in phone
     if (customer.phone) {

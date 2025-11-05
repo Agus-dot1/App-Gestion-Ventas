@@ -1,9 +1,9 @@
 {
-  "name": "nextjs",
+  "name": "electro-gestion",
   "version": "0.1.0",
   "private": true,
   "main": "dist/electron/electron/main.js",
-  "author": "Your Name",
+  "author": "Agus",
   "description": "Electro Gestión - Sistema de gestión de ventas",
   "scripts": {
     "dev": "next dev",

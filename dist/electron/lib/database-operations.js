@@ -2,6 +2,84 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.notificationOperations = exports.paymentOperations = exports.installmentOperations = exports.saleItemOperations = exports.saleOperations = exports.partnerOperations = exports.productOperations = exports.customerOperations = void 0;
 const database_1 = require("./database");
+function generateSaleNumberBase() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const todayStart = `${year}-${month}-${day}`;
+    const db = (0, database_1.getDatabase)();
+    const todayCountStmt = db.prepare(`
+    SELECT COUNT(*) as count FROM sales 
+    WHERE date(date) = date(?)
+  `);
+    const todayCount = todayCountStmt.get(todayStart).count + 1;
+    const sequentialNumber = String(todayCount).padStart(3, '0');
+    return `VENTA-${sequentialNumber}-${year}${month}${day}`;
+}
+function saleNumberExists(candidate) {
+    const db = (0, database_1.getDatabase)();
+    const row = db.prepare('SELECT 1 FROM sales WHERE sale_number = ?').get(candidate);
+    return !!row;
+}
+function generateUniqueSaleNumber() {
+    // Try base first (sequential per day)
+    const base = generateSaleNumberBase();
+    if (!saleNumberExists(base))
+        return base;
+    // Add a short random suffix until unique
+    for (let i = 0; i < 5; i++) {
+        const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+        const candidate = `${base}-${suffix}`;
+        if (!saleNumberExists(candidate))
+            return candidate;
+    }
+    // Fallback: timestamp-based code
+    return `VENTA-${Date.now()}`;
+}
+function ensureUniqueSaleNumber(preferred) {
+    const base = preferred || generateSaleNumberBase();
+    if (!saleNumberExists(base))
+        return base;
+    for (let i = 0; i < 5; i++) {
+        const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+        const candidate = `${base}-${suffix}`;
+        if (!saleNumberExists(candidate))
+            return candidate;
+    }
+    return `VENTA-${Date.now()}`;
+}
+// --- Reference code (numeric) generation helpers ---
+function referenceCodeExists(candidate) {
+    const db = (0, database_1.getDatabase)();
+    const row = db.prepare('SELECT 1 FROM sales WHERE reference_code = ?').get(candidate);
+    return !!row;
+}
+function generateNumericReferenceCode(length = 8) {
+    let code = '';
+    for (let i = 0; i < length; i++) {
+        code += Math.floor(Math.random() * 10).toString();
+    }
+    return code;
+}
+function generateUniqueReferenceCode() {
+    // Try 8 digits; on collision, increase length
+    let attempts = 0;
+    while (attempts < 10) {
+        const length = attempts < 3 ? 8 : attempts < 6 ? 9 : 12;
+        const candidate = generateNumericReferenceCode(length);
+        if (!referenceCodeExists(candidate))
+            return candidate;
+        attempts++;
+    }
+    // Fallback to timestamp
+    return String(Date.now());
+}
+function ensureUniqueReferenceCode(preferred) {
+    if (preferred && !referenceCodeExists(preferred))
+        return preferred;
+    return generateUniqueReferenceCode();
+}
 // Normalize legacy/variant payment window values to the canonical union
 function normalizePaymentWindow(value) {
     if (!value)
@@ -40,12 +118,10 @@ exports.customerOperations = {
         dni LIKE ? OR
         name LIKE ? OR 
         email LIKE ? OR 
-        company LIKE ? OR 
-        tags LIKE ? OR
         phone LIKE ? OR
         secondary_phone LIKE ?`;
             const searchPattern = `%${searchTerm.trim()}%`;
-            params = [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern];
+            params = [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern];
         }
         const countStmt = db.prepare(`SELECT COUNT(*) as total FROM customers ${whereClause}`);
         const { total } = countStmt.get(...params);
@@ -75,8 +151,6 @@ exports.customerOperations = {
         dni LIKE ? OR
         name LIKE ? OR 
         email LIKE ? OR 
-        company LIKE ? OR 
-        tags LIKE ? OR
         phone LIKE ? OR
         secondary_phone LIKE ?
       ORDER BY 
@@ -85,8 +159,7 @@ exports.customerOperations = {
           WHEN dni LIKE ? THEN 2
           WHEN name LIKE ? THEN 3
           WHEN email LIKE ? THEN 4
-          WHEN company LIKE ? THEN 5
-          ELSE 6
+          ELSE 5
         END,
         name
       LIMIT ?
@@ -94,7 +167,13 @@ exports.customerOperations = {
         const searchPattern = `%${searchTerm.trim()}%`;
         const exactPattern = `${searchTerm.trim()}%`;
         const exactMatch = searchTerm.trim();
-        const rows = stmt.all(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, exactMatch, exactPattern, exactPattern, exactPattern, exactPattern, limit);
+        const rows = stmt.all(
+        // WHERE clause (5 placeholders)
+        searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, 
+        // ORDER BY CASE (dni = ?, then 4 LIKE ?)
+        exactMatch, exactPattern, exactPattern, exactPattern, exactPattern, 
+        // LIMIT
+        limit);
         return rows.map(normalizeCustomer);
     },
     getById: (id) => {
@@ -109,10 +188,10 @@ exports.customerOperations = {
     create: (customer) => {
         const db = (0, database_1.getDatabase)();
         const stmt = db.prepare(`
-      INSERT INTO customers (name, dni, email, phone, secondary_phone, address, company, notes, tags, payment_window, contact_info) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO customers (name, dni, email, phone, secondary_phone, address, notes, payment_window, contact_info) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-        const result = stmt.run(customer.name, customer.dni || null, customer.email || null, customer.phone || null, customer.secondary_phone || null, customer.address || null, customer.company || null, customer.notes || null, normalizePaymentWindow(customer.payment_window) || null, customer.contact_info || null);
+        const result = stmt.run(customer.name, customer.dni || null, customer.email || null, customer.phone || null, customer.secondary_phone || null, customer.address || null, customer.notes || null, normalizePaymentWindow(customer.payment_window) || null, customer.contact_info || null);
         return result.lastInsertRowid;
     },
     update: (id, customer) => {
@@ -142,10 +221,6 @@ exports.customerOperations = {
         if (customer.address !== undefined) {
             fields.push('address = ?');
             values.push(customer.address);
-        }
-        if (customer.company !== undefined) {
-            fields.push('company = ?');
-            values.push(customer.company);
         }
         if (customer.notes !== undefined) {
             fields.push('notes = ?');
@@ -245,7 +320,6 @@ exports.customerOperations = {
                 phone: customer.phone,
                 secondary_phone: customer.secondary_phone,
                 address: customer.address,
-                company: customer.company,
                 notes: customer.notes,
                 contact_info: customer.contact_info,
                 payment_window: normalizePaymentWindow(customer.payment_window),
@@ -253,11 +327,11 @@ exports.customerOperations = {
         }
         const stmt = db.prepare(`
       INSERT INTO customers (
-        id, name, dni, email, phone, secondary_phone, address, company, notes, contact_info, payment_window,
+        id, name, dni, email, phone, secondary_phone, address, notes, contact_info, payment_window,
         created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
     `);
-        const result = stmt.run(customer.id, customer.name, customer.dni || null, customer.email || null, customer.phone || null, customer.secondary_phone || null, customer.address || null, customer.company || null, customer.notes || null, customer.contact_info || null, normalizePaymentWindow(customer.payment_window) || null, customer.created_at || null, customer.updated_at || null);
+        const result = stmt.run(customer.id, customer.name, customer.dni || null, customer.email || null, customer.phone || null, customer.secondary_phone || null, customer.address || null, customer.notes || null, customer.contact_info || null, normalizePaymentWindow(customer.payment_window) || null, customer.created_at || null, customer.updated_at || null);
         return result.lastInsertRowid;
     }
 };
@@ -521,9 +595,9 @@ exports.saleOperations = {
         let whereClause = '';
         let params = [];
         if (searchTerm.trim()) {
-            whereClause = 'WHERE s.sale_number LIKE ? OR c.name LIKE ? OR s.notes LIKE ?';
+            whereClause = 'WHERE s.sale_number LIKE ? OR s.reference_code LIKE ? OR c.name LIKE ? OR s.notes LIKE ?';
             const searchPattern = `%${searchTerm.trim()}%`;
-            params = [searchPattern, searchPattern, searchPattern];
+            params = [searchPattern, searchPattern, searchPattern, searchPattern];
         }
         // Get total count for pagination
         const countStmt = db.prepare(`
@@ -571,21 +645,23 @@ exports.saleOperations = {
       LEFT JOIN customers c ON s.customer_id = c.id
       WHERE 
         s.sale_number LIKE ? OR 
+        s.reference_code LIKE ? OR 
         c.name LIKE ? OR 
         s.notes LIKE ?
       ORDER BY 
         CASE 
           WHEN s.sale_number LIKE ? THEN 1
-          WHEN c.name LIKE ? THEN 2
-          WHEN s.notes LIKE ? THEN 3
-          ELSE 4
+          WHEN s.reference_code LIKE ? THEN 2
+          WHEN c.name LIKE ? THEN 3
+          WHEN s.notes LIKE ? THEN 4
+          ELSE 5
         END,
         s.date DESC
       LIMIT ?
     `);
         const searchPattern = `%${searchTerm.trim()}%`;
         const exactPattern = `${searchTerm.trim()}%`;
-        return stmt.all(searchPattern, searchPattern, searchPattern, exactPattern, exactPattern, exactPattern, limit);
+        return stmt.all(searchPattern, searchPattern, searchPattern, searchPattern, exactPattern, exactPattern, exactPattern, exactPattern, limit);
     },
     getById: (id) => {
         const db = (0, database_1.getDatabase)();
@@ -631,9 +707,9 @@ exports.saleOperations = {
         let whereClause = 'WHERE s.partner_id = ?';
         let params = [partnerId];
         if (searchTerm.trim()) {
-            whereClause += ' AND (s.sale_number LIKE ? OR c.name LIKE ? OR s.notes LIKE ?)';
+            whereClause += ' AND (s.sale_number LIKE ? OR s.reference_code LIKE ? OR c.name LIKE ? OR s.notes LIKE ?)';
             const searchPattern = `%${searchTerm.trim()}%`;
-            params.push(searchPattern, searchPattern, searchPattern);
+            params.push(searchPattern, searchPattern, searchPattern, searchPattern);
         }
         // Get total count for pagination
         const countStmt = db.prepare(`
@@ -673,33 +749,23 @@ exports.saleOperations = {
         // Calculate totals
         const subtotal = saleData.items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
         const totalAmount = subtotal;
-        // Generate sale number with a more readable format
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        // Get the count of sales for today to create a sequential number
-        const todayStart = `${year}-${month}-${day}`;
-        const todayCountStmt = db.prepare(`
-      SELECT COUNT(*) as count FROM sales 
-      WHERE date(date) = date(?)
-    `);
-        const todayCount = todayCountStmt.get(todayStart).count + 1;
-        const sequentialNumber = String(todayCount).padStart(3, '0');
-        const saleNumber = `VENTA-${sequentialNumber}-${year}${month}${day}`;
+        // Generate unique sale number
+        const saleNumber = generateUniqueSaleNumber();
+        // Generate unique numeric reference code
+        const referenceCode = generateUniqueReferenceCode();
         // Insert sale
         const saleStmt = db.prepare(`
       INSERT INTO sales (
-        customer_id, partner_id, sale_number, date, due_date, subtotal, tax_amount,
+        customer_id, partner_id, sale_number, reference_code, date, due_date, subtotal, tax_amount,
         discount_amount, total_amount, payment_type, payment_method, payment_status, period_type,
         number_of_installments, installment_amount, advance_installments,
         transaction_type, status, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
     `);
         const installmentAmount = saleData.payment_type === 'installments' && saleData.number_of_installments
             ? Math.round(totalAmount / saleData.number_of_installments)
             : null;
-        const saleResult = saleStmt.run(saleData.customer_id, saleData.partner_id || null, saleNumber, new Date().toISOString(), null, // due_date
+        const saleResult = saleStmt.run(saleData.customer_id, saleData.partner_id || null, saleNumber, referenceCode, new Date().toISOString(), null, // due_date
         subtotal, totalAmount, saleData.payment_type, saleData.payment_method || null, saleData.payment_type === 'cash' ? 'paid' : 'unpaid', saleData.period_type || null, saleData.number_of_installments || null, installmentAmount, 'sale', 'completed', saleData.notes || null);
         const saleId = saleResult.lastInsertRowid;
         // Insert sale items
@@ -797,20 +863,8 @@ exports.saleOperations = {
                 name: sale.customer_name || `Cliente ${sale.customer_id}`,
             });
         }
-        const saleNumber = sale.sale_number || (() => {
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const day = String(now.getDate()).padStart(2, '0');
-            const todayStart = `${year}-${month}-${day}`;
-            const todayCountStmt = db.prepare(`
-        SELECT COUNT(*) as count FROM sales 
-        WHERE date(date) = date(?)
-      `);
-            const todayCount = todayCountStmt.get(todayStart).count + 1;
-            const sequentialNumber = String(todayCount).padStart(3, '0');
-            return `VENTA-${sequentialNumber}-${year}${month}${day}`;
-        })();
+        const saleNumber = ensureUniqueSaleNumber(sale.sale_number);
+        const referenceCode = ensureUniqueReferenceCode(sale.reference_code ? String(sale.reference_code) : undefined);
         const date = sale.date || new Date().toISOString();
         const subtotal = typeof sale.subtotal === 'number' ? sale.subtotal : 0;
         const totalAmount = typeof sale.total_amount === 'number' ? sale.total_amount : subtotal;
@@ -826,13 +880,13 @@ exports.saleOperations = {
         // Insert sale row
         const saleStmt = db.prepare(`
       INSERT INTO sales (
-        customer_id, sale_number, date, due_date, subtotal, tax_amount,
+        customer_id, sale_number, reference_code, date, due_date, subtotal, tax_amount,
         discount_amount, total_amount, payment_type, payment_method, payment_status, period_type,
         number_of_installments, installment_amount, advance_installments,
         transaction_type, status, notes
-      ) VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
     `);
-        const saleResult = saleStmt.run(sale.customer_id, saleNumber, date, sale.due_date || null, subtotal, totalAmount, paymentType, sale.payment_method || null, paymentStatus, sale.period_type || null, numberOfInstallments, installmentAmount, transactionType, status, notes);
+        const saleResult = saleStmt.run(sale.customer_id, saleNumber, referenceCode, date, sale.due_date || null, subtotal, totalAmount, paymentType, sale.payment_method || null, paymentStatus, sale.period_type || null, numberOfInstallments, installmentAmount, transactionType, status, notes);
         const saleId = saleResult.lastInsertRowid;
         // Insert sale items if provided in backup
         if (sale.items && Array.isArray(sale.items) && sale.items.length > 0) {
@@ -1075,8 +1129,8 @@ exports.installmentOperations = {
       JOIN sales s ON i.sale_id = s.id
       JOIN customers c ON s.customer_id = c.id
       WHERE i.status IN ('pending') 
-      AND i.due_date >= date('now')
-      AND i.due_date <= date('now', '+30 days')
+      AND DATE(i.due_date) >= DATE('now')
+      AND DATE(i.due_date) <= DATE('now', '+3 days')
       AND i.balance > 0
       ORDER BY i.due_date ASC
       LIMIT ?
@@ -1299,9 +1353,10 @@ exports.notificationOperations = {
     },
     create: (message, type = 'info', message_key) => {
         const db = (0, database_1.getDatabase)();
+        const normalizedType = (type === 'attention' ? 'reminder' : type);
         const res = db
             .prepare('INSERT INTO notifications (message, type, message_key) VALUES (?, ?, ?)')
-            .run(message, type, message_key ?? null);
+            .run(message, normalizedType, message_key ?? null);
         return res.lastInsertRowid;
     },
     existsTodayWithMessage: (message) => {

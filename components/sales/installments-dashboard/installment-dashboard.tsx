@@ -9,7 +9,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Search,
@@ -39,6 +38,7 @@ import {
 import { cn } from '@/lib/utils';
 import { InstallmentForm } from '../installment-form';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 
 import type { Customer, Sale, Installment } from '@/lib/database-operations';
 import { toast } from 'sonner';
@@ -271,6 +271,98 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
     }
   };
 
+  
+const buildWhatsAppMessageForCustomer = (c: CustomerWithInstallments): string => {
+  const DEFAULT_CVU = '747382997471';
+  const normalize = (s: string) => String(s || '').trim();
+  const next = [...(c.installments || [])]
+    .filter(inst => inst.status !== 'paid')
+    .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
+  const formatAmt = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(n);
+  const amountStr = next ? formatAmt(typeof next.balance === 'number' ? next.balance : next.amount) : formatAmt(c.totalOwed || 0);
+
+  let dueLine: string | undefined;
+  if (next?.due_date) {
+    const dueMs = new Date(next.due_date).getTime();
+    const nowMs = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const days = Math.max(0, Math.floor(Math.abs(dueMs - nowMs) / dayMs));
+    const dueDateStr = new Date(next.due_date).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+    dueLine = (dueMs < nowMs)
+      ? `La cuota venció el ${dueDateStr} (hace ${days} días).`
+      : `La cuota vence el ${dueDateStr} (en ${days} días).`;
+  }
+
+  const greeting = c.name ? `Hola ${normalize(c.name)}, que tal?` : 'Hola, que tal?';
+  const lines = [
+    `${greeting}`,
+    'Te escribo para informarte sobre tu cuota.',
+    dueLine,
+    'Detalle:',
+    `**Importe de la cuota: ${amountStr}**`,
+    `CVU para depósito: ${DEFAULT_CVU}`,
+    'Por favor, enviá el comprobante por este chat para acreditar el pago.',
+    'Gracias.',
+  ].filter(Boolean).join('\n');
+
+  return lines;
+};
+
+// Alternate message intended for a secondary contact to notify the customer
+const buildWhatsAppMessageForContact = (c: CustomerWithInstallments): string => {
+  const DEFAULT_CVU = '747382997471';
+  const normalize = (s: string) => String(s || '').trim();
+  const next = [...(c.installments || [])]
+    .filter(inst => inst.status !== 'paid')
+    .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
+  const formatAmt = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(n);
+  const amountStr = next ? formatAmt(typeof next.balance === 'number' ? next.balance : next.amount) : formatAmt(c.totalOwed || 0);
+
+  let dueLine: string | undefined;
+  if (next?.due_date) {
+    const dueMs = new Date(next.due_date).getTime();
+    const nowMs = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const days = Math.max(0, Math.floor(Math.abs(dueMs - nowMs) / dayMs));
+    const dueDateStr = new Date(next.due_date).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+    dueLine = (dueMs < nowMs)
+      ? `La cuota venció el ${dueDateStr} (hace ${days} días).`
+      : `La cuota vence el ${dueDateStr} (en ${days} días).`;
+  }
+
+  const customerName = c.name ? normalize(c.name) : 'el cliente';
+  const lines = [
+    `Hola, ¿qué tal? Te escribo por parte de ${customerName}.`,
+    'Tiene una cuota pendiente.',
+    dueLine,
+    'Detalle:',
+    `**Importe de la cuota: ${amountStr}**`,
+    `CVU para depósito: ${DEFAULT_CVU}`,
+    '¿Será que podés avisarle, por favor? Muchas gracias.',
+  ].filter(Boolean).join('\n');
+
+  return lines;
+};
+
+const openWhatsApp = async (customer: CustomerWithInstallments, num: string, useAlternate?: boolean) => {
+  const digits = (num || '').replace(/\D/g, '');
+  if (!digits) return;
+  const body = useAlternate ? buildWhatsAppMessageForContact(customer) : buildWhatsAppMessageForCustomer(customer);
+  const text = encodeURIComponent(body);
+  const url = `https://wa.me/+54${digits}?text=${text}`;
+  try {
+    const ok = await (window as any)?.electronAPI?.openExternal?.(url);
+    if (ok === false) throw new Error('openExternal returned false');
+  } catch {
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+}
+};
 
 
   const handleRevertPayment = async (installment: Installment) => {
@@ -660,13 +752,42 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
   };
 
   const getCustomerStatusIndicator = (customer: CustomerWithInstallments) => {
-    if (customer.overdueAmount > 0) {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth();
+
+    // Rojo si hay cuotas vencidas
+    const hasOverdue = customer.installments.some(inst =>
+      new Date(inst.due_date) < today && inst.status !== 'paid'
+    );
+    if (hasOverdue) {
       return <div className="w-3 h-3 bg-red-500 rounded-full" title="Tiene pagos vencidos" />;
-    } else if (customer.totalOwed > 0) {
-      return <div className="w-3 h-3 bg-yellow-500 rounded-full" title="Tiene pagos pendientes" />;
-    } else {
-      return <div className="w-3 h-3 bg-green-500 rounded-full" title="Al día con los pagos" />;
     }
+
+    // Cuotas del mes actual
+    const currentMonthInstallments = customer.installments.filter(inst => {
+      const d = new Date(inst.due_date);
+      return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+    });
+
+    // Si hay cuotas este mes: amarillo si alguna pendiente, verde si todas pagadas
+    if (currentMonthInstallments.length > 0) {
+      const anyUnpaidThisMonth = currentMonthInstallments.some(inst => inst.status !== 'paid');
+      if (anyUnpaidThisMonth) {
+        return <div className="w-3 h-3 bg-yellow-500 rounded-full" title="Cuota del mes pendiente" />;
+      } else {
+        return <div className="w-3 h-3 bg-green-500 rounded-full" title="Cuota del mes paga" />;
+      }
+    }
+
+    // Si no hay cuotas este mes: está al día (verde)
+    // Mantener verde incluso si hay cuotas futuras, ya que no corresponden a este mes
+    const allPaid = customer.installments.length > 0 && customer.installments.every(inst => inst.status === 'paid');
+    if (allPaid) {
+      return <div className="w-3 h-3 bg-green-500 rounded-full" title="Plan de cuotas completado" />;
+    }
+
+    return <div className="w-3 h-3 bg-green-500 rounded-full" title="Sin cuota este mes" />;
   };
 
   const stats = useMemo(() => {
@@ -896,19 +1017,8 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
 
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
-                                <CardTitle className="text-lg">{customer.name}</CardTitle>
-                                {customer.payment_window && (
-                                  <Badge
-                                    variant="outline"
-                                    className={cn(
-                                      "text-xs",
-                                      customer.payment_window === '1 to 10' ? "text-white" : "text-white",
-                                    )}
-                                  >
-                                    Ventana {customer.payment_window === '1 to 10' ? '1-10' : '20-30'} · vence el {getAnchorDay(customer.payment_window)}
-                                  </Badge>
-                                )}
-                                {customer.overdueAmount > 0 && (
+                                {customer.name}
+                                    {customer.overdueAmount > 0 && (
                                   <Badge variant="destructive" className="text-xs">
                                     {customer.installments.filter(i => {
                                       const isOverdue = new Date(i.due_date) < new Date() && i.status !== 'paid';
@@ -916,48 +1026,37 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                                     }).length} vencidas
                                   </Badge>
                                 )}
+                                 <HoverCard openDelay={1000} closeDelay={100}>
+                                      <HoverCardTrigger asChild>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-10 w-10 p-0"
+                                          onClick={(e) => { e.stopPropagation(); openWhatsApp(customer, customer.phone!); }}
+                                        >
+                                          <MessageCircle className="h-5 w-5" />
+                                        </Button>
+                                      </HoverCardTrigger>
+                                      <HoverCardContent className="w-[240px] p-2">
+                                        <div className="flex text-sm flex-col gap-2">
+                                          Segundo contacto:
+                                          {customer.secondary_phone && (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="justify-start"
+                                              onClick={(e) => { e.stopPropagation(); openWhatsApp(customer, customer.secondary_phone!, true); }}
+                                              title="WhatsApp (secundario)"
+                                            >
+                                              <Phone className="h-3 w-3 mr-2" />
+                                              {customer.secondary_phone}
+                                            </Button>
+                                          )}
+                                        </div>
+                                      </HoverCardContent>
+                                    </HoverCard>
                               </div>
                               <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
-
-                                {customer.phone && (
-                                  <div className="flex items-center gap-1">
-                                    <Phone className="h-3 w-3" />
-                                    {customer.phone}
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-6 w-6 p-0"
-                                      onClick={(e) => { e.stopPropagation(); handleCopyValue(customer.phone!, 'Teléfono'); }}
-                                      title="Copiar teléfono"
-                                    >
-                                      <Copy className="h-3 w-3" />
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-6 w-6 p-0"
-                                      onClick={(e) => { e.stopPropagation(); openWhatsApp(customer, customer.phone!); }}
-                                      title="Abrir WhatsApp"
-                                    >
-                                      <MessageCircle className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                )}
-                                {customer.secondary_phone && (
-                                  <div className="flex items-center gap-1">
-                                    <Phone className="h-3 w-3" />
-                                    {customer.secondary_phone}
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-6 w-6 p-0"
-                                      onClick={(e) => { e.stopPropagation(); openWhatsApp(customer, customer.secondary_phone!); }}
-                                      title="Abrir WhatsApp"
-                                    >
-                                      <MessageCircle className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                )}
                               </div>
                             </div>
                           </div>
@@ -971,8 +1070,17 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                             </div>
                             {customer.nextPaymentDate && (
                               <div>
-                                <div className="text-sm font-medium">Próximo Vencimiento</div>
-                                <div className="text-sm text-muted-foreground">{formatDate(customer.nextPaymentDate)}</div>
+                                <div className="text-sm font-medium flex flex-col gap-2">
+                                  Ventana
+                                  {customer.payment_window && (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-xs text-muted-foreground"
+                                    >
+                                      Ventana {customer.payment_window === '1 to 10' ? '1-10' : '20-30'}
+                                    </Badge>
+                                  )}
+                                </div>
                               </div>
                             )}
                             <div className="text-sm text-muted-foreground">
@@ -1314,51 +1422,4 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
   );
 });
 
-InstallmentDashboard.displayName = 'InstallmentDashboard';
 
-
-const buildWhatsAppMessageForCustomer = (c: CustomerWithInstallments): string => {
-  const DEFAULT_CVU = '747382997471';
-  const normalize = (s: string) => String(s || '').trim();
-  const next = [...(c.installments || [])]
-    .filter(inst => inst.status !== 'paid')
-    .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
-  const formatAmt = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(n);
-  const amountStr = next ? formatAmt(typeof next.balance === 'number' ? next.balance : next.amount) : formatAmt(c.totalOwed || 0);
-
-  let dueLine: string | undefined;
-  if (next?.due_date) {
-    const dueMs = new Date(next.due_date).getTime();
-    const nowMs = Date.now();
-    const dayMs = 24 * 60 * 60 * 1000;
-    const days = Math.max(0, Math.floor(Math.abs(dueMs - nowMs) / dayMs));
-    const dueDateStr = new Date(next.due_date).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
-    dueLine = (dueMs < nowMs)
-      ? `La cuota venció el ${dueDateStr} (hace ${days} días).`
-      : `La cuota vence el ${dueDateStr} (en ${days} días).`;
-  }
-
-  const greeting = c.name ? `Hola ${normalize(c.name)}, que tal?` : 'Hola, que tal?';
-  const lines = [
-    `${greeting}`,
-    'Te escribo para informarte sobre tu cuota.',
-    dueLine,
-    'Detalle:',
-    `• Importe de la cuota: ${amountStr}`,
-    `CVU para depósito: ${DEFAULT_CVU}`,
-    'Por favor, enviá el comprobante por este chat para acreditar el pago.',
-    'Gracias.',
-  ].filter(Boolean).join('\n');
-
-  return lines;
-};
-
-const openWhatsApp = (customer: CustomerWithInstallments, num: string) => {
-  const digits = (num || '').replace(/\D/g, '');
-  if (!digits) return;
-  const text = encodeURIComponent(buildWhatsAppMessageForCustomer(customer));
-  const url = `https://wa.me/+54${digits}?text=${text}`;
-  window.open(url, '_blank');
-};
-
-// WhatsApp helper moved above with customer context

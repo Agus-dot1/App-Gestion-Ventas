@@ -15,12 +15,10 @@ import { AdvancedSearch, searchCustomersWithFuzzy } from './advanced-search';
 
 export interface CustomerFilters {
   search: string;
-  sortBy: 'name' | 'email' | 'company' | 'created_at' | 'updated_at';
+  sortBy: 'name' | 'email' | 'created_at' | 'updated_at';
   sortOrder: 'asc' | 'desc';
-  tags: string[];
   hasEmail: boolean | null;
   hasPhone: boolean | null;
-  hasCompany: boolean | null;
   createdAfter: Date | null;
   createdBefore: Date | null;
 }
@@ -41,10 +39,8 @@ export function CustomerFiltersComponent({ filters, onFiltersChange, customers, 
 
   const selectedFiltersCount = [
     filters.search,
-    filters.tags.length > 0,
     filters.hasEmail !== null,
     filters.hasPhone !== null,
-    filters.hasCompany !== null,
     filters.createdAfter,
     filters.createdBefore
   ].filter(Boolean).length;
@@ -72,7 +68,6 @@ export function CustomerFiltersComponent({ filters, onFiltersChange, customers, 
             <SelectContent>
               <SelectItem value="name">Nombre</SelectItem>
               <SelectItem value="email">Email</SelectItem>
-              <SelectItem value="company">Empresa</SelectItem>
               <SelectItem value="created_at">Fecha creación</SelectItem>
               <SelectItem value="updated_at">Última actualización</SelectItem>
             </SelectContent>
@@ -108,7 +103,6 @@ export function CustomerFiltersComponent({ filters, onFiltersChange, customers, 
           <SelectContent>
             <SelectItem value="name">Nombre</SelectItem>
             <SelectItem value="email">Email</SelectItem>
-            <SelectItem value="company">Empresa</SelectItem>
             <SelectItem value="created_at">Fecha creación</SelectItem>
             <SelectItem value="updated_at">Última actualización</SelectItem>
           </SelectContent>
@@ -136,16 +130,6 @@ export function CustomerFiltersComponent({ filters, onFiltersChange, customers, 
           </PopoverTrigger>
           <PopoverContent className="w-[min(90vw,640px)]">
             <div className="space-y-4">
-              {/* Tags */}
-              <div className="space-y-2">
-                <Label>Etiquetas</Label>
-                <Input
-                  value={filters.tags.join(', ')}
-                  onChange={(e) => updateFilters({ tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean) })}
-                  placeholder="Etiquetas (separadas por coma)"
-                />
-              </div>
-
               {/* Other filters */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -164,19 +148,6 @@ export function CustomerFiltersComponent({ filters, onFiltersChange, customers, 
                 <div>
                   <Label>Tiene teléfono</Label>
                   <Select value={String(filters.hasPhone)} onValueChange={(value) => updateFilters({ hasPhone: value === 'true' ? true : value === 'false' ? false : null })}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="null">Cualquiera</SelectItem>
-                      <SelectItem value="true">Sí</SelectItem>
-                      <SelectItem value="false">No</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Tiene empresa</Label>
-                  <Select value={String(filters.hasCompany)} onValueChange={(value) => updateFilters({ hasCompany: value === 'true' ? true : value === 'false' ? false : null })}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -217,10 +188,8 @@ export function CustomerFiltersComponent({ filters, onFiltersChange, customers, 
                     search: '',
                     sortBy: 'name',
                     sortOrder: 'asc',
-                    tags: [],
                     hasEmail: null,
                     hasPhone: null,
-                    hasCompany: null,
                     createdAfter: null,
                     createdBefore: null,
                   });
@@ -257,11 +226,6 @@ export function applyCustomerFilters(customers: Customer[], filters: CustomerFil
     filtered = filtered.filter(c => (filters.hasPhone ? !!c.phone : !c.phone));
   }
 
-  // hasCompany filter
-  if (filters.hasCompany !== null) {
-    filtered = filtered.filter(c => (filters.hasCompany ? !!c.company : !c.company));
-  }
-
   // date range
   if (filters.createdAfter) {
     filtered = filtered.filter(c => {
@@ -291,10 +255,6 @@ export function applyCustomerFilters(customers: Customer[], filters: CustomerFil
       case 'email':
         aValue = a.email || '';
         bValue = b.email || '';
-        break;
-      case 'company':
-        aValue = a.company || '';
-        bValue = b.company || '';
         break;
       case 'created_at':
         aValue = new Date(a.created_at || 0);

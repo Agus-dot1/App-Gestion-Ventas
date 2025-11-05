@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Checkbox } from '@/components/ui/checkbox';
 import { 
   Search, 
   User, 
@@ -68,8 +69,8 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
   const [isElectron, setIsElectron] = useState(false);
   const [loading, setLoading] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [hideProducts, setHideProducts] = useState(false);
   
-
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('es-ES', {
       year: 'numeric',
@@ -85,6 +86,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [productBuyers, setProductBuyers] = useState<Record<number, ProductBuyer[]>>({});
+  const [saleFirstItemName, setSaleFirstItemName] = useState<Record<number, string>>({});
   // Debounce search query
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -167,11 +169,6 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
         matchScore = 40;
         matchReason = 'Email';
       }
-      // Company search
-      else if (customer.company?.toLowerCase().includes(searchTerm)) {
-        matchScore = 30;
-        matchReason = 'Empresa';
-      }
       // Contact info search
       else if (customer.contact_info?.toLowerCase().includes(searchTerm)) {
         matchScore = 20;
@@ -213,36 +210,51 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
 
         // Add customer's sales as separate results
         customerSales.slice(0, 3).forEach(sale => {
-          results.push({
-            id: `sale-${sale.id}`,
-            type: 'sale',
-            title: `Venta ${sale.sale_number}`,
-            subtitle: `${customer.name} • ${formatCurrency(sale.total_amount)}`,
-            description: `${translatePaymentType(sale.payment_type)} • ${translatePaymentStatus(sale.payment_status)}`,
-            metadata: { sale, customer },
-            action: () => {
-              router.push(`/sales?highlight=${sale.id}`);
-              onOpenChange(false);
-            }
-          });
+          const firstItemName = saleFirstItemName[sale.id!] || '';
+          const saleMatches = 
+            (sale.reference_code || '').toLowerCase().includes(searchTerm) ||
+            sale.sale_number.toLowerCase().includes(searchTerm) ||
+            (sale.notes?.toLowerCase().includes(searchTerm) ?? false) ||
+            firstItemName.toLowerCase().includes(searchTerm);
+
+          // Only add if sale matches search term or customer matched
+          if (saleMatches || matchScore > 0) {
+            results.push({
+              id: `sale-${sale.id}`,
+              type: 'sale',
+              title: saleFirstItemName[sale.id!] ? saleFirstItemName[sale.id!] : `Venta ${sale.sale_number}`,
+              subtitle: `${sale.reference_code ? `#${sale.reference_code} • ` : ''}${customer.name} • ${formatCurrency(sale.total_amount)}`,
+              description: `${translatePaymentType(sale.payment_type)} • ${translatePaymentStatus(sale.payment_status)}`,
+              metadata: { sale, customer },
+              action: () => {
+                router.push(`/sales?highlight=${sale.id}`);
+                onOpenChange(false);
+              }
+            });
+          }
         });
       }
     });
 
     // Search sales directly
     sales.forEach(sale => {
-      if (
+      const refCode = (sale.reference_code || '').toLowerCase();
+      const firstItemName = saleFirstItemName[sale.id!] || '';
+      const matches =
+        refCode.includes(searchTerm) ||
         sale.sale_number.toLowerCase().includes(searchTerm) ||
-        sale.customer_name?.toLowerCase().includes(searchTerm) ||
-        sale.notes?.toLowerCase().includes(searchTerm)
-      ) {
+        (sale.customer_name?.toLowerCase().includes(searchTerm) ?? false) ||
+        (sale.notes?.toLowerCase().includes(searchTerm) ?? false) ||
+        firstItemName.toLowerCase().includes(searchTerm);
+
+      if (matches) {
         // Skip if already added through customer search
         if (!results.find(r => r.id === `sale-${sale.id}`)) {
           results.push({
             id: `sale-${sale.id}`,
             type: 'sale',
-            title: `Venta ${sale.sale_number}`,
-            subtitle: `${sale.customer_name} • ${formatCurrency(sale.total_amount)}`,
+            title: saleFirstItemName[sale.id!] ? saleFirstItemName[sale.id!] : `Venta ${sale.sale_number}`,
+            subtitle: `${sale.reference_code ? `#${sale.reference_code} • ` : ''}${sale.customer_name} • ${formatCurrency(sale.total_amount)}`,
             description: `${formatDate(sale.date)} • ${translatePaymentStatus(sale.payment_status)}`,
             metadata: { sale },
             action: () => {
@@ -254,32 +266,34 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
       }
     });
 
-    // Search products
-    products.forEach(product => {
-      if (
-        product.name.toLowerCase().includes(searchTerm) ||
-        product.description?.toLowerCase().includes(searchTerm)
-      ) {
-        let buyers: ProductBuyer[] = [];
-        if (product.id != null) {
-          buyers = productBuyers[product.id] ?? [];
-        }
-        const customerNames = Array.from(new Set(buyers.map((b: ProductBuyer) => b.customer_name)));
-
-        results.push({
-          id: `product-${product.id}`,
-          type: 'product',
-          title: product.name,
-          subtitle: `${formatCurrency(product.price)} • ${buyers.length} ventas`,
-          description: product.description || 'Sin descripción',
-          metadata: { product, salesCount: buyers.length, customerNames, moreCount: Math.max(0, customerNames.length - Math.min(3, customerNames.length)) },
-          action: () => {
-            router.push(`/products?highlight=${product.id}`);
-            onOpenChange(false);
+    // Search products (only if not hidden)
+    if (!hideProducts) {
+      products.forEach(product => {
+        if (
+          product.name.toLowerCase().includes(searchTerm) ||
+          product.description?.toLowerCase().includes(searchTerm)
+        ) {
+          let buyers: ProductBuyer[] = [];
+          if (product.id != null) {
+            buyers = productBuyers[product.id] ?? [];
           }
-        });
-      }
-    });
+          const customerNames = Array.from(new Set(buyers.map((b: ProductBuyer) => b.customer_name)));
+
+          results.push({
+            id: `product-${product.id}`,
+            type: 'product',
+            title: product.name,
+            subtitle: `${formatCurrency(product.price)} • ${buyers.length} ventas`,
+            description: product.description || 'Sin descripción',
+            metadata: { product, salesCount: buyers.length, customerNames, moreCount: Math.max(0, customerNames.length - Math.min(3, customerNames.length)) },
+            action: () => {
+              router.push(`/products?highlight=${product.id}`);
+              onOpenChange(false);
+            }
+          });
+        }
+      });
+    }
 
     // Search installments for overdue payments
     if (searchTerm.includes('vencido') || searchTerm.includes('pago') || searchTerm.includes('overdue') || searchTerm.includes('payment')) {
@@ -317,7 +331,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
     });
 
     return results.slice(0, 20); // Limit results
-  }, [debouncedQuery, customers, sales, products, productBuyers, router, onOpenChange]);
+  }, [debouncedQuery, customers, sales, products, productBuyers, saleFirstItemName, router, onOpenChange, hideProducts]);
 
   useEffect(() => {
     if (!isElectron) return;
@@ -341,6 +355,34 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
       }
     });
   }, [searchResults, productBuyers, isElectron]);
+
+  // Lazily load first product name for each sale shown in results
+  useEffect(() => {
+    if (!isElectron) return;
+    const saleResults = searchResults.filter(r => r.type === 'sale');
+    saleResults.forEach(async (r) => {
+      const sale = r.metadata?.sale as Sale | undefined;
+      if (
+        sale &&
+        sale.id != null &&
+        !saleFirstItemName[sale.id] &&
+        typeof window !== 'undefined' &&
+        window.electronAPI?.database?.saleItems?.getBySale
+      ) {
+        try {
+          const items = await window.electronAPI.database.saleItems.getBySale(sale.id);
+          const first = items && items.length > 0 ? items[0] : undefined;
+          const name = first?.product_name || (first?.product_id ? `Producto ${first.product_id}` : undefined);
+          if (name) {
+            const sid = sale.id!;
+            setSaleFirstItemName(prev => ({ ...prev, [sid]: name }));
+          }
+        } catch (error) {
+          console.error('Error obteniendo primer producto de la venta:', error);
+        }
+      }
+    });
+  }, [searchResults, saleFirstItemName, isElectron]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
@@ -424,14 +466,14 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
         <DialogHeader className="px-6 pt-6 pb-2">
           <DialogTitle className="flex items-center gap-2">
             <Search className="w-5 h-5" />
-Buscar Todo
+            Buscar Todo
           </DialogTitle>
           <DialogDescription id="search-instructions">
-Buscar clientes por DNI, nombre, email, ventas, productos y pagos. Usa ↑↓ para navegar, Enter para seleccionar.
+            Buscar clientes por DNI, nombre, email, ventas, productos y pagos. Usa ↑↓ para navegar, Enter para seleccionar.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="px-6 pb-4">
+        <div className="px-6 pb-4 space-y-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -450,6 +492,20 @@ Buscar clientes por DNI, nombre, email, ventas, productos y pagos. Usa ↑↓ pa
               aria-activedescendant={searchResults[selectedIndex]?.id}
               autoComplete="off"
             />
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="hide-products"
+              checked={hideProducts}
+              onCheckedChange={(checked) => setHideProducts(checked === true)}
+            />
+            <label
+              htmlFor="hide-products"
+              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+            >
+              Ocultar productos
+            </label>
           </div>
         </div>
 

@@ -196,12 +196,11 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
                 <SelectContent>
                    <SelectItem value="sin-categoria">Sin categoría</SelectItem>
                    <SelectItem value="Electrónicos">Electrónicos</SelectItem>
-                   <SelectItem value="Ropa">Ropa</SelectItem>
+                   <SelectItem value="Accesorios">Accesorios</SelectItem>
+                   <SelectItem value="Audio">Audio</SelectItem>
                    <SelectItem value="Hogar">Hogar</SelectItem>
-                   <SelectItem value="Deportes">Deportes</SelectItem>
-                   <SelectItem value="Libros">Libros</SelectItem>
                    <SelectItem value="Juguetes">Juguetes</SelectItem>
-                   <SelectItem value="Salud">Salud</SelectItem>
+                   <SelectItem value="Computación">Computación</SelectItem>
                    <SelectItem value="Automóvil">Automóvil</SelectItem>
                    <SelectItem value="Herramientas">Herramientas</SelectItem>
                    <SelectItem value="Otros">Otros</SelectItem>

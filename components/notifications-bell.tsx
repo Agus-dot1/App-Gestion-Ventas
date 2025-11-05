@@ -32,6 +32,8 @@ export function NotificationsBell() {
   const [renderCount, setRenderCount] = useState(30);
   // Candado de cambios locales para evitar reversiones por polling
   const pendingChangesRef = useRef<Map<number, { read: boolean; ts: number }>>(new Map());
+  // Tick para refrescar etiquetas de tiempo relativas (e.g., "hace X min")
+  const [nowTick, setNowTick] = useState<number>(() => Date.now());
 
   // Persist and load visibleTypes from localStorage
   useEffect(() => {
@@ -46,6 +48,14 @@ export function NotificationsBell() {
         });
       }
     } catch {}
+  }, []);
+
+  // Refresca periódicamente para que las etiquetas "hace unos segundos/min/h" avancen
+  useEffect(() => {
+    const id = setInterval(() => {
+      setNowTick(Date.now());
+    }, 60_000); // cada 60s
+    return () => clearInterval(id);
   }, []);
 
   useEffect(() => {
@@ -306,6 +316,24 @@ export function NotificationsBell() {
       );
     }
 
+    // Acción para recordatorios de clientes (attention): navegar a cuotas
+    if (n.type === 'attention' && m?.category === 'client') {
+      return (
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn("h-8 text-muted-foreground hover:bg-[#3C3C3C] transition-transform active:scale-95", isRead ? "text-muted-foreground font-medium hover:bg-transparent" : "font-semibold")}
+            onClick={(e) => { e.preventDefault(); router.push(m?.route || '/sales?tab=installments'); }}
+            title={m?.actionLabel || 'Revisar'}
+          >
+            {m?.actionLabel || 'Revisar'}
+          </Button>
+          {baseActions}
+        </>
+      );
+    }
+
     // For info/system/attention, we still show the base actions
     return baseActions;
   };
@@ -540,7 +568,21 @@ export function NotificationsBell() {
     return `$${base}0`;
   };
   const formatRelative = (iso: string) => {
-    const d = new Date(iso).getTime();
+    // Normaliza formatos SQLite ("YYYY-MM-DD HH:MM:SS") a ISO UTC
+    const normalizeTs = (s: string): number => {
+      try {
+        if (s && s.includes(' ') && !s.includes('T')) {
+          const candidate = s.replace(' ', 'T') + 'Z';
+          const t = new Date(candidate).getTime();
+          if (!Number.isNaN(t)) return t;
+        }
+        const t2 = new Date(s).getTime();
+        return Number.isNaN(t2) ? Date.now() : t2;
+      } catch {
+        return Date.now();
+      }
+    };
+    const d = normalizeTs(iso);
     const diff = Math.max(0, Date.now() - d);
     const m = Math.floor(diff / 60000);
     if (m < 1) return 'hace unos segundos';
@@ -640,9 +682,16 @@ export function NotificationsBell() {
                     const isRead = !!n.read_at;
                     const secondaryLine = m.category === 'client'
                       ? (() => {
-                        const extras = typeof m.customerCount === 'number' ? Math.max(0, m.customerCount - 1) : 0;
-                        return `Cliente: ${m.customerName ?? 'Cliente'}${extras > 0 ? ` y +${extras}` : ''}`;
-                      })()
+                          const names = Array.isArray(m.customerNames) ? m.customerNames : (m.customerName ? [m.customerName] : []);
+                          const shown = names.slice(0, 2); // mostrar hasta 2 nombres
+                          const count = typeof m.customerCount === 'number' ? m.customerCount : Math.max(names.length, shown.length);
+                          const extras = Math.max(0, count - shown.length);
+                          const multi = extras > 0 || shown.length > 1;
+                          const label = multi ? 'Clientes' : 'Cliente';
+                          const namesStr = shown.length > 0 ? shown.join(', ') : (m.customerName ?? 'Cliente');
+                          // Formato solicitado: "Clientes: Nombre1, Nombre2... +N"
+                          return `${label}: ${namesStr}${extras > 0 ? `... +${extras}` : ''}`;
+                        })()
                       : m.category === 'system'
                         ? `Sistema: ${m.systemStatus ?? 'realizado correctamente'}`
                         : m.category === 'stock'

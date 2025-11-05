@@ -35,6 +35,7 @@ let mainWindow;
 let tray = null;
 let isQuiting = false;
 let notificationsMuted = false;
+let openAtLogin = false;
 function getBaseUrl() {
     if (isDev) {
         return process.env.ELECTRON_DEV_URL || 'http://localhost:3001';
@@ -55,6 +56,15 @@ function navigateTo(route) {
         console.error('Navigation failed:', e);
     }
 }
+function showAndNavigate(route) {
+    if (!mainWindow)
+        return;
+    if (!mainWindow.isVisible()) {
+        mainWindow.show();
+    }
+    mainWindow.focus();
+    navigateTo(route);
+}
 function toggleMainWindowVisibility() {
     if (!mainWindow)
         return;
@@ -69,12 +79,19 @@ function toggleMainWindowVisibility() {
 function resolveTrayIcon() {
     // Prefer an .ico if present; fall back to tiny transparent PNG
     const candidates = [
+        // Packaged resources path (electron-builder extraResources -> resources/assets)
+        path.join(process.resourcesPath || '', 'assets', 'tray.ico'),
         // Dev path under repo root
         path.join(process.cwd(), 'assets', 'tray.ico'),
-        // Built path alongside main bundle
+        // Built path alongside main bundle (unpacked dev builds)
         path.join(__dirname, '../assets/tray.ico'),
         // Alternative built path
         path.join(__dirname, '../../assets/tray.ico'),
+        // Fallback to app icon if tray.ico is missing
+        path.join(process.resourcesPath || '', 'assets', 'icon.ico'),
+        path.join(process.cwd(), 'assets', 'icon.ico'),
+        path.join(__dirname, '../assets/icon.ico'),
+        path.join(__dirname, '../../assets/icon.ico'),
     ];
     for (const p of candidates) {
         try {
@@ -101,21 +118,34 @@ function createTray() {
         tray.setToolTip('Gestión de Ventas');
         const contextMenu = electron_1.Menu.buildFromTemplate([
             {
-                label: 'Mostrar/Ocultar ventana',
-                click: () => toggleMainWindowVisibility(),
+                label: 'Abrir aplicación',
+                click: () => {
+                    if (!mainWindow)
+                        return;
+                    mainWindow.show();
+                    mainWindow.focus();
+                },
             },
             { type: 'separator' },
             {
+                label: 'Panel',
+                click: () => showAndNavigate('/'),
+            },
+            {
                 label: 'Ventas',
-                click: () => navigateTo('/sales'),
+                click: () => showAndNavigate('/sales'),
             },
             {
                 label: 'Clientes',
-                click: () => navigateTo('/customers'),
+                click: () => showAndNavigate('/customers'),
             },
             {
                 label: 'Productos',
-                click: () => navigateTo('/products'),
+                click: () => showAndNavigate('/products'),
+            },
+            {
+                label: 'Ajustes',
+                click: () => showAndNavigate('/ajustes'),
             },
             { type: 'separator' },
             {
@@ -125,6 +155,15 @@ function createTray() {
                 click: (menuItem) => {
                     notificationsMuted = !!menuItem.checked;
                     tray?.setToolTip(notificationsMuted ? 'Gestión de Ventas (silenciado)' : 'Gestión de Ventas');
+                },
+            },
+            {
+                label: 'Iniciar al arrancar',
+                type: 'checkbox',
+                checked: openAtLogin,
+                click: (menuItem) => {
+                    openAtLogin = !!menuItem.checked;
+                    electron_1.app.setLoginItemSettings({ openAtLogin });
                 },
             },
             { type: 'separator' },
@@ -137,8 +176,13 @@ function createTray() {
             },
         ]);
         tray.setContextMenu(contextMenu);
-        // Left-click toggles visibility
-        tray.on('click', () => toggleMainWindowVisibility());
+        // Left-click shows and focuses the window
+        tray.on('click', () => {
+            if (!mainWindow)
+                return;
+            mainWindow.show();
+            mainWindow.focus();
+        });
         // Right-click shows context menu explicitly (redundant but explicit)
         tray.on('right-click', () => tray?.popUpContextMenu());
     }
@@ -646,6 +690,14 @@ electron_1.app.whenReady().then(() => {
             callback({ error: -2 }); // net::ERR_FAILED
         }
     });
+    // Sync Start-at-Login initial state
+    try {
+        const loginSettings = electron_1.app.getLoginItemSettings();
+        openAtLogin = !!loginSettings.openAtLogin;
+    }
+    catch (e) {
+        console.warn('Failed to read login item settings:', e);
+    }
     createWindow();
     // Create system tray (Windows-focused behavior)
     if (process.platform === 'win32' || process.platform === 'darwin') {
