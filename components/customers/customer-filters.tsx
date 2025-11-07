@@ -211,22 +211,26 @@ export function CustomerFiltersComponent({ filters, onFiltersChange, customers, 
 export function applyCustomerFilters(customers: Customer[], filters: CustomerFilters): Customer[] {
   let filtered = [...customers];
 
-  // Advanced fuzzy search
+
+
   if (filters.search) {
     filtered = searchCustomersWithFuzzy(filtered, filters.search);
   }
   
-  // hasEmail filter
+
+
   if (filters.hasEmail !== null) {
     filtered = filtered.filter(c => (filters.hasEmail ? !!c.email : !c.email));
   }
 
-  // hasPhone filter
+
+
   if (filters.hasPhone !== null) {
     filtered = filtered.filter(c => (filters.hasPhone ? !!c.phone : !c.phone));
   }
 
-  // date range
+
+
   if (filters.createdAfter) {
     filtered = filtered.filter(c => {
       if (!c.created_at) return false;
@@ -242,7 +246,8 @@ export function applyCustomerFilters(customers: Customer[], filters: CustomerFil
     });
   }
 
-  // Sorting
+
+
   filtered.sort((a, b) => {
     let aValue: any;
     let bValue: any;

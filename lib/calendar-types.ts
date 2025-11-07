@@ -1,4 +1,5 @@
-// Calendar types and interfaces for the calendar system
+
+
 
 export type EventType = 'sale' | 'installment' | 'reminder' | 'custom';
 export type EventStatus = 'pending' | 'completed' | 'overdue' | 'cancelled';
@@ -11,18 +12,21 @@ export interface CalendarEvent {
   description?: string;
   status: EventStatus;
   
-  // Customer and sale information
+
+
   customerId?: number;
   customerName?: string;
   saleId?: number;
   installmentId?: number;
   
-  // Financial information
+
+
   amount?: number;
   balance?: number;
   installmentNumber?: number;
   
-  // Additional metadata
+
+
   notes?: string;
   createdAt?: Date;
   updatedAt?: Date;
@@ -46,7 +50,8 @@ export interface CalendarMonth {
   weeks: CalendarWeek[];
 }
 
-// Utility functions for calendar operations
+
+
 export const isSameDay = (date1: Date, date2: Date, timeZone?: string): boolean => {
   if (!timeZone) {
     return date1.getDate() === date2.getDate() &&
@@ -54,7 +59,8 @@ export const isSameDay = (date1: Date, date2: Date, timeZone?: string): boolean 
            date1.getFullYear() === date2.getFullYear();
   }
   
-  // For time zone-aware comparison, we need to convert both dates to the same time zone
+
+
   const d1 = new Date(date1.toLocaleString("en-US", {timeZone}));
   const d2 = new Date(date2.toLocaleString("en-US", {timeZone}));
   
@@ -69,7 +75,8 @@ export const isSameMonth = (date1: Date, date2: Date, timeZone?: string): boolea
            date1.getFullYear() === date2.getFullYear();
   }
   
-  // For time zone-aware comparison, we need to convert both dates to the same time zone
+
+
   const d1 = new Date(date1.toLocaleString("en-US", {timeZone}));
   const d2 = new Date(date2.toLocaleString("en-US", {timeZone}));
   

@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 import dynamic from 'next/dynamic';
-// Lazy-load the Calendar to defer react-day-picker
+
+
 const Calendar = dynamic(() => import('@/components/ui/calendar').then(m => m.Calendar), {
   ssr: false,
 });
@@ -133,7 +134,13 @@ export function SalesFiltersComponent({
             )}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[calc(100vw-2rem)] md:w-[32rem]" align="start">
+        <PopoverContent
+          side="bottom"
+          sideOffset={8}
+          align="start"
+          collisionPadding={8}
+          className="w-[min(90vw,32rem)] max-h-[calc(100vh-120px)] short:max-h-[calc(100vh-88px)] overflow-y-auto"
+        >
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h4 className="font-medium">Filtros avanzados</h4>
@@ -271,7 +278,7 @@ export function SalesFiltersComponent({
                         )}
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
+                    <PopoverContent className="w-auto p-0" align="start" collisionPadding={8} sideOffset={6}>
                       <Calendar
                         locale={es}
                         mode="single"
@@ -292,11 +299,13 @@ export function SalesFiltersComponent({
   );
 }
 
-// Helper function to apply filters to sales
+
+
 export function applySalesFilters(sales: Sale[], filters: SalesFilters): Sale[] {
   let filtered = [...sales];
 
-  // Search filter
+
+
   if (filters.search) {
     const searchTerm = filters.search.toLowerCase();
     filtered = filtered.filter(sale =>
@@ -307,21 +316,24 @@ export function applySalesFilters(sales: Sale[], filters: SalesFilters): Sale[] 
     );
   }
 
-  // Payment status filter
+
+
   if (filters.paymentStatus.length > 0) {
     filtered = filtered.filter(sale => 
       filters.paymentStatus.includes(sale.payment_status)
     );
   }
 
-  // Payment type filter
+
+
   if (filters.paymentType.length > 0) {
     filtered = filtered.filter(sale => 
       filters.paymentType.includes(sale.payment_type)
     );
   }
 
-  // Amount range filter
+
+
   if (filters.minAmount !== null) {
     filtered = filtered.filter(sale => sale.total_amount >= filters.minAmount!);
   }
@@ -329,7 +341,8 @@ export function applySalesFilters(sales: Sale[], filters: SalesFilters): Sale[] 
     filtered = filtered.filter(sale => sale.total_amount <= filters.maxAmount!);
   }
 
-  // Date range filter
+
+
   if (filters.dateAfter) {
     filtered = filtered.filter(sale => {
       if (!sale.date) return false;
@@ -343,7 +356,8 @@ export function applySalesFilters(sales: Sale[], filters: SalesFilters): Sale[] 
     });
   }
 
-  // Sorting
+
+
   filtered.sort((a, b) => {
     let aValue: any;
     let bValue: any;

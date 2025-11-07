@@ -29,7 +29,7 @@ import {
 
 import type { Sale as DatabaseSale } from "@/lib/database-operations";
 import Link from 'next/link';
-// Types for the dashboard data
+
 type Sale = DatabaseSale & {
   customer_name?: string;
   sale_number?: string;
@@ -66,12 +66,9 @@ export default function Home() {
     customers: {current: number, previous: number, percentage: number},
     products: {current: number, previous: number, percentage: number}
   } | null>(null);
-
-  // Initial data load
   useEffect(() => {
     if (isElectron) {
       loadStats();
-      // Prefetch common lists early to make navigation instant
       setTimeout(() => {
         prefetchAllRoutes();
       }, 200);
@@ -82,7 +79,6 @@ export default function Home() {
     setIsLoading(true);
     try {
       if (window.electronAPI) {
-         // Use optimized count methods and get recent data
          const [totalCustomers, totalProducts, totalSales, totalRevenue, recentSalesData, recentCustomersData, upcomingInstallmentsData, salesChartData, salesComparison, customersComparison, productsComparison] = await Promise.all([
            window.electronAPI.database.customers.getCount(),
            window.electronAPI.database.products.getCount(),
@@ -90,7 +86,6 @@ export default function Home() {
            window.electronAPI.database.sales.getTotalRevenue(),
            window.electronAPI.database.sales.getRecent(5),
            window.electronAPI.database.customers.getRecent(5),
-           // Fetch a larger set, we will dedupe by customer below
            window.electronAPI.database.installments.getUpcoming(50),
            window.electronAPI.database.sales.getSalesChartData(30),
            window.electronAPI.database.sales.getStatsComparison(),
@@ -106,7 +101,8 @@ export default function Home() {
          });
          setRecentSales(recentSalesData);
          setRecentCustomers(recentCustomersData);
-         // Keep only the next installment per customer (earliest by due_date)
+
+
          const seenCustomerIds = new Set<number>();
          const dedupedByCustomer = upcomingInstallmentsData.filter((inst) => {
            const cid = (inst as any).customer_id as number | undefined;
@@ -118,13 +114,6 @@ export default function Home() {
          setUpcomingInstallments(dedupedByCustomer);
          setChartData(salesChartData);
          
-         // Calculate percentage changes
-         const calculatePercentage = (current: number, previous: number) => {
-           if (previous === 0) return current > 0 ? 100 : 0;
-           return Math.round(((current - previous) / previous) * 100);
-         };
-         
-         // Calculate and set comparison statistics
          setStatsComparison({
            sales: {
              current: salesComparison.current,
@@ -148,13 +137,11 @@ export default function Home() {
            }
          });
          
-         // Prefetch other routes after dashboard loads
          setTimeout(() => {
            prefetchAllRoutes();
          }, 500);
          
        } else {
-         // Non-Electron version - use API calls
          const response = await fetch('/api/dashboard');
          if (!response.ok) {
            throw new Error('Failed to fetch dashboard data');
@@ -181,20 +168,20 @@ export default function Home() {
     setIsRefreshing(false);
   };
 
-  // Keyboard shortcuts: New Sale (Ctrl/Cmd+N), Refresh (Ctrl/Cmd+Shift+R)
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isMod = e.ctrlKey || e.metaKey;
       if (!isMod) return;
 
-      // New Sale
+
       if (e.key.toLowerCase() === 'n' && !e.shiftKey) {
         e.preventDefault();
         router.push('/sales?action=new');
         return;
       }
 
-      // Refresh Dashboard
+
       if (e.key.toLowerCase() === 'r' && e.shiftKey) {
         e.preventDefault();
         refreshData();

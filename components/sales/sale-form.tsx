@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { AlertCircle, Plus, Trash2, ShoppingCart, User, CreditCard, Calculator, Search, Users, List } from 'lucide-react';
+import { cn } from '@/lib/utils';
 type Sale = any;
 type Customer = any;
 type Product = any;
@@ -33,12 +34,13 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [partners, setPartners] = useState<any[]>([]);
+  const [isExcelLayout, setIsExcelLayout] = useState(false);
   const [formData, setFormData] = useState({
     customer_id: 0,
     partner_id: 0,
     payment_type: 'cash' as 'cash' | 'installments',
     payment_method: 'cash' as 'cash' | 'bank_transfer',
-    payment_period: '1 to 10' as '1 to 10' | '20 to 30',
+    payment_period: '1 to 10' as '1 to 10' | '10 to 20' | '20 to 30',
     period_type: 'monthly' as 'monthly' | 'weekly',
     number_of_installments: 6,
     notes: ''
@@ -51,6 +53,9 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [customerQuery, setCustomerQuery] = useState('');
 
+
+  const [installmentsBuffer, setInstallmentsBuffer] = useState<string | undefined>(undefined);
+
   useEffect(() => {
     if (open && typeof window !== 'undefined' && window.electronAPI) {
       loadCustomers();
@@ -58,6 +63,29 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
       loadPartners();
     }
   }, [open]);
+
+
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('excelFormLayout');
+      setIsExcelLayout(saved === 'true');
+    } catch {}
+
+    const handler = (e: any) => {
+      const detail = e?.detail || {};
+      if (Object.prototype.hasOwnProperty.call(detail, 'excelFormLayout')) {
+        setIsExcelLayout(Boolean(detail.excelFormLayout));
+      } else {
+        try {
+          const saved = localStorage.getItem('excelFormLayout');
+          setIsExcelLayout(saved === 'true');
+        } catch {}
+      }
+    };
+    window.addEventListener('app:settings-changed', handler);
+    return () => window.removeEventListener('app:settings-changed', handler);
+  }, []);
 
   useEffect(() => {
     if (sale) {
@@ -305,7 +333,12 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] max-h-[90vh] overflow-x-auto overflow-y-auto">
+      <DialogContent
+        className={cn(
+          'max-w-[95vw] max-h-[90vh] overflow-x-auto overflow-y-auto',
+          isExcelLayout ? 'sm:max-w-[98vw] lg:max-w-[90vw] xl:max-w-[80vw]' : 'sm:max-w-[600px]'
+        )}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShoppingCart className="h-5 w-5" />
@@ -327,7 +360,12 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                   <h3 className="font-semibold">Información del Cliente</h3>
                 </div>
 
-                <div className="grid grid-cols-4 gap-4">
+                <div
+                  className={cn(
+                    'grid gap-4 grid-cols-1 sm:grid-cols-2',
+                    formData.payment_type === 'installments' ? 'md:grid-cols-5' : 'md:grid-cols-4'
+                  )}
+                >
                   <div className="col-span-2">
                     <Label className="text-xs mb-1.5 block">Cliente *</Label>
                     {formData.customer_id ? (
@@ -426,8 +464,31 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                           type="number"
                           min="2"
                           max="60"
-                          value={formData.number_of_installments}
-                          onChange={(e) => setFormData(prev => ({ ...prev, number_of_installments: parseInt(e.target.value) || 6 }))}
+                          value={installmentsBuffer ?? formData.number_of_installments.toString()}
+                          onChange={(e) => {
+                            setInstallmentsBuffer(e.target.value);
+                          }}
+                          onBlur={() => {
+                            if (installmentsBuffer === undefined) return;
+                            const v = (installmentsBuffer ?? '').trim();
+                            if (v === '') {
+                              setInstallmentsBuffer(undefined);
+                              return;
+                            }
+                            const num = parseInt(v, 10);
+                            if (Number.isFinite(num)) {
+                              const clamped = Math.max(2, Math.min(60, num));
+                              setFormData(prev => ({ ...prev, number_of_installments: clamped }));
+                            }
+                            setInstallmentsBuffer(undefined);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.currentTarget.blur();
+                            } else if (e.key === 'Escape') {
+                              setInstallmentsBuffer(formData.number_of_installments.toString());
+                            }
+                          }}
                           className={`h-10 ${errors.number_of_installments ? 'border-red-500' : ''}`}
                         />
                       </div>
@@ -443,6 +504,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="1 to 10">1 al 10</SelectItem>
+                            <SelectItem value="10 to 20">10 al 20</SelectItem>
                             <SelectItem value="20 to 30">20 al 30</SelectItem>
                           </SelectContent>
                         </Select>
@@ -459,7 +521,8 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="monthly">Mensual</SelectItem>
-                            <SelectItem value="weekly">Semanal (1 y 15)</SelectItem>
+                            <SelectItem value="biweekly">Quincenal</SelectItem>
+                            <SelectItem value="weekly">Semanal</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>

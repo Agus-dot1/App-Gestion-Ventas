@@ -26,6 +26,7 @@ export function InstallmentForm({ installment, open, onOpenChange, onSave }: Ins
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [filteredSales, setFilteredSales] = useState<Sale[]>([]);
+  const [isExcelLayout, setIsExcelLayout] = useState(false);
   const [formData, setFormData] = useState({
     sale_id: 0,
     installment_number: 1,
@@ -41,6 +42,27 @@ export function InstallmentForm({ installment, open, onOpenChange, onSave }: Ins
       loadData();
     }
   }, [open]);
+
+
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const stored = localStorage.getItem('excelFormLayout');
+      setIsExcelLayout(stored === 'true');
+    } catch {}
+
+    const handler = (e: Event) => {
+      try {
+        const stored = localStorage.getItem('excelFormLayout');
+        setIsExcelLayout(stored === 'true');
+      } catch {}
+    };
+    window.addEventListener('app:settings-changed', handler as EventListener);
+    return () => {
+      window.removeEventListener('app:settings-changed', handler as EventListener);
+    };
+  }, []);
 
   useEffect(() => {
     if (installment) {
@@ -128,10 +150,12 @@ export function InstallmentForm({ installment, open, onOpenChange, onSave }: Ins
       };
 
       if (installment?.id) {
-        // Update existing installment - would need to implement update method
+
+
         console.log('Update installment:', installment.id, installmentData);
       } else {
-        // Create new installment
+
+
         await window.electronAPI.database.installments.create(installmentData);
       }
       
@@ -164,7 +188,12 @@ export function InstallmentForm({ installment, open, onOpenChange, onSave }: Ins
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent
+        className={cn(
+          'max-w-[95vw] max-h-[90vh] overflow-y-auto',
+          isExcelLayout ? 'sm:max-w-[98vw] lg:max-w-[75vw] xl:max-w-[50vw]' : 'sm:max-w-[500px]'
+        )}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CreditCard className="h-5 w-5" />
@@ -177,137 +206,269 @@ export function InstallmentForm({ installment, open, onOpenChange, onSave }: Ins
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid gap-4">
-            {/* Sale Selection */}
-            <div className="space-y-2">
-              <Label htmlFor="sale">Venta *</Label>
-              <Select
-                value={formData.sale_id.toString()}
-                onValueChange={(value) => handleSaleSelect(parseInt(value))}
-                disabled={!!installment}
-              >
-                <SelectTrigger className={errors.sale_id ? 'border-red-500' : ''}>
-                  <SelectValue placeholder="Selecciona una venta con cuotas" />
-                </SelectTrigger>
-                <SelectContent>
-                  {sales.map((sale) => {
-                    const customer = customers.find(c => c.id === sale.customer_id);
-                    return (
-                      <SelectItem key={sale.id} value={sale.id!.toString()}>
-                        <div className="flex items-center gap-2">
-                          <span>{sale.sale_number}</span>
-                          <span className="text-muted-foreground">-</span>
-                          <span>{customer?.name}</span>
-                          <span className="text-muted-foreground">
-                            ({sale.number_of_installments} cuotas)
-                          </span>
-                        </div>
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-              {errors.sale_id && (
-                <div className="flex items-center gap-1 text-sm text-red-600">
-                  <AlertCircle className="h-3 w-3" />
-                  {errors.sale_id}
-                </div>
-              )}
-              {selectedCustomer && (
-                <div className="p-3 bg-muted rounded-md">
-                  <div className="text-sm font-medium">Cliente: {selectedCustomer.name}</div>
-                  {selectedCustomer.email && (
-                    <div className="text-xs text-muted-foreground">{selectedCustomer.email}</div>
+            {isExcelLayout ? (
+              <div className="grid gap-3 md:grid-cols-6">
+                {/* Venta */}
+                <div className="md:col-span-3 space-y-2">
+                  <Label htmlFor="sale">Venta *</Label>
+                  <Select
+                    value={formData.sale_id.toString()}
+                    onValueChange={(value) => handleSaleSelect(parseInt(value))}
+                    disabled={!!installment}
+                  >
+                    <SelectTrigger className={errors.sale_id ? 'border-red-500' : ''}>
+                      <SelectValue placeholder="Selecciona una venta con cuotas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sales.map((sale) => {
+                        const customer = customers.find(c => c.id === sale.customer_id);
+                        return (
+                          <SelectItem key={sale.id} value={sale.id!.toString()}>
+                            <div className="flex items-center gap-2">
+                              <span>{sale.sale_number}</span>
+                              <span className="text-muted-foreground">-</span>
+                              <span>{customer?.name}</span>
+                              <span className="text-muted-foreground">({sale.number_of_installments} cuotas)</span>
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                  {errors.sale_id && (
+                    <div className="flex items-center gap-1 text-xs text-red-600">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.sale_id}
+                    </div>
+                  )}
+                  {selectedCustomer && (
+                    <div className="p-2 bg-muted rounded-md">
+                      <div className="text-sm font-medium">Cliente: {selectedCustomer.name}</div>
+                      {selectedCustomer.email && (
+                        <div className="text-xs text-muted-foreground">{selectedCustomer.email}</div>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              {/* Installment Number */}
-              <div className="space-y-2">
-                <Label htmlFor="installment_number">Número de Cuota *</Label>
-                <Input
-                  id="installment_number"
-                  type="number"
-                  min="1"
-                  value={formData.installment_number}
-                  onChange={(e) => handleInputChange('installment_number', parseInt(e.target.value) || 1)}
-                  className={errors.installment_number ? 'border-red-500' : ''}
-                />
-                {errors.installment_number && (
-                  <div className="flex items-center gap-1 text-sm text-red-600">
-                    <AlertCircle className="h-3 w-3" />
-                    {errors.installment_number}
-                  </div>
-                )}
-              </div>
-
-              {/* Amount */}
-              <div className="space-y-2">
-                <Label htmlFor="amount">Monto *</Label>
-                <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                {/* Número de cuota */}
+                <div className="md:col-span-1 space-y-2">
+                  <Label htmlFor="installment_number">Nº Cuota *</Label>
                   <Input
-                    id="amount"
+                    id="installment_number"
                     type="number"
-                    step="1"
-                    min="0"
-                    value={formData.amount}
-                    onChange={(e) => handleInputChange('amount', Math.round(parseFloat(e.target.value) || 0))}
-                    className={`pl-10 ${errors.amount ? 'border-red-500' : ''}`}
+                    min="1"
+                    value={formData.installment_number}
+                    onChange={(e) => handleInputChange('installment_number', parseInt(e.target.value) || 1)}
+                    className={errors.installment_number ? 'border-red-500' : ''}
+                  />
+                  {errors.installment_number && (
+                    <div className="flex items-center gap-1 text-xs text-red-600">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.installment_number}
+                    </div>
+                  )}
+                </div>
+
+                {/* Monto */}
+                <div className="md:col-span-1 space-y-2">
+                  <Label htmlFor="amount">Monto *</Label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="amount"
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={formData.amount}
+                      onChange={(e) => handleInputChange('amount', Math.round(parseFloat(e.target.value) || 0))}
+                      className={`pl-10 ${errors.amount ? 'border-red-500' : ''}`}
+                    />
+                  </div>
+                  {errors.amount && (
+                    <div className="flex items-center gap-1 text-xs text-red-600">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.amount}
+                    </div>
+                  )}
+                </div>
+
+                {/* Vencimiento */}
+                <div className="md:col-span-1 space-y-2">
+                  <Label>Vence *</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          'w-full justify-start text-left font-normal',
+                          !formData.due_date && 'text-muted-foreground'
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {formData.due_date ? (
+                          format(formData.due_date, 'PPP', { locale: es })
+                        ) : (
+                          <span>Seleccionar fecha</span>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={formData.due_date}
+                        onSelect={(date) => date && handleInputChange('due_date', date)}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Notas */}
+                <div className="md:col-span-6 space-y-2">
+                  <Label htmlFor="notes">Notas</Label>
+                  <Textarea
+                    id="notes"
+                    value={formData.notes}
+                    onChange={(e) => handleInputChange('notes', e.target.value)}
+                    placeholder="Notas adicionales sobre esta cuota..."
+                    rows={3}
                   />
                 </div>
-                {errors.amount && (
-                  <div className="flex items-center gap-1 text-sm text-red-600">
-                    <AlertCircle className="h-3 w-3" />
-                    {errors.amount}
-                  </div>
-                )}
               </div>
-            </div>
-
-            {/* Due Date */}
-            <div className="space-y-2">
-              <Label>Fecha de Vencimiento *</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !formData.due_date && "text-muted-foreground"
-                    )}
+            ) : (
+              <>
+                {/* Sale Selection */}
+                <div className="space-y-2">
+                  <Label htmlFor="sale">Venta *</Label>
+                  <Select
+                    value={formData.sale_id.toString()}
+                    onValueChange={(value) => handleSaleSelect(parseInt(value))}
+                    disabled={!!installment}
                   >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {formData.due_date ? (
-                      format(formData.due_date, "PPP", { locale: es })
-                    ) : (
-                      <span>Seleccionar fecha</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={formData.due_date}
-                    onSelect={(date) => date && handleInputChange('due_date', date)}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
+                    <SelectTrigger className={errors.sale_id ? 'border-red-500' : ''}>
+                      <SelectValue placeholder="Selecciona una venta con cuotas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sales.map((sale) => {
+                        const customer = customers.find(c => c.id === sale.customer_id);
+                        return (
+                          <SelectItem key={sale.id} value={sale.id!.toString()}>
+                            <div className="flex items-center gap-2">
+                              <span>{sale.sale_number}</span>
+                              <span className="text-muted-foreground">-</span>
+                              <span>{customer?.name}</span>
+                              <span className="text-muted-foreground">({sale.number_of_installments} cuotas)</span>
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                  {errors.sale_id && (
+                    <div className="flex items-center gap-1 text-sm text-red-600">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.sale_id}
+                    </div>
+                  )}
+                  {selectedCustomer && (
+                    <div className="p-3 bg-muted rounded-md">
+                      <div className="text-sm font-medium">Cliente: {selectedCustomer.name}</div>
+                      {selectedCustomer.email && (
+                        <div className="text-xs text-muted-foreground">{selectedCustomer.email}</div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
-            {/* Notes */}
-            <div className="space-y-2">
-              <Label htmlFor="notes">Notas</Label>
-              <Textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => handleInputChange('notes', e.target.value)}
-                placeholder="Notas adicionales sobre esta cuota..."
-                rows={3}
-              />
-            </div>
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Installment Number */}
+                  <div className="space-y-2">
+                    <Label htmlFor="installment_number">Número de Cuota *</Label>
+                    <Input
+                      id="installment_number"
+                      type="number"
+                      min="1"
+                      value={formData.installment_number}
+                      onChange={(e) => handleInputChange('installment_number', parseInt(e.target.value) || 1)}
+                      className={errors.installment_number ? 'border-red-500' : ''}
+                    />
+                    {errors.installment_number && (
+                      <div className="flex items-center gap-1 text-sm text-red-600">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.installment_number}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Amount */}
+                  <div className="space-y-2">
+                    <Label htmlFor="amount">Monto *</Label>
+                    <div className="relative">
+                      <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="amount"
+                        type="number"
+                        step="1"
+                        min="0"
+                        value={formData.amount}
+                        onChange={(e) => handleInputChange('amount', Math.round(parseFloat(e.target.value) || 0))}
+                        className={`pl-10 ${errors.amount ? 'border-red-500' : ''}`}
+                      />
+                    </div>
+                    {errors.amount && (
+                      <div className="flex items-center gap-1 text-sm text-red-600">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.amount}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Due Date */}
+                <div className="space-y-2">
+                  <Label>Fecha de Vencimiento *</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          'w-full justify-start text-left font-normal',
+                          !formData.due_date && 'text-muted-foreground'
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {formData.due_date ? (
+                          format(formData.due_date, 'PPP', { locale: es })
+                        ) : (
+                          <span>Seleccionar fecha</span>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={formData.due_date}
+                        onSelect={(date) => date && handleInputChange('due_date', date)}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Notes */}
+                <div className="space-y-2">
+                  <Label htmlFor="notes">Notas</Label>
+                  <Textarea
+                    id="notes"
+                    value={formData.notes}
+                    onChange={(e) => handleInputChange('notes', e.target.value)}
+                    placeholder="Notas adicionales sobre esta cuota..."
+                    rows={3}
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           <DialogFooter>

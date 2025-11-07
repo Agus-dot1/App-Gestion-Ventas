@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertCircle, Package, DollarSign, Tag, Hash } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import type { Product } from '@/lib/database-operations';
 
 interface ProductFormProps {
@@ -31,6 +32,7 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isExcelLayout, setIsExcelLayout] = useState(false);
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -69,7 +71,8 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
         is_active: formData.is_active
       });
       
-      // Reset form - parent component will handle closing
+
+
       setFormData({
         name: '',
         price: '',
@@ -99,9 +102,28 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
     });
   }, [product]);
 
+
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('excelFormLayout');
+      setIsExcelLayout(saved === 'true');
+    } catch {}
+
+    const handler = (e: any) => {
+      const detail = e?.detail || {};
+      if (Object.prototype.hasOwnProperty.call(detail, 'excelFormLayout')) {
+        setIsExcelLayout(Boolean(detail.excelFormLayout));
+      }
+    };
+    window.addEventListener('app:settings-changed', handler);
+    return () => window.removeEventListener('app:settings-changed', handler);
+  }, []);
+
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    // Clear error when user starts typing
+
+
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
@@ -109,7 +131,10 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className={cn(
+        'max-w-[95vw] max-h-[90vh] short:max-h-[80vh] overflow-y-auto',
+        isExcelLayout ? 'sm:max-w-[98vw] lg:max-w-[75vw] xl:max-w-[50vw]' : 'sm:max-w-[500px]'
+      )}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
@@ -121,137 +146,270 @@ export function ProductForm({ product, open, onOpenChange, onSave }: ProductForm
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid gap-4">
-            {/* Product Name */}
-            <div className="space-y-2">
-              <Label htmlFor="name">Nombre *</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => handleInputChange('name', e.target.value)}
-                placeholder="Nombre del producto"
-                className={errors.name ? 'border-red-500' : ''}
-              />
-              {errors.name && (
-                <div className="flex items-center gap-1 text-sm text-red-600">
-                  <AlertCircle className="h-3 w-3" />
-                  {errors.name}
-                </div>
-              )}
-            </div>
-
-            {/* Price */}
-            <div className="space-y-2">
-              <Label htmlFor="price">Precio *</Label>
-              <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          {isExcelLayout ? (
+            <div className="grid gap-3 md:grid-cols-6">
+              {/* Nombre */}
+              <div className="md:col-span-2 space-y-1">
+                <Label htmlFor="name" className="text-xs">Nombre *</Label>
                 <Input
-                  id="price"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.price}
-                  onChange={(e) => handleInputChange('price', e.target.value)}
-                  placeholder="0.00"
-                  className={`pl-10 ${errors.price ? 'border-red-500' : ''}`}
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => handleInputChange('name', e.target.value)}
+                  placeholder="Nombre"
+                  className={errors.name ? 'border-red-500' : ''}
                 />
-              </div>
-              {errors.price && (
-                <div className="flex items-center gap-1 text-sm text-red-600">
-                  <AlertCircle className="h-3 w-3" />
-                  {errors.price}
-                </div>
-              )}
-            </div>
-
-            {/* Cost */}
-            <div className="space-y-2">
-              <Label htmlFor="cost_price">Costo</Label>
-              <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="cost_price"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.cost_price}
-                  onChange={(e) => handleInputChange('cost_price', e.target.value)}
-                  placeholder="0.00"
-                  className="pl-10"
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">Costo del producto (opcional)</p>
-            </div>
-
-            {/* Category */}
-            <div className="space-y-2">
-              <Label htmlFor="category">Categoría</Label>
-              <Select value={formData.category} onValueChange={(value) => handleInputChange('category', value)}>
-                <SelectTrigger className="w-full">
-                  <div className="flex items-center gap-2">
-                    <Tag className="h-4 w-4 text-muted-foreground" />
-                    <SelectValue placeholder="Seleccionar categoría (opcional)" />
+                {errors.name && (
+                  <div className="flex items-center gap-1 text-xs text-red-600">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.name}
                   </div>
-                </SelectTrigger>
-                <SelectContent>
-                   <SelectItem value="sin-categoria">Sin categoría</SelectItem>
-                   <SelectItem value="Electrónicos">Electrónicos</SelectItem>
-                   <SelectItem value="Accesorios">Accesorios</SelectItem>
-                   <SelectItem value="Audio">Audio</SelectItem>
-                   <SelectItem value="Hogar">Hogar</SelectItem>
-                   <SelectItem value="Juguetes">Juguetes</SelectItem>
-                   <SelectItem value="Computación">Computación</SelectItem>
-                   <SelectItem value="Automóvil">Automóvil</SelectItem>
-                   <SelectItem value="Herramientas">Herramientas</SelectItem>
-                   <SelectItem value="Otros">Otros</SelectItem>
-                 </SelectContent>
-              </Select>
-            </div>
+                )}
+              </div>
 
-            {/* Stock */}
-            <div className="space-y-2">
-              <Label htmlFor="stock">Stock</Label>
-              <div className="relative">
-                <Hash className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="stock"
-                  type="number"
-                  min="0"
-                  value={formData.stock}
-                  onChange={(e) => handleInputChange('stock', e.target.value)}
-                  placeholder="Cantidad disponible (opcional)"
-                  className="pl-10"
+              {/* Precio */}
+              <div className="md:col-span-1 space-y-1">
+                <Label htmlFor="price" className="text-xs">Precio *</Label>
+                <div className="relative">
+                  <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="price"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.price}
+                    onChange={(e) => handleInputChange('price', e.target.value)}
+                    placeholder="0.00"
+                    className={`pl-8 ${errors.price ? 'border-red-500' : ''}`}
+                  />
+                </div>
+                {errors.price && (
+                  <div className="flex items-center gap-1 text-xs text-red-600">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.price}
+                  </div>
+                )}
+              </div>
+
+              {/* Costo */}
+              <div className="md:col-span-1 space-y-1">
+                <Label htmlFor="cost_price" className="text-xs">Costo</Label>
+                <div className="relative">
+                  <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="cost_price"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.cost_price}
+                    onChange={(e) => handleInputChange('cost_price', e.target.value)}
+                    placeholder="0.00"
+                    className="pl-8"
+                  />
+                </div>
+              </div>
+
+              {/* Categoría */}
+              <div className="md:col-span-1 space-y-1">
+                <Label htmlFor="category" className="text-xs">Categoría</Label>
+                <Select value={formData.category} onValueChange={(value) => handleInputChange('category', value)}>
+                  <SelectTrigger className="w-full">
+                    <div className="flex items-center gap-2">
+                      <Tag className="h-4 w-4 text-muted-foreground" />
+                      <SelectValue placeholder="Categoría" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sin-categoria">Sin categoría</SelectItem>
+                    <SelectItem value="Electrónicos">Electrónicos</SelectItem>
+                    <SelectItem value="Accesorios">Accesorios</SelectItem>
+                    <SelectItem value="Audio">Audio</SelectItem>
+                    <SelectItem value="Hogar">Hogar</SelectItem>
+                    <SelectItem value="Juguetes">Juguetes</SelectItem>
+                    <SelectItem value="Computación">Computación</SelectItem>
+                    <SelectItem value="Automóvil">Automóvil</SelectItem>
+                    <SelectItem value="Herramientas">Herramientas</SelectItem>
+                    <SelectItem value="Otros">Otros</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Stock */}
+              <div className="md:col-span-1 space-y-1">
+                <Label htmlFor="stock" className="text-xs">Stock</Label>
+                <div className="relative">
+                  <Hash className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="stock"
+                    type="number"
+                    min="0"
+                    value={formData.stock}
+                    onChange={(e) => handleInputChange('stock', e.target.value)}
+                    placeholder="Cantidad"
+                    className="pl-8"
+                  />
+                </div>
+              </div>
+
+              {/* Activo */}
+              <div className="md:col-span-6 flex items-center justify-between p-3 border rounded-lg">
+                <div className="space-y-0.5">
+                  <Label htmlFor="is_active" className="text-xs">Producto activo</Label>
+                  <p className="text-xs text-muted-foreground">
+                    {formData.is_active ? 'Disponible para la venta.' : 'No disponible para la venta.'}
+                  </p>
+                </div>
+                <Switch
+                  id="is_active"
+                  checked={formData.is_active}
+                  onCheckedChange={(checked) => handleInputChange('is_active', checked)}
+                />
+              </div>
+
+              {/* Descripción */}
+              <div className="md:col-span-6 space-y-1">
+                <Label htmlFor="description" className="text-xs">Descripción</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) => handleInputChange('description', e.target.value)}
+                  placeholder="Detalles (opcional)"
+                  rows={3}
                 />
               </div>
             </div>
-
-            {/* Description */}
-            <div className="space-y-2">
-              <Label htmlFor="description">Descripción</Label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => handleInputChange('description', e.target.value)}
-                placeholder="Detalla informacion de importancia (opcional)"
-                rows={3}
-              />
-            </div>
-
-            {/* Active Status */}
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div className="space-y-0.5">
-                <Label htmlFor="is_active">Producto activo</Label>
-                <p className="text-sm text-muted-foreground">
-                  {formData.is_active ? 'El producto está disponible para la venta.' : 'El producto no está disponible para la venta.'}
-                </p>
+          ) : (
+            <div className="grid gap-4">
+              {/* Product Name */}
+              <div className="space-y-2">
+                <Label htmlFor="name">Nombre *</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => handleInputChange('name', e.target.value)}
+                  placeholder="Nombre del producto"
+                  className={errors.name ? 'border-red-500' : ''}
+                />
+                {errors.name && (
+                  <div className="flex items-center gap-1 text-sm text-red-600">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.name}
+                  </div>
+                )}
               </div>
-              <Switch
-                id="is_active"
-                checked={formData.is_active}
-                onCheckedChange={(checked) => handleInputChange('is_active', checked)}
-              />
+
+              {/* Price */}
+              <div className="space-y-2">
+                <Label htmlFor="price">Precio *</Label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="price"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.price}
+                    onChange={(e) => handleInputChange('price', e.target.value)}
+                    placeholder="0.00"
+                    className={`pl-10 ${errors.price ? 'border-red-500' : ''}`}
+                  />
+                </div>
+                {errors.price && (
+                  <div className="flex items-center gap-1 text-sm text-red-600">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.price}
+                  </div>
+                )}
+              </div>
+
+              {/* Cost */}
+              <div className="space-y-2">
+                <Label htmlFor="cost_price">Costo</Label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="cost_price"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.cost_price}
+                    onChange={(e) => handleInputChange('cost_price', e.target.value)}
+                    placeholder="0.00"
+                    className="pl-10"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">Costo del producto (opcional)</p>
+              </div>
+
+              {/* Category */}
+              <div className="space-y-2">
+                <Label htmlFor="category">Categoría</Label>
+                <Select value={formData.category} onValueChange={(value) => handleInputChange('category', value)}>
+                  <SelectTrigger className="w-full">
+                    <div className="flex items-center gap-2">
+                      <Tag className="h-4 w-4 text-muted-foreground" />
+                      <SelectValue placeholder="Seleccionar categoría (opcional)" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                     <SelectItem value="sin-categoria">Sin categoría</SelectItem>
+                     <SelectItem value="Electrónicos">Electrónicos</SelectItem>
+                     <SelectItem value="Accesorios">Accesorios</SelectItem>
+                     <SelectItem value="Audio">Audio</SelectItem>
+                     <SelectItem value="Hogar">Hogar</SelectItem>
+                     <SelectItem value="Juguetes">Juguetes</SelectItem>
+                     <SelectItem value="Computación">Computación</SelectItem>
+                     <SelectItem value="Automóvil">Automóvil</SelectItem>
+                     <SelectItem value="Herramientas">Herramientas</SelectItem>
+                     <SelectItem value="Otros">Otros</SelectItem>
+                   </SelectContent>
+                </Select>
+              </div>
+
+              {/* Stock */}
+              <div className="space-y-2">
+                <Label htmlFor="stock">Stock</Label>
+                <div className="relative">
+                  <Hash className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="stock"
+                    type="number"
+                    min="0"
+                    value={formData.stock}
+                    onChange={(e) => handleInputChange('stock', e.target.value)}
+                    placeholder="Cantidad disponible (opcional)"
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+
+              {/* Description */}
+              <div className="space-y-2">
+                <Label htmlFor="description">Descripción</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) => handleInputChange('description', e.target.value)}
+                  placeholder="Detalla informacion de importancia (opcional)"
+                  rows={3}
+                />
+              </div>
+
+              {/* Active Status */}
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="space-y-0.5">
+                  <Label htmlFor="is_active">Producto activo</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {formData.is_active ? 'El producto está disponible para la venta.' : 'El producto no está disponible para la venta.'}
+                  </p>
+                </div>
+                <Switch
+                  id="is_active"
+                  checked={formData.is_active}
+                  onCheckedChange={(checked) => handleInputChange('is_active', checked)}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           <DialogFooter>
             <Button

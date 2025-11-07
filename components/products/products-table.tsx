@@ -47,6 +47,12 @@ export function ProductsTable({
   paginationInfo,
   serverSidePagination = false
 }: ProductsTableProps) {
+
+
+  const [localProducts, setLocalProducts] = useState<Product[]>(products);
+  useEffect(() => {
+    setLocalProducts(products);
+  }, [products]);
   const [internalSearchTerm, setInternalSearchTerm] = useState('');
   const [internalCurrentPage, setInternalCurrentPage] = useState(1);
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
@@ -82,20 +88,24 @@ export function ProductsTable({
     return sortConfig.direction === 'asc' ? <ArrowUp className="ml-1 h-4 w-4" /> : <ArrowDown className="ml-1 h-4 w-4" />;
   };
 
-  // Use external state for server-side pagination, internal state for client-side
+
+
   const searchTerm = serverSidePagination ? (externalSearchTerm || '') : internalSearchTerm;
   const setSearchTerm = serverSidePagination ? (onSearchChange || (() => {})) : setInternalSearchTerm;
 
-  const filteredProducts = serverSidePagination ? products : products.filter(product => {
+  const filteredProducts = serverSidePagination ? localProducts : localProducts.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.description?.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesSearch;
   });
 
   const sortedProducts = (() => {
-    // Always sort the currently visible dataset. When server-side pagination is on,
-    // the parent provides the current page's array in `products`, and `filteredProducts`
-    // equals `products`. We sort that array to reflect header clicks.
+
+
+
+
+
+
     const base = filteredProducts;
     if (!sortConfig.key) return base;
     const sorted = [...base].sort((a, b) => {
@@ -113,7 +123,8 @@ export function ProductsTable({
         const cmp = (aBool === bBool) ? 0 : (aBool ? 1 : -1);
         return sortConfig.direction === 'asc' ? cmp : -cmp;
       } else {
-        // price or stock
+
+
         aVal = Number(aVal ?? 0);
         bVal = Number(bVal ?? 0);
         const cmp = aVal - bVal;
@@ -123,10 +134,11 @@ export function ProductsTable({
     return sorted;
   })();
 
-  // Inline editing state per product
-  const [editing, setEditing] = useState<Record<number, { price?: number; cost_price?: number; stock?: number; saving?: boolean }>>({});
 
-  const setEditingField = (id: number, field: 'price' | 'cost_price' | 'stock', value: number | undefined) => {
+
+  const [editing, setEditing] = useState<Record<number, { price?: string; cost_price?: string; stock?: string; saving?: boolean }>>({});
+
+  const setEditingField = (id: number, field: 'price' | 'cost_price' | 'stock', value: string | undefined) => {
     setEditing(prev => ({
       ...prev,
       [id]: {
@@ -136,24 +148,38 @@ export function ProductsTable({
     }));
   };
 
-  const saveEditingField = async (id: number, field: 'price' | 'cost_price' | 'stock', value: number | undefined) => {
-    // Basic validation: ensure value is a finite number for updates
-    const num = value;
-    if (num === undefined || Number.isNaN(num)) return;
+  const saveEditingField = async (id: number, field: 'price' | 'cost_price' | 'stock', value: string | undefined) => {
+
+
+    if (value === undefined || value === '') {
+
+
+      setEditing(prev => ({ ...prev, [id]: { ...prev[id], [field]: undefined } }));
+      return;
+    }
+    const num = Number(value);
+    if (!Number.isFinite(num) || (field !== 'stock' && num < 0) || (field === 'stock' && num < 0)) {
+      return;
+    }
     setEditing(prev => ({ ...prev, [id]: { ...prev[id], saving: true } }));
     try {
       await window.electronAPI?.database?.products?.update(id, { [field]: num } as any);
+
+
+      setLocalProducts(prev => prev.map(p => p.id === id ? { ...p, [field]: num } as Product : p));
     } catch (e) {
       console.error('Failed to update product', id, field, e);
     } finally {
-      setEditing(prev => ({ ...prev, [id]: { ...prev[id], saving: false } }));
+      setEditing(prev => ({ ...prev, [id]: { ...prev[id], saving: false, [field]: undefined } }));
     }
   };
 
-  // Persist preferences in localStorage
+
+
   const PRODUCTS_PERSIST_KEY = 'productsTablePrefs';
 
-  // Load persisted preferences on mount
+
+
   useEffect(() => {
     try {
       const raw = typeof window !== 'undefined' ? localStorage.getItem(PRODUCTS_PERSIST_KEY) : null;
@@ -174,7 +200,8 @@ export function ProductsTable({
     }
   }, [serverSidePagination]);
 
-  // Persist preferences when they change
+
+
   useEffect(() => {
     try {
       const prefs = {
@@ -190,7 +217,8 @@ export function ProductsTable({
     }
   }, [columnVisibility, sortConfig, internalSearchTerm, serverSidePagination]);
 
-  // Pagination (10 items per page)
+
+
   const PAGE_SIZE = 10;
   const currentPage = serverSidePagination ? (externalCurrentPage || 1) : internalCurrentPage;
   const clientTotal = sortedProducts.length;
@@ -264,7 +292,8 @@ export function ProductsTable({
     }
     setSelectedProducts(newSelected);
     
-    // Actualizar estado de "seleccionar todo"
+
+
     if (serverSidePagination) {
       const total = paginationInfo?.total || 0;
       setSelectAll(total > 0 && newSelected.size === total);
@@ -309,7 +338,8 @@ export function ProductsTable({
     const autoTable = (await import('jspdf-autotable')).default;
     const doc = new jsPDF();
 
-    // Encabezado
+
+
     doc.setFontSize(18);
     doc.text('Listado de Productos', 14, 18);
     doc.setFontSize(11);
@@ -380,7 +410,8 @@ export function ProductsTable({
       Descripción: p.description || ''
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
-    // Tamaños de columnas más agradables
+
+
     ws['!cols'] = [
       { wch: 6 },  // ID
       { wch: 30 }, // Nombre
@@ -394,14 +425,13 @@ export function ProductsTable({
     XLSX.writeFile(wb, `productos_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // Derive "select all" state from current selection vs filtered dataset,
-  // so it stays accurate across pagination and filtering changes.
+
+
+
+
   const isAllSelected = serverSidePagination
     ? ((paginationInfo?.total || 0) > 0 && selectedProducts.size === (paginationInfo?.total || 0))
     : (filteredProducts.length > 0 && selectedProducts.size === filteredProducts.length);
-
-
-  // No additional filters; search bar only.
 
   return (
     <>
@@ -468,7 +498,7 @@ export function ProductsTable({
           <CardContent>
           {isLoading ? (
             <div className="rounded-md border">
-              <Table>
+              <Table className="short:[&>thead>tr>th]:py-2 short:[&>tbody>tr>td]:py-1 short:[&_*]:text-sm">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[50px]">
@@ -528,7 +558,7 @@ export function ProductsTable({
             </div>
           ) : (
             <div className="rounded-md border">
-              <Table>
+              <Table className="short:[&>thead>tr>th]:py-2 short:[&>tbody>tr>td]:py-1 short:[&_*]:text-sm">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[50px]">
@@ -634,7 +664,7 @@ export function ProductsTable({
                       {columnVisibility.category && (
                         <TableCell>
                           {product.category && product.category !== 'sin-categoria' ? (
-                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                            <Badge variant="outline" className="text-blue-400 border-blue-800">
                               {product.category}
                             </Badge>
                           ) : (
@@ -649,17 +679,17 @@ export function ProductsTable({
                               type="number"
                               step="0.01"
                               min="0"
-                              value={(editing[product.id!]?.price ?? product.price)?.toString()}
+                              value={editing[product.id!]?.price ?? (product.price?.toString() ?? '')}
                               onChange={(e) => {
                                 const v = e.target.value;
-                                setEditingField(product.id!, 'price', v === '' ? undefined : Number(v));
+                                setEditingField(product.id!, 'price', v);
                               }}
-                              onBlur={() => saveEditingField(product.id!, 'price', editing[product.id!]?.price ?? product.price)}
+                              onBlur={() => saveEditingField(product.id!, 'price', editing[product.id!]?.price)}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                   e.currentTarget.blur();
                                 } else if (e.key === 'Escape') {
-                                  setEditingField(product.id!, 'price', product.price);
+                                  setEditingField(product.id!, 'price', product.price?.toString());
                                 }
                               }}
                               disabled={editing[product.id!]?.saving}
@@ -675,17 +705,17 @@ export function ProductsTable({
                               type="number"
                               step="0.01"
                               min="0"
-                              value={(editing[product.id!]?.cost_price ?? (typeof product.cost_price === 'number' ? product.cost_price : 0))?.toString()}
+                              value={editing[product.id!]?.cost_price ?? (typeof product.cost_price === 'number' ? product.cost_price.toString() : '')}
                               onChange={(e) => {
                                 const v = e.target.value;
-                                setEditingField(product.id!, 'cost_price', v === '' ? undefined : Number(v));
+                                setEditingField(product.id!, 'cost_price', v);
                               }}
-                              onBlur={() => saveEditingField(product.id!, 'cost_price', editing[product.id!]?.cost_price ?? (typeof product.cost_price === 'number' ? product.cost_price : 0))}
+                              onBlur={() => saveEditingField(product.id!, 'cost_price', editing[product.id!]?.cost_price)}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                   e.currentTarget.blur();
                                 } else if (e.key === 'Escape') {
-                                  setEditingField(product.id!, 'cost_price', typeof product.cost_price === 'number' ? product.cost_price : 0);
+                                  setEditingField(product.id!, 'cost_price', typeof product.cost_price === 'number' ? product.cost_price.toString() : '');
                                 }
                               }}
                               disabled={editing[product.id!]?.saving}
@@ -701,18 +731,17 @@ export function ProductsTable({
                               type="number"
                               step="1"
                               min="0"
-                              value={(editing[product.id!]?.stock ?? (typeof product.stock === 'number' ? product.stock : 0))?.toString()}
+                              value={editing[product.id!]?.stock ?? (typeof product.stock === 'number' ? product.stock.toString() : '')}
                               onChange={(e) => {
                                 const v = e.target.value;
-                                const num = v === '' ? undefined : Number(v);
-                                setEditingField(product.id!, 'stock', num);
+                                setEditingField(product.id!, 'stock', v);
                               }}
-                              onBlur={() => saveEditingField(product.id!, 'stock', editing[product.id!]?.stock ?? (typeof product.stock === 'number' ? product.stock : 0))}
+                              onBlur={() => saveEditingField(product.id!, 'stock', editing[product.id!]?.stock)}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                   e.currentTarget.blur();
                                 } else if (e.key === 'Escape') {
-                                  setEditingField(product.id!, 'stock', typeof product.stock === 'number' ? product.stock : 0);
+                                  setEditingField(product.id!, 'stock', typeof product.stock === 'number' ? product.stock.toString() : '');
                                 }
                               }}
                               disabled={editing[product.id!]?.saving}
@@ -734,14 +763,14 @@ export function ProductsTable({
                       {columnVisibility.status && (
                         <TableCell>
                           {product.is_active ? (
-                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Activo</Badge>
+                            <Badge variant="outline" className="text-green-400 border-green-800">Activo</Badge>
                           ) : (
-                            <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">Inactivo</Badge>
+                            <Badge variant="outline" className="text-gray-700 border-gray-200">Inactivo</Badge>
                           )}
                         </TableCell>
                       )}
-                      <TableCell>
-                          <ButtonGroup>
+                      <TableCell className="p-2">
+                          <ButtonGroup className="p-1">
                             <Toggle
                               variant="outline"
                               size="sm"
@@ -792,12 +821,14 @@ export function ProductsTable({
                 </Button>
                 <div className="flex items-center space-x-1">
                   {Array.from({ length: paginationInfo.totalPages }, (_, i) => i + 1).map((page) => {
-                    // Show first page, last page, current page, and pages around current
+
+
                     const showPage = page === 1 || page === paginationInfo.totalPages || 
                                    (page >= paginationInfo.currentPage - 1 && page <= paginationInfo.currentPage + 1);
                     
                     if (!showPage) {
-                      // Show ellipsis for gaps
+
+
                       if (page === paginationInfo.currentPage - 2 || page === paginationInfo.currentPage + 2) {
                         return <span key={page} className="px-2 text-muted-foreground">...</span>;
                       }

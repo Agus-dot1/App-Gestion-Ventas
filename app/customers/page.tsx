@@ -12,6 +12,7 @@ import { CustomersSkeleton } from '@/components/skeletons/customers-skeleton';
 import { Plus, Users, TrendingUp, Calendar, Database } from 'lucide-react';
 import type { Customer } from '@/lib/database-operations';
 import { useDataCache, usePrefetch } from '@/hooks/use-data-cache';
+import { SHOW_MOCK_BUTTONS } from '@/lib/feature-flags';
 
 export default function CustomersPage() {
   const searchParams = useSearchParams();
@@ -21,7 +22,7 @@ export default function CustomersPage() {
   const [editingCustomer, setEditingCustomer] = useState<Customer | undefined>();
   const [viewingCustomer, setViewingCustomer] = useState<Customer | undefined>();
   const [isElectron] = useState(() => typeof window !== 'undefined' && !!window.electronAPI);
-  const [isLoading, setIsLoading] = useState(false); // Start with false for optimistic navigation
+  const [isLoading, setIsLoading] = useState(false); 
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [allCustomerIds, setAllCustomerIds] = useState<number[]>([]);
@@ -31,7 +32,7 @@ export default function CustomersPage() {
     currentPage: 1,
     pageSize: 10
   });
-  const pageSize = 10; // Load 10 customers per page to match table pagination
+  const pageSize = 10; 
   const dataCache = useDataCache();
   const { prefetchProducts, prefetchSales } = usePrefetch();
 
@@ -42,20 +43,16 @@ export default function CustomersPage() {
     }
   }, []);
 
-  // Initial data load - optimistic approach
   useEffect(() => {
     if (isElectron) {
       loadCustomers();
     }
   }, [isElectron]);
-  
-  // Optimistic data loading on mount
+
   useEffect(() => {
     if (isElectron && dataCache) {
-      // Check if we have cached data first
       const cachedData = dataCache.getCachedCustomers(currentPage, pageSize, searchTerm);
       if (cachedData) {
-        // Show cached data immediately
         setCustomers(cachedData.items);
         setPaginationInfo({
           total: cachedData.total,
@@ -64,7 +61,8 @@ export default function CustomersPage() {
           pageSize: cachedData.pageSize
         });
       } else {
-        // No cache, show loading only if no data exists
+
+
         if (customers.length === 0) {
           setIsLoading(true);
         }
@@ -72,17 +70,12 @@ export default function CustomersPage() {
     }
   }, [isElectron, dataCache]);
 
-  // Reload customers when search term or page changes
-  // Previously this only reloaded if we already had data, which
-  // caused an issue when clearing the search while the list was empty.
-  // Now we always trigger a reload when filters change.
   useEffect(() => {
     if (isElectron) {
       loadCustomers();
     }
   }, [searchTerm, currentPage]);
 
-  // Highlight customer if specified in URL
   const highlightedCustomer = useMemo(() => {
     if (!highlightId) return null;
     return customers.find(customer => customer.id?.toString() === highlightId);
@@ -90,7 +83,6 @@ export default function CustomersPage() {
 
   useEffect(() => {
     if (highlightedCustomer && highlightedCustomer.id) {
-      // Scroll to highlighted customer after a short delay
       setTimeout(() => {
         const element = document.getElementById(`customer-${highlightedCustomer.id}`);
         if (element) {
@@ -105,7 +97,6 @@ export default function CustomersPage() {
   }, [highlightedCustomer]);
 
 
-  // Load all customer IDs for global selection
   const loadAllCustomerIds = async () => {
     try {
       const allCustomers = await window.electronAPI.database.customers.getAll();
@@ -157,7 +148,6 @@ export default function CustomersPage() {
         pageSize: result.pageSize || pageSize
       });
       
-      // Cache the result
       dataCache.setCachedCustomers(currentPage, pageSize, searchTerm, {
         items: result.customers,
         total: result.total,
@@ -168,7 +158,6 @@ export default function CustomersPage() {
         timestamp: Date.now()
       });
       
-      // Prefetch other pages in background
       setTimeout(() => {
         prefetchProducts();
         prefetchSales();
@@ -184,24 +173,20 @@ export default function CustomersPage() {
   const handleSaveCustomer = async (customerData: Omit<Customer, 'id' | 'created_at'>) => {
     try {
       if (editingCustomer?.id) {
-        // Update existing customer
         await window.electronAPI.database.customers.update(editingCustomer.id, customerData);
       } else {
-        // Create new customer
         await window.electronAPI.database.customers.create(customerData);
       }
       
-      // Clear cache and force refresh to ensure fresh data is loaded
       dataCache.invalidateCache('customers');
       await loadCustomers(true);
-      await loadAllCustomerIds(); // Refresh all customer IDs
+      await loadAllCustomerIds();
       
-      // Close form and reset editing state after successful save and reload
       setEditingCustomer(undefined);
       setIsFormOpen(false);
     } catch (error) {
       console.error('Error guardando cliente:', error);
-      throw error; // Re-throw to let the form handle the error
+      throw error;
     }
   };
 
@@ -318,7 +303,6 @@ export default function CustomersPage() {
       dataCache.invalidateCache('customers');
     } catch (error: any) {
       console.error('Error eliminando cliente:', error);
-      // Show error to user
       alert(error.message || 'Error al eliminar cliente. Porfavor intente de nuevo.');
     }
   };
@@ -329,7 +313,6 @@ export default function CustomersPage() {
     }
   };
 
-  // Function to fetch customers by their IDs for export functionality
   const getCustomersByIds = async (ids: number[]): Promise<Customer[]> => {
     try {
       const allCustomers = await window.electronAPI.database.customers.getAll();
@@ -352,7 +335,6 @@ export default function CustomersPage() {
     }
   };
 
-  // Calculate statistics
   const stats = {
     total: customers.length,
     withContact: customers.filter(c => c.contact_info && c.contact_info.trim()).length,
@@ -378,18 +360,16 @@ export default function CustomersPage() {
               </p>
             </div>
             <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                onClick={addMockCustomers} 
-                disabled={!isElectron}
-              >
-                <Database className="mr-2 h-4 w-4" />
-                Añadir clientes de prueba
-              </Button>
               <Button onClick={handleAddCustomer} disabled={!isElectron}>
                 <Plus className="mr-2 h-4 w-4" />
                 Añadir Cliente
               </Button>
+              {SHOW_MOCK_BUTTONS && (
+                <Button onClick={addMockCustomers} variant="outline" disabled={!isElectron}>
+                  <Database className="mr-2 h-4 w-4" />
+                  Cargar datos de prueba
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -410,6 +390,7 @@ export default function CustomersPage() {
         ) : isLoading && customers.length === 0 ? (
           <CustomersSkeleton />
         ) : (
+          <div>
           <EnhancedCustomersTable
             customers={customers}
             highlightId={highlightId}
@@ -427,6 +408,7 @@ export default function CustomersPage() {
             onSelectAll={handleSelectAll}
             onGetCustomersByIds={getCustomersByIds}
           />
+          </div>
         )}
 
         {/* Customer Form Dialog */}

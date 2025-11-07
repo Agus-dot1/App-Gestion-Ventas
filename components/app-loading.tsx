@@ -34,7 +34,8 @@ export function AppLoading({ onLoadingComplete }: AppLoadingProps) {
     const timer = setInterval(() => {
       progressValue += Math.floor(Math.random() * 8) + 3;
       
-      // Update current step based on progress
+
+
       const stepIndex = Math.floor((progressValue / 100) * loadingSteps.length);
       setCurrentStep(Math.min(stepIndex, loadingSteps.length - 1));
       setProgress(progressValue);

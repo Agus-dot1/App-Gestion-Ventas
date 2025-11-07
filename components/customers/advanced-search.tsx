@@ -10,14 +10,16 @@ import { Search, X, User, Mail, Building, Phone, MapPin, CreditCard } from 'luci
 import type { Customer } from '@/lib/database-operations';
 import { cn } from '@/lib/utils';
 
-// Fuzzy matching utility
+
+
 function fuzzyMatch(text: string, query: string): { score: number; matches: number[] } {
   if (!query) return { score: 0, matches: [] };
   
   const textLower = text.toLowerCase();
   const queryLower = query.toLowerCase();
   
-  // Exact match gets highest score
+
+
   if (textLower.includes(queryLower)) {
     const index = textLower.indexOf(queryLower);
     return {
@@ -26,7 +28,8 @@ function fuzzyMatch(text: string, query: string): { score: number; matches: numb
     };
   }
   
-  // Fuzzy matching
+
+
   let score = 0;
   let matches: number[] = [];
   let queryIndex = 0;
@@ -39,7 +42,8 @@ function fuzzyMatch(text: string, query: string): { score: number; matches: numb
     }
   }
   
-  // Bonus for consecutive matches
+
+
   let consecutiveBonus = 0;
   for (let i = 1; i < matches.length; i++) {
     if (matches[i] === matches[i - 1] + 1) {
@@ -85,7 +89,8 @@ export function AdvancedSearch({
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Generate suggestions based on query
+
+
   useEffect(() => {
     if (!query.trim()) {
       setSuggestions([]);
@@ -96,11 +101,13 @@ export function AdvancedSearch({
     const queryTrimmed = query.trim();
 
     customers.forEach(customer => {
-      // DNI suggestions (highest priority for exact matches)
+
+
       if (customer.dni) {
         const dniMatch = fuzzyMatch(customer.dni, queryTrimmed);
         if (dniMatch.score > 0) {
-          // Give DNI matches the highest score boost for exact matches
+
+
           const scoreBoost = customer.dni === queryTrimmed ? 50 : 20;
           newSuggestions.push({
             id: `dni-${customer.id}`,
@@ -115,7 +122,8 @@ export function AdvancedSearch({
         }
       }
 
-      // Customer name suggestions
+
+
       const nameMatch = fuzzyMatch(customer.name, queryTrimmed);
       if (nameMatch.score > 0) {
         newSuggestions.push({
@@ -130,7 +138,8 @@ export function AdvancedSearch({
         });
       }
 
-      // Email suggestions
+
+
       if (customer.email) {
         const emailMatch = fuzzyMatch(customer.email, queryTrimmed);
         if (emailMatch.score > 0) {
@@ -148,7 +157,8 @@ export function AdvancedSearch({
       }
 
 
-      // Phone suggestions
+
+
       if (customer.phone) {
         const phoneMatch = fuzzyMatch(customer.phone, queryTrimmed);
         if (phoneMatch.score > 0) {
@@ -167,7 +177,8 @@ export function AdvancedSearch({
 
     });
 
-    // Sort by score and limit results
+
+
     const sortedSuggestions = newSuggestions
       .sort((a, b) => b.score - a.score)
       .slice(0, 10);
@@ -334,7 +345,8 @@ export function AdvancedSearch({
   );
 }
 
-// Enhanced search function with fuzzy matching
+
+
 export function searchCustomersWithFuzzy(customers: Customer[], query: string): Customer[] {
   if (!query.trim()) return customers;
 
@@ -344,38 +356,45 @@ export function searchCustomersWithFuzzy(customers: Customer[], query: string): 
   customers.forEach(customer => {
     let totalScore = 0;
     
-    // Search in DNI (highest weight for exact matches)
+
+
     if (customer.dni) {
       const dniMatch = fuzzyMatch(customer.dni, queryTrimmed);
-      // Give DNI matches extremely high weight, especially for exact matches
+
+
       const dniWeight = customer.dni === queryTrimmed ? 10 : 5;
       totalScore += dniMatch.score * dniWeight;
     }
     
-    // Search in name (high weight)
+
+
     const nameMatch = fuzzyMatch(customer.name, queryTrimmed);
     totalScore += nameMatch.score * 3;
     
-    // Search in email
+
+
     if (customer.email) {
       const emailMatch = fuzzyMatch(customer.email, queryTrimmed);
       totalScore += emailMatch.score * 2;
     }
     
     
-    // Search in phone
+
+
     if (customer.phone) {
       const phoneMatch = fuzzyMatch(customer.phone, queryTrimmed);
       totalScore += phoneMatch.score;
     }
     
-    // Search in address
+
+
     if (customer.address) {
       const addressMatch = fuzzyMatch(customer.address, queryTrimmed);
       totalScore += addressMatch.score;
     }
     
-    // Search in notes
+
+
     if (customer.notes) {
       const notesMatch = fuzzyMatch(customer.notes, queryTrimmed);
       totalScore += notesMatch.score;

@@ -1,7 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CLIENT_ALERT_REGEX = exports.STOCK_LOW_REGEX = exports.CATEGORY = exports.IPC_NOTIFICATIONS = void 0;
-// Canales IPC centralizados (mantener nombres existentes)
+
+
 exports.IPC_NOTIFICATIONS = {
     list: 'notifications:list',
     markRead: 'notifications:markRead',
@@ -12,15 +13,20 @@ exports.IPC_NOTIFICATIONS = {
     existsTodayWithKey: 'notifications:existsTodayWithKey',
     emitTestEvent: 'notifications:emitTestEvent',
     event: 'notifications:event',
-    // Nuevo canal: borrar por mensaje hoy
+
+
     deleteByMessageToday: 'notifications:deleteByMessageToday',
-    // Nuevo canal: borrar por clave hoy
+
+
     deleteByKeyToday: 'notifications:deleteByKeyToday',
-    // Nuevo canal: limpiar todas las notificaciones activas
+
+
     clearAll: 'notifications:clearAll',
-    // Nuevo canal: listar archivadas
+
+
     listArchived: 'notifications:listArchived',
-    // Nuevo canal: vaciar archivadas (eliminación permanente)
+
+
     purgeArchived: 'notifications:purgeArchived',
 };
 exports.CATEGORY = {
@@ -29,6 +35,7 @@ exports.CATEGORY = {
     stock: 'stock',
 };
 exports.STOCK_LOW_REGEX = /Stock bajo:\s*(.+?)\s*—\s*qued[oó] en\s*(\d+)\s*unidad(?:es)?(?:\s*—\s*\$?\s*([\d.,]+))?(?:\s*—\s*(.+))?/i;
-// Detecta mensajes de cuotas (vencidas o próximas) para clasificar como cliente
+
+
 exports.CLIENT_ALERT_REGEX = /(cuota|cuotas)/i;
-//# sourceMappingURL=constants.js.map
+

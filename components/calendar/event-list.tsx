@@ -35,7 +35,8 @@ export function EventList({
   selectedEvents = [], 
   onSelectEvent 
 }: EventListProps) {
-  // Sort events by date by default
+
+
   const [sortConfig, setSortConfig] = useState<{ key: keyof CalendarEvent; direction: 'asc' | 'desc' }>({
     key: 'date',
     direction: 'asc'
@@ -45,12 +46,14 @@ export function EventList({
     const aValue = a[sortConfig.key];
     const bValue = b[sortConfig.key];
     
-    // Handle undefined values
+
+
     if (aValue === undefined && bValue === undefined) return 0;
     if (aValue === undefined) return sortConfig.direction === 'asc' ? 1 : -1;
     if (bValue === undefined) return sortConfig.direction === 'asc' ? -1 : 1;
     
-    // Handle different types
+
+
     if (typeof aValue === 'string' && typeof bValue === 'string') {
       return sortConfig.direction === 'asc'
         ? aValue.localeCompare(bValue)

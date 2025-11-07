@@ -43,7 +43,8 @@ export function DashboardSkeleton() {
           <CardContent>
             <div className="h-80 flex items-end justify-between px-4 pb-4">
               {Array.from({ length: 12 }).map((_, i) => {
-                // Use deterministic heights to avoid hydration mismatch
+
+
                 const heights = [120, 80, 150, 100, 180, 90, 160, 110, 140, 70, 130, 95];
                 return (
                   <Skeleton 

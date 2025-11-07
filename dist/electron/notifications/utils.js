@@ -205,7 +205,8 @@ class Debouncer {
                 clearTimeout(timer);
                 this.timers.delete(key);
             }
-            // Clear any pending promise
+
+
             if (this.pending.has(key)) {
                 this.pending.delete(key);
             }
@@ -271,4 +272,4 @@ class NotificationKeyGenerator {
     }
 }
 exports.NotificationKeyGenerator = NotificationKeyGenerator;
-//# sourceMappingURL=utils.js.map
+

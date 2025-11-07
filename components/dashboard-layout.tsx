@@ -7,12 +7,14 @@ interface DashboardLayoutProps {
 }
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
-  // Initialize with false to match server-side rendering
+
+
   const [reduceAnimations, setReduceAnimations] = useState<boolean>(false)
   const [isHydrated, setIsHydrated] = useState(false)
 
   useEffect(() => {
-    // Set hydrated flag and read from localStorage after hydration
+
+
     setIsHydrated(true)
     const storedValue = localStorage.getItem('reduceAnimations') === 'true'
     setReduceAnimations(storedValue)

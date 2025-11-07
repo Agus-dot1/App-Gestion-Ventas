@@ -76,12 +76,14 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
     const fetchCustomerData = async () => {
       setIsLoading(true);
       try {
-        // Fetch all sales for this customer
+
+
         const allSales = await window.electronAPI.database.sales.getAll();
         const customerSales = allSales.filter(sale => sale.customer_id === customer.id);
         setSales(customerSales);
 
-        // Calculate statistics
+
+
         if (customerSales.length > 0) {
           const totalRevenue = customerSales.reduce((sum, sale) => sum + sale.total_amount, 0);
           const averageOrderValue = totalRevenue / customerSales.length;
@@ -104,7 +106,8 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
           });
         }
 
-        // Fetch active installments for this customer's installment-based sales
+
+
         const installmentPromises = customerSales
           .filter(sale => sale.payment_type === 'installments')
           .map(sale => window.electronAPI.database.installments.getBySale(sale.id!));

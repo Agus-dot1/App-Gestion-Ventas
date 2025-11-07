@@ -38,7 +38,8 @@ interface SidebarProps {
 
 
 export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
-  // Initialize from server-provided cookie to align SSR and client
+
+
   const [collapsed, setCollapsed] = useState<boolean>(initialCollapsed);
   const [searchOpen, setSearchOpen] = useState(false);
 
@@ -67,7 +68,8 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
   }, []);
 
 
-  // After mount, restore collapsed state from localStorage (first load may briefly flicker)
+
+
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem('sidebar:collapsed');
@@ -75,22 +77,27 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
         setCollapsed(stored === 'true');
       }
     } catch {
-      // ignore read errors
+
+
     }
   }, []);
 
-  // Persist collapsed state so it survives route changes and reloads
+
+
   useEffect(() => {
     try {
       window.localStorage.setItem('sidebar:collapsed', String(collapsed));
-      // Also persist to cookie so SSR matches on first load
+
+
       document.cookie = `sidebar-collapsed=${collapsed}; path=/; max-age=${60 * 60 * 24 * 365}`;
     } catch {
-      // ignore write errors (e.g., privacy mode)
+
+
     }
   }, [collapsed]);
 
-  // Keep a stable, normalized current path to avoid transient '/' on first paint
+
+
   useEffect(() => {
     try {
       const path = typeof window !== 'undefined' ? window.location.pathname : (pathname || '/');
@@ -98,7 +105,8 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
     } catch {
       setCurrentPath(pathname || '/');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+
   }, []);
 
   useEffect(() => {
@@ -108,7 +116,8 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
   }, [pathname]);
 
   const isRouteActive = useCallback((href: string) => {
-    // Normalize paths (remove trailing slash except for root)
+
+
     const normalize = (p: string) => (p && p !== '/' && p.endsWith('/') ? p.slice(0, -1) : p || '/');
     const current = normalize(currentPath || '/');
     const target = normalize(href);
@@ -124,10 +133,12 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
     setSearchOpen(prev => !prev);
   }, []);
 
-  // Set up global keyboard shortcut
+
+
   useSearchShortcut({ onOpenSearch: handleOpenSearch, onToggleSearch: handleToggleSearch });
 
-  // NEW: partners for expandable sales submenu
+
+
   const [partners, setPartners] = useState<any[]>([]);
   const [salesExpanded, setSalesExpanded] = useState(false);
   const [isElectron] = useState(() => typeof window !== 'undefined' && !!(window as any).electronAPI);
@@ -143,7 +154,8 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
     };
     if (isElectron) {
       loadPartners();
-      // Listen for global partner changes to refresh sidebar submenu
+
+
       const handler = () => {
         loadPartners();
       };
@@ -184,11 +196,16 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
       prefetch: prefetchSales
     },
     //{
-    //  title: 'Calendario',
-    //  icon: Calendar,
-    //  href: '/calendar',
-    //  prefetch: prefetchCalendar
-    //},
+
+
+
+
+
+
+
+
+
+
   ];
 
   return (
@@ -201,7 +218,7 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
         )}
       >
         {/* Header */}
-        <div className="flex h-16 items-center justify-between px-4 border-b">
+        <div className="flex h-16 short:h-14 items-center justify-between px-4 border-b">
           {!collapsed && (
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
@@ -213,7 +230,7 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
              variant="ghost"
              size="icon"
              onClick={() => setCollapsed(!collapsed)}
-             className="h-8 w-8"
+             className="h-8 w-8 short:h-7 short:w-7"
            >
              {collapsed ? (
                <ChevronRight className="h-4 w-4" />
@@ -224,12 +241,12 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarProps) {
         </div>
 
         {/* Search Bar */}
-        <div className="px-3 py-4 border-b">
+        <div className="px-3 py-4 short:py-2 border-b">
           <SearchTrigger onOpenSearch={handleOpenSearch} collapsed={collapsed} />
         </div>
 
         {/* Navigation */}
-        <ScrollArea className="flex-1 px-3 py-4">
+        <ScrollArea className="flex-1 px-3 py-4 short:py-2">
           <div className="space-y-2">
             {navigationItems.map((item) => {
               const Icon = item.icon;

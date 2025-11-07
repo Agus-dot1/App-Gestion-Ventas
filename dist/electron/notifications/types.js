@@ -1,7 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.NotificationDatabaseError = exports.NotificationValidationError = exports.NotificationError = void 0;
-// Error types for better error handling
+
+
 class NotificationError extends Error {
     constructor(message, code, context) {
         super(message);
@@ -25,4 +26,4 @@ class NotificationDatabaseError extends NotificationError {
     }
 }
 exports.NotificationDatabaseError = NotificationDatabaseError;
-//# sourceMappingURL=types.js.map
+

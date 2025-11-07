@@ -30,24 +30,30 @@ export function CalendarComponent({
   onEventClick
 }: CalendarComponentProps) {
   const [calendarDays, setCalendarDays] = useState<CalendarWeek[]>([]);
-  // Nombres cortos de días en español
+
+
   const spanishShortWeekdays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
-  // Generate calendar days for the current month
+
+
   const generateCalendarDays = useCallback(() => {
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
     
-    // First day of the month
+
+
     const firstDay = new Date(year, month, 1);
-    // Last day of the month
+
+
     const lastDay = new Date(year, month + 1, 0);
     
-    // Start from the first Sunday of the calendar view
+
+
     const startDate = new Date(firstDay);
     startDate.setDate(startDate.getDate() - firstDay.getDay());
     
-    // End at the last Saturday of the calendar view
+
+
     const endDate = new Date(lastDay);
     endDate.setDate(endDate.getDate() + (6 - lastDay.getDay()));
     
@@ -106,23 +112,28 @@ export function CalendarComponent({
     onEventClick(event);
   };
 
-  // Ref for the calendar grid
+
+
   const gridRef = useRef<HTMLDivElement>(null);
 
-  // Keyboard navigation
+
+
   const handleKeyDown = (e: React.KeyboardEvent, date: Date, weekIndex: number, dayIndex: number) => {
-    // Prevent default behavior for handled keys
+
+
     if (['Enter', ' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
       e.preventDefault();
     }
 
-    // Handle selection keys
+
+
     if (e.key === 'Enter' || e.key === ' ') {
       handleDateClick(date);
       return;
     }
 
-    // Handle navigation keys only if we have the grid ref
+
+
     if (!gridRef.current) return;
 
     const totalWeeks = calendarDays.length;
@@ -133,46 +144,55 @@ export function CalendarComponent({
 
     switch (e.key) {
       case 'ArrowUp':
-        // Move to the same day in the previous week
+
+
         newWeekIndex = Math.max(0, weekIndex - 1);
         break;
       case 'ArrowDown':
-        // Move to the same day in the next week
+
+
         newWeekIndex = Math.min(totalWeeks - 1, weekIndex + 1);
         break;
       case 'ArrowLeft':
-        // Move to the previous day
+
+
         if (dayIndex > 0) {
           newDayIndex = dayIndex - 1;
         } else if (weekIndex > 0) {
-          // Move to the last day of the previous week
+
+
           newWeekIndex = weekIndex - 1;
           newDayIndex = totalDays - 1;
         }
         break;
       case 'ArrowRight':
-        // Move to the next day
+
+
         if (dayIndex < totalDays - 1) {
           newDayIndex = dayIndex + 1;
         } else if (weekIndex < totalWeeks - 1) {
-          // Move to the first day of the next week
+
+
           newWeekIndex = weekIndex + 1;
           newDayIndex = 0;
         }
         break;
       case 'Home':
-        // Move to the first day of the current week
+
+
         newDayIndex = 0;
         break;
       case 'End':
-        // Move to the last day of the current week
+
+
         newDayIndex = totalDays - 1;
         break;
       default:
         return; // Do nothing for other keys
     }
 
-    // Find the new date cell and focus it
+
+
     const newDateCell = gridRef.current.querySelector(`[data-week="${newWeekIndex}"][data-day="${newDayIndex}"]`) as HTMLElement | null;
     if (newDateCell) {
       newDateCell.focus();

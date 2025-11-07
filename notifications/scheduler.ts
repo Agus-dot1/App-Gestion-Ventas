@@ -33,14 +33,16 @@ export function setupNotificationScheduler(getMainWindow: () => BrowserWindow | 
       if (overdue && overdue.length > 0) {
         overdue.forEach((inst: any) => {
           try {
-            // Validar que la cuota tenga datos válidos
+
+
             if (!inst.id || (!inst.customerName && !inst.customer_name) || !inst.balance || inst.balance <= 0) {
               return;
             }
             const customer = inst.customerName || inst.customer_name
             const msg = `Hay una cuota vencida — ${customer} — ${new Date(inst.due_date).toLocaleDateString('es-AR')} — $ ${inst.balance}`
             const key = `overdue|${inst.id}`
-            // Dedup consistente basado solo en clave semántica
+
+
             const existsActive = notificationOperations.existsActiveWithKey(key)
             const existsToday = notificationOperations.existsTodayWithKey(key)
             if (!existsActive && !existsToday) {
@@ -60,19 +62,22 @@ export function setupNotificationScheduler(getMainWindow: () => BrowserWindow | 
         })
       }
 
-      // Notificación de cuotas próximas a vencer
+
+
       const upcoming = installmentOperations.getUpcoming()
       if (upcoming && upcoming.length > 0) {
         upcoming.forEach((inst: any) => {
           try {
-            // Validar que la cuota tenga datos válidos
+
+
             if (!inst.id || (!inst.customerName && !inst.customer_name) || !inst.balance || inst.balance <= 0) {
               return;
             }
             const customer = inst.customerName || inst.customer_name
             const msg = `Cuota próxima a vencer — ${customer} — ${new Date(inst.due_date).toLocaleDateString('es-AR')} — ${inst.balance.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}`
             const key = `upcoming|${inst.id}`
-            // Dedup consistente basado solo en clave semántica
+
+
             const existsActive = notificationOperations.existsActiveWithKey(key)
             const existsToday = notificationOperations.existsTodayWithKey(key)
             if (!existsActive && !existsToday) {
@@ -101,7 +106,8 @@ export function setupNotificationScheduler(getMainWindow: () => BrowserWindow | 
         })
       }
 
-      // Recordatorio específico para ventas semanales (1 y 15): avisar un día antes
+
+
       try {
         const now = new Date()
         const tomorrow = new Date(now)
@@ -175,7 +181,8 @@ export function setupNotificationScheduler(getMainWindow: () => BrowserWindow | 
   setInterval(tick, intervalMs)
 }
 
-// Hook para notificaciones por stock bajo tras crear venta
+
+
 export function checkLowStockAfterSale(saleData: any, getMainWindow: () => BrowserWindow | null) {
   try {
     if (saleData && Array.isArray(saleData.items)) {
@@ -186,7 +193,8 @@ export function checkLowStockAfterSale(saleData: any, getMainWindow: () => Brows
             if (p && typeof p.stock === 'number' && p.stock <= 1) {
               const msg = `Stock bajo: ${p.name} — quedó en ${p.stock} unidad${p.stock === 1 ? '' : 'es'} — $${p.price}${p.category ? ` — ${p.category}` : ''}`
               const key = `stock_low|${p.id}`
-              // State-aware dedupe: only suppress if an active exists and no restock since last
+
+
               const existsActive = notificationOperations.existsActiveWithKey(key)
               const latest = notificationOperations.getLatestByKey(key)
               const productUpdatedAt = p.updated_at ? new Date(p.updated_at).getTime() : 0

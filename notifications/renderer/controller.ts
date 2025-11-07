@@ -13,7 +13,8 @@ export function subscribeNotifications(
   setState: (next: NotificationItem[] | ((prev: NotificationItem[]) => NotificationItem[])) => void,
 ): () => void {
   const unsub = notificationsAdapter.subscribe((incoming: NotificationItem) => {
-    // Use functional updater to avoid stale closures from getState
+
+
     setState((current) => sortByCreatedAsc(dedupe([...(current || []), incoming], current || [])))
   })
   return unsub

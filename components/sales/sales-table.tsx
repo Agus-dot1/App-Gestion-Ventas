@@ -18,7 +18,8 @@ import { SalesBulkOperations } from './sales-bulk-operations';
 import { SalesColumnToggle, type ColumnVisibility } from './sales-column-toggle';
 import dynamic from 'next/dynamic';
 
-// Lazy-load the sale detail modal to reduce initial bundle size
+
+
 const SaleDetailModal = dynamic(() => import('./sale-detail-modal').then(m => m.SaleDetailModal), {
   ssr: false,
 });
@@ -56,7 +57,8 @@ export function SalesTable({
   paginationInfo,
   serverSidePagination = false
 }: SalesTableProps) {
-  // Filters state controls filtering and sorting
+
+
   const [salesFilters, setSalesFilters] = useState<SalesFilters>({
     search: '',
     sortBy: 'date',
@@ -82,10 +84,12 @@ export function SalesTable({
   const [detailSale, setDetailSale] = useState<Sale | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
-  // Persist preferences in localStorage
+
+
   const SALES_PERSIST_KEY = 'salesTablePrefs';
 
-  // Load persisted preferences on mount
+
+
   useEffect(() => {
     try {
       const raw = typeof window !== 'undefined' ? localStorage.getItem(SALES_PERSIST_KEY) : null;
@@ -109,7 +113,8 @@ export function SalesTable({
     }
   }, []);
 
-  // Persist preferences when they change
+
+
   useEffect(() => {
     try {
       const prefs = {
@@ -128,7 +133,8 @@ export function SalesTable({
     }
   }, [salesFilters, columnVisibility]);
 
-  // Apply sorting consistently. For client-side, use filters helper; for server-side, sort current page.
+
+
   const visibleSales = useMemo(() => {
     if (!serverSidePagination) {
       return applySalesFilters(sales, salesFilters);
@@ -175,11 +181,13 @@ export function SalesTable({
     return sorted;
   }, [sales, salesFilters, serverSidePagination]);
 
-  // Client-side pagination state (10 per page)
+
+
   const [clientPage, setClientPage] = useState(1);
   const clientPageSize = 10;
 
-  // Reset client-side page when filters or data change
+
+
   useEffect(() => {
     setClientPage(1);
   }, [salesFilters, sales]);
@@ -198,7 +206,8 @@ export function SalesTable({
     if (deleteSale?.id) {
       await onDelete(deleteSale.id);
       setDeleteSale(null);
-      // Remove from selection if it was selected
+
+
       setSelectedSales(prev => {
         const newSet = new Set(prev);
         newSet.delete(deleteSale.id!);
@@ -220,8 +229,10 @@ export function SalesTable({
   };
 
   const handleSelectAll = (checked: boolean) => {
-    // Seleccionar todas las ventas visibles (todas las filtradas) en modo cliente.
-    // En modo server-side, visibleSales ya es la página actual.
+
+
+
+
     const list = visibleSales;
     if (checked) {
       setSelectedSales(new Set(list.map(s => s.id).filter(id => id !== undefined) as number[]));
@@ -231,12 +242,14 @@ export function SalesTable({
   };
 
   const isAllSelected = (() => {
-    // Considera todas las ventas visibles (filtradas) para el estado del checkbox.
+
+
     const list = visibleSales;
     return list.length > 0 && selectedSales.size === list.filter(s => s.id !== undefined).length;
   })();
 
-  // Sort function
+
+
   const handleSort = (key: keyof Sale) => {
     const mapKeyToFilterSortBy = (k: keyof Sale): SalesFilters['sortBy'] => {
       switch (k) {
@@ -266,7 +279,8 @@ export function SalesTable({
     }));
   };
 
-  // Get sort icon
+
+
   const getSortIcon = (key: keyof Sale) => {
     const mapKeyToFilterSortBy = (k: keyof Sale): SalesFilters['sortBy'] => {
       switch (k) {
@@ -389,11 +403,11 @@ export function SalesTable({
     const hasMultipleItems = items.length > 1;
 
     return (
-      <div className="flex items-center gap-2">
-        <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+      <div className="flex items-center gap-2 short:gap-1">
+        <div className="w-8 h-8 short:w-6 short:h-6 bg-primary/10 rounded-full flex items-center justify-center">
           <Package className="w-4 h-4 text-primary" />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 short:gap-1">
           <span className="font-medium">{firstProduct.product_name}</span>
           {hasMultipleItems && (
             <Popover>
@@ -467,7 +481,7 @@ export function SalesTable({
         <CardContent>
           {isLoading ? (
             <div className="rounded-md border">
-              <Table>
+              <Table className="short:[&>thead>tr>th]:py-2 short:[&>tbody>tr>td]:py-1 short:[&_*]:text-sm">
                 <TableHeader>
                   <TableRow>
                     {onBulkDelete && onBulkStatusUpdate && (
@@ -810,7 +824,7 @@ export function SalesTable({
                           {getPaymentStatusBadge(sale.payment_status)}
                         </TableCell>
                       )}
-                      <TableCell>
+                      <TableCell className="px-2 py-0">
                           <ButtonGroup>
                             <Button variant="outline" size="sm"  onClick={() => {
                               setDetailSale(sale);

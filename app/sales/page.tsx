@@ -9,12 +9,14 @@ import { SaleForm } from '@/components/sales/sale-form';
 import { SalesTable } from '@/components/sales/sales-table';
 import { InstallmentDashboard, InstallmentDashboardRef } from '@/components/sales/installments-dashboard/installment-dashboard';
 import { SalesSkeleton } from '@/components/skeletons/sales-skeleton';
-// Filters moved into SalesTable; page no longer imports filter components
+
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, CreditCard, TrendingUp, DollarSign, Calendar, Database, AlertTriangle } from 'lucide-react';
 import type { Sale, Product, SaleFormData } from '@/lib/database-operations';
 import { useDataCache, usePrefetch } from '@/hooks/use-data-cache';
 import { toast } from 'sonner';
+import { SHOW_MOCK_BUTTONS } from '@/lib/feature-flags';
 
 
 export default function SalesPage() {
@@ -49,13 +51,16 @@ export default function SalesPage() {
   const [refreshCounter, setRefreshCounter] = useState(0);
   const pageSize = 25;
 
-  // Initial data load - optimistic approach
+
+
   useEffect(() => {
     if (isElectron) {
-      // Check if we have cached data first
+
+
       const cachedData = dataCache.getCachedSales(currentPage, pageSize, searchTerm);
       if (cachedData) {
-        // Show cached data immediately
+
+
         setSales(cachedData.items);
         setPaginationInfo({
           total: cachedData.total,
@@ -64,16 +69,19 @@ export default function SalesPage() {
           pageSize: cachedData.pageSize
         });
       } else {
-        // No cache, show loading
+
+
         setIsLoading(true);
       }
 
-      // Load data in background
+
+
       loadSales();
       loadOverdueSales();
       loadPartners();
 
-      // Listen for partner changes to update filter list live
+
+
       const onPartnersChanged = () => {
         loadPartners();
       };
@@ -88,7 +96,8 @@ export default function SalesPage() {
     }
   }, [isElectron]);
 
-  // Open new sale form if action=new is present
+
+
   useEffect(() => {
     if (actionParam === 'new') {
       setEditingSale(undefined);
@@ -112,13 +121,15 @@ export default function SalesPage() {
     }
   }, [tabParam]);
 
-  // NEW: read partner selection from query
+
+
   useEffect(() => {
     const id = Number(partnerParam || '0');
     setSelectedPartnerId(Number.isFinite(id) ? id : 0);
   }, [partnerParam]);
 
-  // Handle search changes
+
+
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (isElectron) {
@@ -130,19 +141,23 @@ export default function SalesPage() {
     return () => clearTimeout(timeoutId);
   }, [searchTerm, isElectron]);
 
-  // Reload sales when page changes
+
+
   useEffect(() => {
     if (isElectron && sales.length > 0) {
-      // Only reload if we already have data loaded
+
+
       setTimeout(() => {
         loadSales();
       }, 0);
     }
   }, [currentPage]);
 
-  // Client-side filters live inside SalesTable now
 
-  // Highlight sale if specified in URL
+
+
+
+
   const highlightedSale = useMemo(() => {
     if (!highlightId) return null;
     return sales.find(sale => sale.id?.toString() === highlightId);
@@ -150,12 +165,14 @@ export default function SalesPage() {
 
   useEffect(() => {
     if (highlightedSale) {
-      // Scroll to highlighted sale after a short delay
+
+
       setTimeout(() => {
         const element = document.getElementById(`venta-${highlightedSale.id}`);
         if (element) {
           element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          // Nuevo efecto: pulso suave del fondo
+
+
           element.classList.add('bg-primary/10', 'animate-pulse');
           setTimeout(() => {
             element.classList.remove('bg-primary/10', 'animate-pulse');
@@ -169,12 +186,14 @@ export default function SalesPage() {
 
   const loadSales = async (forceRefresh = false) => {
     try {
-      // Check cache first and display immediately if available
+
+
       const cachedData = dataCache.getCachedSales(currentPage, pageSize, searchTerm);
       const isCacheExpired = dataCache.isSalesCacheExpired(currentPage, pageSize, searchTerm);
 
       if (cachedData && !forceRefresh) {
-        // Show cached data immediately
+
+
         setSales(cachedData.items);
         setPaginationInfo({
           total: cachedData.total,
@@ -184,18 +203,22 @@ export default function SalesPage() {
         });
         setIsLoading(false);
 
-        // If cache is not expired, we're done
+
+
         if (!isCacheExpired) {
-          // Prefetch other pages in background
+
+
           setTimeout(() => {
             prefetchCustomers();
             prefetchProducts();
           }, 100);
           return;
         }
-        // If expired, continue to refresh in background
+
+
       } else {
-        // No cache or forcing refresh, show loading only if no data exists
+
+
         if (sales.length === 0) {
           setIsLoading(true);
         }
@@ -213,7 +236,8 @@ export default function SalesPage() {
         pageSize: result.pageSize || pageSize
       });
 
-      // Cache the result
+
+
       dataCache.setCachedSales(currentPage, pageSize, searchTerm, {
         items: result.sales,
         total: result.total,
@@ -224,7 +248,8 @@ export default function SalesPage() {
         timestamp: Date.now()
       });
 
-      // Prefetch other pages in background
+
+
       setTimeout(() => {
         prefetchCustomers();
         prefetchProducts();
@@ -254,7 +279,8 @@ export default function SalesPage() {
   const handleSaveSale = async (saleData: SaleFormData) => {
     try {
       if (editingSale?.id) {
-        // Update existing sale - only pass fields that the update method accepts
+
+
         const updateData = {
           customer_id: saleData.customer_id,
           notes: saleData.notes
@@ -262,26 +288,32 @@ export default function SalesPage() {
         await window.electronAPI.database.sales.update(editingSale.id, updateData);
         toast.success('Venta actualizada correctamente');
       } else {
-        // Create new sale
+
+
         await window.electronAPI.database.sales.create(saleData);
         toast.success('Venta creada correctamente');
         
-        // Eliminado fallback de notificación de stock bajo: lo emite el proceso principal
+
+
       }
 
-      // Clear cache and force refresh to ensure fresh data is loaded
+
+
       dataCache.invalidateCache('sales');
-      // Also invalidate products so stock updates are reflected
+
+
       dataCache.invalidateCache('products');
       await loadSales(true);
       await loadOverdueSales();
 
-      // Refresh installment dashboard if it exists
+
+
       if (installmentDashboardRef.current) {
         installmentDashboardRef.current.refreshData();
       }
 
-      // Close form and reset editing state after successful save and reload
+
+
       setEditingSale(undefined);
       setIsFormOpen(false);
     } catch (error) {
@@ -299,11 +331,13 @@ export default function SalesPage() {
   const handleDeleteSale = async (saleId: number) => {
     try {
       await window.electronAPI.database.sales.delete(saleId);
-      // Clear cache to ensure fresh data is loaded
+
+
        setSales(prev => prev.filter(p => p.id !== saleId));
       dataCache.invalidateCache('sales');
 
-      // Refresh installment dashboard if it exists
+
+
       if (installmentDashboardRef.current) {
         installmentDashboardRef.current.refreshData();
       }
@@ -316,12 +350,14 @@ export default function SalesPage() {
 
   const handleBulkDeleteSales = async (saleIds: number[]) => {
     try {
-      // Delete each sale individually
+
+
       for (const saleId of saleIds) {
         await window.electronAPI.database.sales.delete(saleId);
         setSales(prev => prev.filter(p => p.id !== saleId));
       }
-      // Clear cache to ensure fresh data is loaded
+
+
       dataCache.invalidateCache('sales');
       toast.success(`Ventas eliminadas: ${saleIds.length}`);
     } catch (error) {
@@ -333,7 +369,8 @@ export default function SalesPage() {
 
   const handleBulkStatusUpdate = async (saleIds: number[], status: Sale['payment_status']) => {
     try {
-      // Update each sale's payment status
+
+
       for (const saleId of saleIds) {
         const sale = sales.find(s => s.id === saleId);
         if (sale) {
@@ -343,7 +380,8 @@ export default function SalesPage() {
           });
         }
       }
-      // Clear cache to ensure fresh data is loaded
+
+
       dataCache.invalidateCache('sales');
       await loadSales();
       await loadOverdueSales();
@@ -365,7 +403,8 @@ export default function SalesPage() {
     setIsFormOpen(open);
     if (!open) {
       setEditingSale(undefined);
-      // Remove action param from URL to avoid reopening on navigation
+
+
       const params = new URLSearchParams(Array.from(searchParams.entries()));
       params.delete('action');
       const query = params.toString();
@@ -373,7 +412,8 @@ export default function SalesPage() {
     }
   };
 
-  // Keyboard shortcut: Ctrl/Cmd + N opens new sale form
+
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
@@ -387,7 +427,8 @@ export default function SalesPage() {
 
   const addMockSales = async () => {
     try {
-      // First, get existing customers and products
+
+
       const customers = await window.electronAPI.database.customers.getAll();
       const products = await window.electronAPI.database.products.getAll();
 
@@ -526,12 +567,14 @@ export default function SalesPage() {
         }
       ];
 
-      // Create each mock sale
+
+
       for (const saleData of mockSales) {
         await window.electronAPI.database.sales.create(saleData);
       }
 
-      // Clear cache and reload data
+
+
       dataCache.invalidateCache('sales');
       await loadSales(true);
       await loadOverdueSales();
@@ -542,9 +585,14 @@ export default function SalesPage() {
     }
   };
 
-  // NUEVO: Crear venta en cuotas con primera cuota atrasada 1 mes
+
+
   const addOverdueInstallmentSale = async () => {
     try {
+      if (!(window as any)?.electronAPI?.database) {
+        toast.error('Entorno no soportado: APIs de Electron no disponibles');
+        return;
+      }
       const customers = await window.electronAPI.database.customers.getAll();
       const products = await window.electronAPI.database.products.getAll();
 
@@ -559,12 +607,11 @@ export default function SalesPage() {
           {
             product_id: products[0]?.id ?? null,
             quantity: 1,
-            unit_price: products[0]?.price,
+            unit_price: Number(products[0]?.price) || 10000, // Coerción robusta
           }
         ],
         payment_type: 'installments',
         number_of_installments: 6,
-
         notes: 'Venta de prueba con primera cuota vencida'
       };
 
@@ -577,7 +624,7 @@ export default function SalesPage() {
         const past = new Date(now);
         past.setMonth(now.getMonth() - 1);
         const pastDate = past.toISOString().split('T')[0];
-        await window.electronAPI.database.installments.update(first.id!, { due_date: pastDate });
+        await window.electronAPI.database.installments.update(first.id!, { due_date: pastDate, status: 'overdue' });
       }
 
       dataCache.invalidateCache('sales');
@@ -589,11 +636,77 @@ export default function SalesPage() {
       toast.success('Venta en cuotas con primera cuota atrasada creada');
     } catch (error) {
       console.error('Error creando venta atrasada:', error);
-      toast.error('Error creando la venta atrasada');
+      const message = error instanceof Error ? error.message : 'Error desconocido';
+      toast.error(`Error creando la venta atrasada: ${message}`);
     }
   };
 
-  // Calculate statistics
+
+
+  const addCurrentMonthPendingInstallment = async () => {
+    try {
+      if (!(window as any)?.electronAPI?.database) {
+        toast.error('Entorno no soportado: APIs de Electron no disponibles');
+        return;
+      }
+      const customers = await window.electronAPI.database.customers.getAll();
+      const products = await window.electronAPI.database.products.getAll();
+
+      if (customers.length === 0 || products.length === 0) {
+        toast.error('Necesitas al menos un cliente y un producto');
+        return;
+      }
+
+      const firstCustomer = customers[0]!;
+      const unitPrice = Number(products[0]?.price) || 10000;
+
+      const saleData: SaleFormData = {
+        customer_id: firstCustomer.id!,
+        items: [
+          { product_id: products[0]?.id ?? null, quantity: 1, unit_price: unitPrice }
+        ],
+        payment_type: 'installments',
+        number_of_installments: 1,
+        notes: 'Venta de prueba con cuota pendiente en el mes actual'
+      };
+
+      const saleId = await window.electronAPI.database.sales.create(saleData);
+
+      const installments = await window.electronAPI.database.installments.getBySale(saleId);
+      if (installments && installments.length > 0) {
+        const inst = installments[0];
+
+        const now = new Date();
+        const targetYear = now.getFullYear();
+        const targetMonth = now.getMonth();
+        const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+
+        const anchorDay = firstCustomer.payment_window === '1 to 10' ? 10
+          : firstCustomer.payment_window === '20 to 30' ? 30
+          : 30;
+
+        const day = Math.min(anchorDay, lastDay);
+        const dueDate = new Date(targetYear, targetMonth, day).toISOString().split('T')[0];
+
+        await window.electronAPI.database.installments.update(inst.id!, { due_date: dueDate, status: 'pending' });
+      }
+
+      dataCache.invalidateCache('sales');
+      await loadSales(true);
+      await loadOverdueSales();
+      if (installmentDashboardRef.current) {
+        installmentDashboardRef.current.refreshData();
+      }
+      toast.success('Cuota pendiente de este mes creada');
+    } catch (error) {
+      console.error('Error creando cuota pendiente este mes:', error);
+      const message = error instanceof Error ? error.message : 'Error desconocido';
+      toast.error(`Error creando la cuota pendiente: ${message}`);
+    }
+  };
+
+
+
   const stats = {
     totalSales: sales.length,
     totalRevenue: sales.reduce((sum, sale) => sum + sale.total_amount, 0),
@@ -603,23 +716,26 @@ export default function SalesPage() {
     pendingSales: sales.filter(sale => sale.payment_status === 'unpaid').length
   };
 
-  // Show skeleton before hydration to keep SSR and client initial render identical
+
+
   if (!hasHydrated) {
     return <SalesSkeleton />;
   }
 
-  // Show skeleton if not in Electron environment (after hydration)
+
+
   if (!isElectron) {
     return <SalesSkeleton />;
   }
 
   return (
     <DashboardLayout>
-      <div className="p-8">
+      <div className="p-8 short:p-4">
         {/* Main Content Tabs */}
         <Tabs value={activeTab} onValueChange={(value) => {
           setActiveTab(value);
-          // Refresh sales data when switching back to sales tab
+
+
           if (value === 'sales') {
             dataCache.invalidateCache('sales');
             loadSales();
@@ -633,10 +749,10 @@ export default function SalesPage() {
           </TabsList>
 
           <TabsContent value="sales" className="space-y-4">
-            <div className="mb-8">
+            <div className="mb-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h1 className="text-3xl font-bold tracking-tight">Ventas</h1>
+                  <h1 className="text-3xl short:text-2xl font-bold tracking-tight">Ventas</h1>
                   <p className="text-muted-foreground">
                     Acá podes gestionar todas tus ventas, crear nuevas, editar o eliminar las existentes.
                   </p>
@@ -646,14 +762,14 @@ export default function SalesPage() {
                     <Plus className="mr-2 h-4 w-4" />
                     Nueva venta
                   </Button>
-                  <Button
-                    onClick={addMockSales}
-                    variant="outline"
-                    className="gap-2"
-                  >
-                    <Database className="h-4 w-4" />
-                    Cargar Datos de Prueba
-                  </Button>
+                  {SHOW_MOCK_BUTTONS && (
+                    <>
+                    
+                    <Button onClick={addMockSales} variant="outline" className="gap-2">
+                      <Database className="h-4 w-4" />
+                      Cargar ventas de prueba
+                    </Button>
+                    
                   <Button
                     onClick={addOverdueInstallmentSale}
                     variant="outline"
@@ -662,6 +778,19 @@ export default function SalesPage() {
                     <AlertTriangle className="h-4 w-4" />
                     Crear venta en cuotas atrasada 1 mes
                   </Button>
+                  <Button
+                    onClick={addCurrentMonthPendingInstallment}
+                    variant="outline"
+                    className="gap-2"
+                  >
+                    <Calendar className="h-4 w-4" />
+                    Crear cuota impaga de este mes
+                  </Button>
+                  </>
+
+                    
+                  )}
+
                 </div>
               </div>
             </div>
@@ -736,6 +865,7 @@ export default function SalesPage() {
                 </CardContent>
               </Card>
             </div>
+            <div>
             <SalesTable
               key={refreshCounter}
               sales={(selectedPartnerId ? sales.filter(s => (s.partner_id || 0) === selectedPartnerId) : sales)}
@@ -750,6 +880,7 @@ export default function SalesPage() {
               paginationInfo={paginationInfo}
               serverSidePagination={false}
             />
+            </div>
           </TabsContent>
 
           <TabsContent value="installments" className="-m-8">

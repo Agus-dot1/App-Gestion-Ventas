@@ -19,8 +19,10 @@ async function listArchived(limit?: number): Promise<NotificationItem[]> {
   return Array.isArray(rows) ? rows.map(normalizeDbToUi) : []
 }
 
-// Keep a SINGLE underlying IPC listener and fan-out to subscribers.
-// This prevents MaxListenersExceededWarning when multiple components subscribe.
+
+
+
+
 const subscribers = new Set<(item: NotificationItem) => void>()
 let removeIpcListener: (() => void) | null = null
 
@@ -30,12 +32,14 @@ function ensureIpcListener() {
   if (!api || typeof api.onEvent !== 'function') return
   removeIpcListener = api.onEvent((payload: NotificationEventPayload) => {
     const item = normalizeEventToUi(payload)
-    // Fan out to all current subscribers safely
+
+
     for (const cb of Array.from(subscribers)) {
       try {
         cb(item)
       } catch {
-        // ignore subscriber errors
+
+
       }
     }
   })
@@ -91,9 +95,11 @@ async function emitTestEvent(payload: NotificationEventPayload): Promise<boolean
   return false
 }
 
-// removed unused existsTodayWithMessage
 
-// removed unused existsTodayWithKey
+
+
+
+
 
 async function deleteByMessageToday(message: string): Promise<void> {
   const api = getApi()
@@ -117,6 +123,8 @@ export const notificationsAdapter = {
   clearAll,
   purgeArchived,
   emitTestEvent,
-  // removed: existsTodayWithMessage,
-  // removed: existsTodayWithKey,
+
+
+
+
 }

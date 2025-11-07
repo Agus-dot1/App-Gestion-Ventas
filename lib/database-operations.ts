@@ -25,16 +25,19 @@ function saleNumberExists(candidate: string): boolean {
 }
 
 function generateUniqueSaleNumber(): string {
-  // Try base first (sequential per day)
+
+
   const base = generateSaleNumberBase();
   if (!saleNumberExists(base)) return base;
-  // Add a short random suffix until unique
+
+
   for (let i = 0; i < 5; i++) {
     const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
     const candidate = `${base}-${suffix}`;
     if (!saleNumberExists(candidate)) return candidate;
   }
-  // Fallback: timestamp-based code
+
+
   return `VENTA-${Date.now()}`;
 }
 
@@ -49,7 +52,8 @@ function ensureUniqueSaleNumber(preferred?: string): string {
   return `VENTA-${Date.now()}`;
 }
 
-// --- Reference code (numeric) generation helpers ---
+
+
 function referenceCodeExists(candidate: string): boolean {
   const db = getDatabase();
   const row = db.prepare('SELECT 1 FROM sales WHERE reference_code = ?').get(candidate);
@@ -65,7 +69,8 @@ function generateNumericReferenceCode(length: number = 8): string {
 }
 
 function generateUniqueReferenceCode(): string {
-  // Try 8 digits; on collision, increase length
+
+
   let attempts = 0;
   while (attempts < 10) {
     const length = attempts < 3 ? 8 : attempts < 6 ? 9 : 12;
@@ -73,7 +78,8 @@ function generateUniqueReferenceCode(): string {
     if (!referenceCodeExists(candidate)) return candidate;
     attempts++;
   }
-  // Fallback to timestamp
+
+
   return String(Date.now());
 }
 
@@ -82,14 +88,15 @@ function ensureUniqueReferenceCode(preferred?: string): string {
   return generateUniqueReferenceCode();
 }
 
-// Normalize legacy/variant payment window values to the canonical union
-function normalizePaymentWindow(value?: string): '1 to 10' | '20 to 30' | undefined {
+
+
+function normalizePaymentWindow(value?: string): '1 to 10' | '10 to 20' | '20 to 30' | undefined {
   if (!value) return undefined;
-  if (value === '10 to 20') return '1 to 10';
-  if (value === '10 a 20' || value === '10-20' || value === '10-20') return '1 to 10';
+  if (value === '10 to 20') return '10 to 20';
+  if (value === '10 a 20' || value === '10-20') return '10 to 20';
   if (value === '1 a 10' || value === '1 al 10') return '1 to 10';
   if (value === '20 a 30' || value === '20 al 30') return '20 to 30';
-  if (value === '1 to 10' || value === '20 to 30') return value as '1 to 10' | '20 to 30';
+  if (value === '1 to 10' || value === '10 to 20' || value === '20 to 30') return value as '1 to 10' | '10 to 20' | '20 to 30';
   return undefined;
 }
 
@@ -107,7 +114,7 @@ export interface Customer {
   secondary_phone?: string;
   address?: string;
   notes?: string;
-  payment_window?: '1 to 10' | '20 to 30';
+  payment_window?: '1 to 10' | '10 to 20' | '20 to 30';
   contact_info?: string;
   created_at?: string;
   updated_at?: string;
@@ -178,8 +185,8 @@ export interface Sale {
   payment_type: 'cash' | 'installments';
   payment_method?: 'cash' | 'bank_transfer';
   payment_status: 'paid' | 'unpaid' | 'overdue';
-  payment_period?: '1 to 10' | '20 to 30';
-  period_type?: 'monthly' | 'weekly';
+  payment_period?: '1 to 10' | '10 to 20' | '20 to 30';
+  period_type?: 'monthly' | 'weekly' | 'biweekly';
   number_of_installments?: number;
   installment_amount?: number;
   installment_payment_method?: 'cash' | 'credit_card' | 'debit_card' | 'bank_transfer' | 'check';
@@ -221,13 +228,14 @@ export interface SaleFormData {
   }>;
   payment_type: 'cash' | 'installments';
   payment_method?: 'cash' | 'bank_transfer';
-  period_type?: 'monthly' | 'weekly';
-  payment_period?: '1 to 10' | '20 to 30';
+  period_type?: 'monthly' | 'weekly' | 'biweekly';
+  payment_period?: '1 to 10' | '10 to 20' | '20 to 30';
   number_of_installments?: number;
   notes?: string;
 }
 
-// Database operation implementations
+
+
 export const customerOperations = {
   getAll: (): Customer[] => {
     const db = getDatabase();
@@ -281,7 +289,8 @@ export const customerOperations = {
     };
   },
 
-  // Optimized search function
+
+
   search: (searchTerm: string, limit: number = 50): Customer[] => {
     const db = getDatabase();
     if (!searchTerm.trim()) return [];
@@ -311,11 +320,14 @@ export const customerOperations = {
     const exactMatch = searchTerm.trim();
     
     const rows = stmt.all(
-      // WHERE clause (5 placeholders)
+
+
       searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
-      // ORDER BY CASE (dni = ?, then 4 LIKE ?)
+
+
       exactMatch, exactPattern, exactPattern, exactPattern, exactPattern,
-      // LIMIT
+
+
       limit
     ) as Customer[];
     return rows.map(normalizeCustomer);
@@ -395,7 +407,8 @@ export const customerOperations = {
     
     if (fields.length === 0) return;
     
-    // Always update the updated_at timestamp
+
+
     fields.push('updated_at = CURRENT_TIMESTAMP');
     
     values.push(id);
@@ -406,7 +419,8 @@ export const customerOperations = {
   delete: (id: number): { deletedSales: Sale[] } => {
     const db = getDatabase();
     
-    // Get all related sales for this customer before deleting them
+
+
     const salesStmt = db.prepare(`
       SELECT s.*, c.name as customer_name
       FROM sales s
@@ -416,13 +430,17 @@ export const customerOperations = {
     `);
     const deletedSales = salesStmt.all(id) as Sale[];
     
-    // Delete all related sales for this customer
-    // This will automatically cascade to delete installments, sale_items, and payment_transactions
-    // due to the ON DELETE CASCADE constraints in the database schema
+
+
+
+
+
+
     const deleteSalesStmt = db.prepare('DELETE FROM sales WHERE customer_id = ?');
     deleteSalesStmt.run(id);
     
-    // Now delete the customer
+
+
     const stmt = db.prepare('DELETE FROM customers WHERE id = ?');
     const result = stmt.run(id);
     
@@ -465,9 +483,11 @@ export const customerOperations = {
     const db = getDatabase();
     try {
       db.exec('BEGIN');
-      // Eliminar ventas primero para evitar violaciones de claves foráneas
+
+
       db.prepare('DELETE FROM sales').run();
-      // Luego eliminar clientes
+
+
       db.prepare('DELETE FROM customers').run();
       db.exec('COMMIT');
     } catch (e) {
@@ -476,11 +496,13 @@ export const customerOperations = {
     }
   },
 
-  // Insertar cliente preservando su ID desde un backup
+
+
   insertFromBackup: (customer: Customer): number => {
     const db = getDatabase();
     if (customer.id === undefined || customer.id === null) {
-      // Fallback: crear sin ID explícito si falta
+
+
       return customerOperations.create({
         name: customer.name,
         dni: customer.dni,
@@ -498,7 +520,7 @@ export const customerOperations = {
       INSERT INTO customers (
         id, name, dni, email, phone, secondary_phone, address, notes, contact_info, payment_window,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
     `);
     const result = stmt.run(
       customer.id,
@@ -544,11 +566,13 @@ export const productOperations = {
       params = [searchPattern, searchPattern, searchPattern];
     }
     
-    // Get total count for pagination
+
+
     const countStmt = db.prepare(`SELECT COUNT(*) as total FROM products ${whereClause}`);
     const { total } = countStmt.get(...params) as { total: number };
     
-    // Get paginated results
+
+
     const stmt = db.prepare(`
       SELECT * FROM products 
       ${whereClause}
@@ -665,7 +689,8 @@ export const productOperations = {
       values.push(product.is_active ? 1 : 0);
     }
     
-    // Always update the timestamp when modifying a product
+
+
     fields.push("updated_at = datetime('now')");
 
     if (fields.length === 0) return;
@@ -678,8 +703,10 @@ export const productOperations = {
   delete: (id: number): void => {
     const db = getDatabase();
     
-    // Delete the product
-    // The foreign key constraint will automatically set product_id to NULL in sale_items
+
+
+
+
     const stmt = db.prepare('DELETE FROM products WHERE id = ?');
     stmt.run(id);
   },
@@ -715,13 +742,15 @@ export const productOperations = {
     stmt.run();
   },
 
-  // Insertar producto preservando su ID desde un backup
+
+
   insertFromBackup: (product: Product): number => {
     const db = getDatabase();
     if (product.id === undefined || product.id === null) {
       return productOperations.create({
         name: product.name,
         price: product.price,
+        cost_price: product.cost_price,
         description: product.description,
         category: product.category,
         stock: product.stock,
@@ -730,13 +759,14 @@ export const productOperations = {
     }
     const stmt = db.prepare(`
       INSERT INTO products (
-        id, name, price, description, category, stock, is_active, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))
+        id, name, price, cost_price, description, category, stock, is_active, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))
     `);
     const result = stmt.run(
       product.id,
       product.name,
       product.price,
+      (product.cost_price ?? null),
       product.description || null,
       product.category || null,
       product.stock ?? null,
@@ -751,7 +781,8 @@ export const productOperations = {
 export const partnerOperations = {
   getAll: (): Partner[] => {
     const db = getDatabase();
-    // diagnóstico: listar conteo y muestra de partners
+
+
     try {
       const rows = db.prepare('SELECT id, name, is_active FROM partners ORDER BY name').all() as Array<{ id: number; name: string; is_active: number }>;
       console.log('partners:getAll ejecutándose en el proceso', process.type, 'count:', rows.length);
@@ -797,13 +828,16 @@ export const partnerOperations = {
 
   delete: (id: number): void => {
     const db = getDatabase();
-    // Hard delete: disassociate sales and remove partner row atomically
+
+
     try {
       db.exec('BEGIN');
-      // Disassociate any sales referencing this partner
+
+
       const clearSales = db.prepare('UPDATE sales SET partner_id = NULL WHERE partner_id = ?');
       clearSales.run(id);
-      // Remove partner row
+
+
       const del = db.prepare('DELETE FROM partners WHERE id = ?');
       del.run(id);
       db.exec('COMMIT');
@@ -848,7 +882,8 @@ export const saleOperations = {
       params = [searchPattern, searchPattern, searchPattern, searchPattern];
     }
     
-    // Get total count for pagination
+
+
     const countStmt = db.prepare(`
       SELECT COUNT(*) as total 
       FROM sales s
@@ -858,7 +893,8 @@ export const saleOperations = {
     `);
     const { total } = countStmt.get(...params) as { total: number };
     
-    // Get paginated results
+
+
     const stmt = db.prepare(`
       SELECT s.*, c.name as customer_name, p.name as partner_name
       FROM sales s
@@ -871,7 +907,8 @@ export const saleOperations = {
     
     const sales = stmt.all(...params, pageSize, offset) as Sale[];
     
-    // Get items for each sale
+
+
     const itemsStmt = db.prepare('SELECT * FROM sale_items WHERE sale_id = ?');
     sales.forEach(sale => {
       if (sale.id) {
@@ -984,7 +1021,8 @@ export const saleOperations = {
       params.push(searchPattern, searchPattern, searchPattern, searchPattern);
     }
     
-    // Get total count for pagination
+
+
     const countStmt = db.prepare(`
       SELECT COUNT(*) as total 
       FROM sales s
@@ -994,7 +1032,8 @@ export const saleOperations = {
     `);
     const { total } = countStmt.get(...params) as { total: number };
     
-    // Get paginated results
+
+
     const stmt = db.prepare(`
       SELECT s.*, c.name as customer_name, p.name as partner_name
       FROM sales s
@@ -1007,7 +1046,8 @@ export const saleOperations = {
     
     const sales = stmt.all(...params, pageSize, offset) as Sale[];
     
-    // Get items for each sale
+
+
     const itemsStmt = db.prepare('SELECT * FROM sale_items WHERE sale_id = ?');
     sales.forEach(sale => {
       sale.items = itemsStmt.all(sale.id) as SaleItem[];
@@ -1025,25 +1065,29 @@ export const saleOperations = {
   create: (saleData: SaleFormData): number => {
     const db = getDatabase();
     
-    // Calculate totals
+
+
     const subtotal = saleData.items.reduce((sum, item) =>
       sum + (item.quantity * item.unit_price), 0
     );
     const totalAmount = subtotal;
     
-    // Generate unique sale number
+
+
     const saleNumber = generateUniqueSaleNumber();
-    // Generate unique numeric reference code
+
+
     const referenceCode = generateUniqueReferenceCode();
     
-    // Insert sale
+
+
     const saleStmt = db.prepare(`
       INSERT INTO sales (
         customer_id, partner_id, sale_number, reference_code, date, due_date, subtotal, tax_amount,
-        discount_amount, total_amount, payment_type, payment_method, payment_status, period_type,
+        discount_amount, total_amount, payment_type, payment_method, payment_status, payment_period, period_type,
         number_of_installments, installment_amount, advance_installments,
         transaction_type, status, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
     `);
     
     const installmentAmount = saleData.payment_type === 'installments' && saleData.number_of_installments
@@ -1062,6 +1106,7 @@ export const saleOperations = {
       saleData.payment_type,
       saleData.payment_method || null,
       saleData.payment_type === 'cash' ? 'paid' : 'unpaid',
+      saleData.payment_type === 'installments' ? (saleData.payment_period || null) : null,
       saleData.period_type || null,
       saleData.number_of_installments || null,
       installmentAmount,
@@ -1072,7 +1117,8 @@ export const saleOperations = {
     
     const saleId = saleResult.lastInsertRowid as number;
     
-    // Insert sale items
+
+
     const itemStmt = db.prepare(`
       INSERT INTO sale_items (
         sale_id, product_id, quantity, unit_price, discount_per_item,
@@ -1104,43 +1150,53 @@ export const saleOperations = {
         productName
       );
 
-      // Decrement product stock if the item references a catalog product
+
+
       if (item.product_id != null) {
         try {
           const product = productOperations.getById(item.product_id);
-          // Only update stock if it exists (not null/undefined)
+
+
           if (product && product.stock !== undefined && product.stock !== null) {
             const newStock = Math.max(0, (product.stock as number) - item.quantity);
             productOperations.update(item.product_id, { stock: newStock });
           }
         } catch (e) {
-          // If product lookup fails, skip stock update to avoid breaking sale creation
+
+
         }
       }
     }
     
-    // Create installments if needed
+
+
     if (saleData.payment_type === 'installments' && saleData.number_of_installments) {
       const monthlyAmount = Math.round(totalAmount / saleData.number_of_installments);
 
-      // Determine customer's payment window anchor day (end of window)
+
+
       const customerWindowRow = db.prepare('SELECT payment_window FROM customers WHERE id = ?').get(saleData.customer_id) as { payment_window?: string } | undefined;
-      // Use customer's payment window if defined; otherwise fallback to saleData.payment_period
+
+
       const fallbackPeriod = saleData.payment_period;
       const anchorDay = customerWindowRow?.payment_window === '1 to 10' ? 10
+        : customerWindowRow?.payment_window === '10 to 20' ? 20
         : customerWindowRow?.payment_window === '20 to 30' ? 30
         : fallbackPeriod === '1 to 10' ? 10
+        : fallbackPeriod === '10 to 20' ? 20
         : fallbackPeriod === '20 to 30' ? 30
         : 30; // default to end-of-month window
 
-      // If customer has no defined window but sale provided a period, persist it for future sales
-      const needsCustomerWindowUpdate = (!customerWindowRow?.payment_window || (customerWindowRow.payment_window !== '1 to 10' && customerWindowRow.payment_window !== '20 to 30'))
-        && (fallbackPeriod === '1 to 10' || fallbackPeriod === '20 to 30');
+
+
+      const needsCustomerWindowUpdate = (!customerWindowRow?.payment_window || (customerWindowRow.payment_window !== '1 to 10' && customerWindowRow.payment_window !== '10 to 20' && customerWindowRow.payment_window !== '20 to 30'))
+        && (fallbackPeriod === '1 to 10' || fallbackPeriod === '10 to 20' || fallbackPeriod === '20 to 30');
       if (needsCustomerWindowUpdate) {
         try {
           customerOperations.update(saleData.customer_id, { payment_window: fallbackPeriod });
         } catch {
-          // Do not block sale creation if updating the customer fails
+
+
         }
       }
 
@@ -1153,7 +1209,8 @@ export const saleOperations = {
 
       const nowDate = new Date();
       for (let i = 1; i <= saleData.number_of_installments; i++) {
-        // Compute due date anchored to the customer's window within the target month
+
+
         const targetMonthIndex = nowDate.getMonth() + i;
         const targetYear = nowDate.getFullYear() + Math.floor(targetMonthIndex / 12);
         const normalizedMonth = ((targetMonthIndex % 12) + 12) % 12;
@@ -1179,7 +1236,8 @@ export const saleOperations = {
     return saleId;
   },
 
-  // Import a sale from backup data that may not include items
+
+
   importFromBackup: (sale: Partial<Sale> & { items?: Array<{
     product_id: number;
     quantity: number;
@@ -1188,7 +1246,8 @@ export const saleOperations = {
   }> }): number => {
     const db = getDatabase();
 
-    // Ensure referenced customer exists; if not, create a stub to satisfy FK
+
+
     if (sale.customer_id == null) {
       throw new Error('customer_id es requerido para importar una venta');
     }
@@ -1218,14 +1277,15 @@ export const saleOperations = {
     const transactionType: 'sale' = 'sale';
     const notes = sale.notes || null;
 
-    // Insert sale row
+
+
     const saleStmt = db.prepare(`
       INSERT INTO sales (
         customer_id, sale_number, reference_code, date, due_date, subtotal, tax_amount,
-        discount_amount, total_amount, payment_type, payment_method, payment_status, period_type,
+        discount_amount, total_amount, payment_type, payment_method, payment_status, payment_period, period_type,
         number_of_installments, installment_amount, advance_installments,
         transaction_type, status, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
     `);
 
     const saleResult = saleStmt.run(
@@ -1239,6 +1299,7 @@ export const saleOperations = {
       paymentType,
       sale.payment_method || null,
       paymentStatus,
+      sale.payment_type === 'installments' ? (sale.payment_period || null) : null,
       sale.period_type || null,
       numberOfInstallments,
       installmentAmount,
@@ -1249,7 +1310,8 @@ export const saleOperations = {
 
     const saleId = saleResult.lastInsertRowid as number;
 
-    // Insert sale items if provided in backup
+
+
     if (sale.items && Array.isArray(sale.items) && sale.items.length > 0) {
       const itemStmt = db.prepare(`
         INSERT INTO sale_items (
@@ -1283,7 +1345,8 @@ export const saleOperations = {
       }
     }
 
-    // Recreate installments if needed based on sale fields
+
+
     if (paymentType === 'installments' && numberOfInstallments) {
       const monthlyAmount = installmentAmount || Math.round(totalAmount / numberOfInstallments);
       const installmentStmt = db.prepare(`
@@ -1293,7 +1356,8 @@ export const saleOperations = {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      // Determine customer's payment window anchor day (end of window)
+
+
       const customerWindowRow = db.prepare('SELECT payment_window FROM customers WHERE id = ?').get(sale.customer_id) as { payment_window?: string } | undefined;
       const anchorDay = customerWindowRow?.payment_window === '1 to 10' ? 10
         : customerWindowRow?.payment_window === '20 to 30' ? 30
@@ -1330,10 +1394,11 @@ export const saleOperations = {
     const fields = [];
     const values = [];
     
-    // Add updatable fields
+
+
     const updatableFields = [
       'customer_id', 'due_date', 'tax_amount', 'discount_amount',
-      'payment_status', 'status', 'notes'
+      'payment_status', 'status', 'notes', 'period_type', 'payment_period'
     ];
     
     for (const field of updatableFields) {
@@ -1556,13 +1621,15 @@ export const installmentOperations = {
   recordPayment: (installmentId: number, amount: number, paymentMethod: string, reference?: string): void => {
     const db = getDatabase();
     
-    // Get current installment
+
+
     const installment = db.prepare('SELECT * FROM installments WHERE id = ?').get(installmentId) as Installment;
     if (!installment) {
       throw new Error(`Installment with id ${installmentId} not found`);
     }
     
-    // Enforce full-payment only
+
+
     const expectedAmount = installment.amount - installment.paid_amount;
     if (amount !== expectedAmount) {
       throw new Error(`Solo se permiten pagos completos. Monto esperado: ${expectedAmount}`);
@@ -1578,7 +1645,8 @@ export const installmentOperations = {
     `);
     updateStmt.run(newPaidAmount, newBalance, newStatus, new Date().toISOString(), installmentId);
     
-    // Create payment transaction
+
+
     const paymentStmt = db.prepare(`
       INSERT INTO payment_transactions (
         sale_id, installment_id, amount, payment_method, payment_reference,
@@ -1609,7 +1677,8 @@ export const installmentOperations = {
   revertPayment: (installmentId: number, transactionId: number): void => {
     const db = getDatabase();
     
-    // Get the payment transaction to revert
+
+
     const transactionStmt = db.prepare('SELECT * FROM payment_transactions WHERE id = ?');
     const transaction = transactionStmt.get(transactionId) as PaymentTransaction;
     
@@ -1617,13 +1686,15 @@ export const installmentOperations = {
       throw new Error(`Payment transaction with id ${transactionId} not found`);
     }
     
-    // Get current installment
+
+
     const installment = db.prepare('SELECT * FROM installments WHERE id = ?').get(installmentId) as Installment;
     if (!installment) {
       throw new Error(`Installment with id ${installmentId} not found`);
     }
     
-    // Only allow revert if it reverts a full payment to pending
+
+
     if (installment.paid_amount !== installment.amount || transaction.amount !== installment.amount) {
       throw new Error('Solo se puede revertir pagos completos de la cuota');
     }
@@ -1631,7 +1702,8 @@ export const installmentOperations = {
     const newBalance = installment.amount;
     const newStatus: 'pending' = 'pending';
     
-    // Update installment
+
+
     const updateStmt = db.prepare(`
       UPDATE installments
       SET paid_amount = ?, balance = ?, status = ?
@@ -1639,7 +1711,8 @@ export const installmentOperations = {
     `);
     updateStmt.run(newPaidAmount, newBalance, newStatus, installmentId);
     
-    // Mark the payment transaction as cancelled
+
+
     const cancelTransactionStmt = db.prepare(`
       UPDATE payment_transactions
       SET status = 'cancelled'
@@ -1648,7 +1721,8 @@ export const installmentOperations = {
     cancelTransactionStmt.run(transactionId);
   },
 
-  // Generic update for installments (e.g., due_date or status)
+
+
   update: (id: number, data: Partial<Installment>): void => {
     const db = getDatabase();
     const fields: string[] = [];
@@ -1705,10 +1779,12 @@ export const installmentOperations = {
       throw new Error(`Installment with id ${id} not found`);
     }
     
-    // Calculate the remaining amount to be paid
+
+
     const remainingAmount = installment.amount - installment.paid_amount;
     
-    // Update installment to mark as paid
+
+
     const stmt = db.prepare(`
       UPDATE installments
       SET paid_amount = amount, balance = 0, status = 'paid', paid_date = ?
@@ -1716,7 +1792,8 @@ export const installmentOperations = {
     `);
     stmt.run(new Date().toISOString(), id);
     
-    // Create a payment transaction record for the remaining amount
+
+
     if (remainingAmount > 0) {
       const paymentStmt = db.prepare(`
         INSERT INTO payment_transactions (
@@ -1739,17 +1816,20 @@ export const installmentOperations = {
   delete: (id: number): void => {
     const db = getDatabase();
     
-    // First check if installment exists
+
+
     const installment = db.prepare('SELECT * FROM installments WHERE id = ?').get(id) as Installment;
     if (!installment) {
       throw new Error(`Installment with id ${id} not found`);
     }
     
-    // Delete related payment transactions first
+
+
     const deletePaymentsStmt = db.prepare('DELETE FROM payment_transactions WHERE installment_id = ?');
     deletePaymentsStmt.run(id);
     
-    // Delete the installment
+
+
     const stmt = db.prepare('DELETE FROM installments WHERE id = ?');
     stmt.run(id);
   },
@@ -1837,12 +1917,14 @@ export const notificationOperations = {
     const db = getDatabase();
     db.prepare("UPDATE notifications SET deleted_at = datetime('now') WHERE id = ? AND deleted_at IS NULL").run(id);
   },
-  // Nuevo: eliminar todas las notificaciones con el mismo mensaje creadas hoy
+
+
   deleteByMessageToday: (message: string): void => {
     const db = getDatabase();
     db.prepare("UPDATE notifications SET deleted_at = datetime('now') WHERE message = ? AND date(created_at) = date('now') AND deleted_at IS NULL").run(message);
   },
-  // Nuevo: eliminar por clave semántica creadas hoy
+
+
   deleteByKeyToday: (key: string): void => {
     const db = getDatabase();
     db.prepare("UPDATE notifications SET deleted_at = datetime('now') WHERE message_key = ? AND date(created_at) = date('now') AND deleted_at IS NULL").run(key);
@@ -1862,7 +1944,8 @@ export const notificationOperations = {
       .get(message) as { cnt: number } | undefined;
     return !!row && row.cnt > 0;
   },
-  // Nuevo: existencia por clave semántica (incluye eliminadas hoy)
+
+
   existsTodayWithKey: (key: string): boolean => {
     const db = getDatabase();
     const row = db
@@ -1870,7 +1953,8 @@ export const notificationOperations = {
       .get(key) as { cnt: number } | undefined;
     return !!row && row.cnt > 0;
   },
-  // Nuevo: existencia activa por clave (sin importar el día)
+
+
   existsActiveWithKey: (key: string): boolean => {
     const db = getDatabase();
     const row = db
@@ -1878,7 +1962,8 @@ export const notificationOperations = {
       .get(key) as { cnt: number } | undefined;
     return !!row && row.cnt > 0;
   },
-  // Nuevo: existencia activa por mensaje (sin importar el día)
+
+
   existsActiveWithMessage: (message: string): boolean => {
     const db = getDatabase();
     const row = db
@@ -1886,23 +1971,27 @@ export const notificationOperations = {
       .get(message) as { cnt: number } | undefined;
     return !!row && row.cnt > 0;
   },
-  // Clear all active notifications via soft-delete to keep history
+
+
   clearAll: (): void => {
     const db = getDatabase();
     db.prepare("UPDATE notifications SET deleted_at = datetime('now') WHERE deleted_at IS NULL").run();
   },
-  // List archived (soft-deleted) notifications
+
+
   listArchived: (limit: number = 20): NotificationRecord[] => {
     const db = getDatabase();
     const stmt = db.prepare('SELECT * FROM notifications WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT ?');
     return stmt.all(limit) as NotificationRecord[];
   },
-  // Permanently delete archived notifications
+
+
   purgeArchived: (): void => {
     const db = getDatabase();
     db.prepare('DELETE FROM notifications WHERE deleted_at IS NOT NULL').run();
   },
-  // Fetch latest notification by semantic key (active or archived)
+
+
   getLatestByKey: (key: string): NotificationRecord | null => {
     const db = getDatabase();
     const row = db

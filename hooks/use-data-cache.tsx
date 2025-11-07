@@ -19,29 +19,34 @@ interface CacheEntry<T> {
 }
 
 interface DataCacheContextType {
-  // Customer cache
+
+
   getCachedCustomers: (page: number, pageSize: number, searchTerm: string) => PaginatedData<Customer> | null;
   setCachedCustomers: (page: number, pageSize: number, searchTerm: string, data: PaginatedData<Customer>) => void;
   isCustomersCacheExpired: (page: number, pageSize: number, searchTerm: string) => boolean;
   
-  // Product cache
+
+
   getCachedProducts: (page: number, pageSize: number, searchTerm: string) => PaginatedData<Product> | null;
   setCachedProducts: (page: number, pageSize: number, searchTerm: string, data: PaginatedData<Product>) => void;
   isProductsCacheExpired: (page: number, pageSize: number, searchTerm: string) => boolean;
   
-  // Sales cache
+
+
   getCachedSales: (page: number, pageSize: number, searchTerm: string) => PaginatedData<Sale> | null;
   setCachedSales: (page: number, pageSize: number, searchTerm: string, data: PaginatedData<Sale>) => void;
   isSalesCacheExpired: (page: number, pageSize: number, searchTerm: string) => boolean;
   
-  // Cache management
+
+
   clearCache: () => void;
   invalidateCache: (type: 'customers' | 'products' | 'sales') => void;
 }
 
 const DataCacheContext = createContext<DataCacheContextType | undefined>(undefined);
 
-// Cache duration: 5 minutes
+
+
 const CACHE_DURATION = 5 * 60 * 1000;
 
 function generateCacheKey(page: number, pageSize: number, searchTerm: string): string {
@@ -62,7 +67,8 @@ export function DataCacheProvider({ children }: { children: ReactNode }) {
     const entry = customerCache.get(key);
     
     if (entry) {
-      // Return cached data immediately, even if expired
+
+
       return entry.data;
     }
     
@@ -86,7 +92,8 @@ export function DataCacheProvider({ children }: { children: ReactNode }) {
       const newCache = new Map(prev);
       newCache.set(key, entry);
       
-      // Limit cache size to prevent memory issues
+
+
       if (newCache.size > 50) {
         const firstKey = newCache.keys().next().value;
         if (firstKey !== undefined) {
@@ -103,7 +110,8 @@ export function DataCacheProvider({ children }: { children: ReactNode }) {
     const entry = productCache.get(key);
     
     if (entry) {
-      // Return cached data immediately, even if expired
+
+
       return entry.data;
     }
     
@@ -143,7 +151,8 @@ export function DataCacheProvider({ children }: { children: ReactNode }) {
     const entry = salesCache.get(key);
     
     if (entry) {
-      // Return cached data immediately, even if expired
+
+
       return entry.data;
     }
     
@@ -227,7 +236,8 @@ export function useDataCache() {
   return context;
 }
 
-// Hook for prefetching data
+
+
 export function usePrefetch() {
   const cache = useDataCache();
   

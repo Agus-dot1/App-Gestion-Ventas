@@ -63,7 +63,7 @@ export interface InstallmentDashboardRef {
 
   type StatusFilter = 'all' | 'pending' | 'paid' | 'overdue';
 type SortBy = 'customer' | 'amount' | 'dueDate' | 'status';
-type PaymentWindow = '1 to 10' | '20 to 30';
+type PaymentWindow = '1 to 10' | '10 to 20' | '20 to 30';
 type WindowFilter = 'all' | PaymentWindow;
 
 export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, InstallmentDashboardProps>(({ highlightId, onRefresh, partnerId }, ref) => {
@@ -76,7 +76,7 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
   const [sortBy, setSortBy] = useState<SortBy>('customer');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [windowFilter, setWindowFilter] = useState<WindowFilter>('all');
-  const [periodFilter, setPeriodFilter] = useState<'all' | 'monthly' | 'weekly'>('all');
+const [periodFilter, setPeriodFilter] = useState<'all' | 'monthly' | 'weekly' | 'biweekly'>('all');
   const [selectedInstallment, setSelectedInstallment] = useState<Installment | null>(null);
   const [isInstallmentFormOpen, setIsInstallmentFormOpen] = useState(false);
   const [deleteCustomer, setDeleteCustomer] = useState<CustomerWithInstallments | null>(null);
@@ -84,7 +84,8 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
 
   const [isElectron] = useState(() => typeof window !== 'undefined' && !!window.electronAPI);
 
-  // Expose refresh method to parent component
+
+
   useImperativeHandle(ref, () => ({
     refreshData: loadInstallmentData
   }), []);
@@ -95,12 +96,14 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
     }
   }, [isElectron, partnerId]);
 
-  // Track whether we've already applied the highlight for the current deep link
+
+
   const highlightAppliedRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!highlightId) return;
-    // Prevent re-running for the same highlightId (e.g., after state updates)
+
+
     if (highlightAppliedRef.current === highlightId) return;
 
     if (highlightId.startsWith('i-')) {
@@ -129,7 +132,8 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
       return;
     }
 
-    // Case 2: highlight customer by numeric id
+
+
     const customerId = parseInt(highlightId, 10);
     if (!isNaN(customerId)) {
       setExpandedCustomers(prev => {
@@ -138,7 +142,8 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
         newSet.add(customerId);
         return newSet;
       });
-      // Mark as applied for this highlightId
+
+
       highlightAppliedRef.current = highlightId;
     }
   }, [highlightId, customers]);
@@ -163,7 +168,8 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
 
         if (installmentSales.length === 0) continue;
 
-        // Attach sale items to each installment sale for product display
+
+
         const salesWithItems = await Promise.all(
           installmentSales.map(async (sale) => {
             try {
@@ -228,7 +234,8 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
     try {
       await window.electronAPI.database.installments.markAsPaid(installment.id!);
 
-      // Update the local state directly instead of reloading all data
+
+
       setCustomers(prevCustomers =>
         prevCustomers.map(customer => {
           if (customer.installments.some(inst => inst.id === installment.id)) {
@@ -238,7 +245,8 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
                 : inst
             );
 
-            // Recalculate totals for this customer
+
+
             const totalOwed = updatedInstallments
               .filter(inst => inst.status !== 'paid')
               .reduce((sum, inst) => sum + inst.balance, 0);
@@ -308,7 +316,8 @@ const buildWhatsAppMessageForCustomer = (c: CustomerWithInstallments): string =>
   return lines;
 };
 
-// Alternate message intended for a secondary contact to notify the customer
+
+
 const buildWhatsAppMessageForContact = (c: CustomerWithInstallments): string => {
   const DEFAULT_CVU = '747382997471';
   const normalize = (s: string) => String(s || '').trim();
@@ -367,7 +376,8 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
 
   const handleRevertPayment = async (installment: Installment) => {
     try {
-      // Get the payment transactions for this installment to find the most recent completed one to revert
+
+
       const payments = await window.electronAPI.database.payments.getBySale(installment.sale_id);
       const installmentPayments = payments.filter(p => p.installment_id === installment.id && p.status === 'completed');
 
@@ -377,24 +387,28 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
         return;
       }
 
-      // Get the most recent completed payment transaction to revert
+
+
       const latestPayment = installmentPayments.sort((a, b) =>
         new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime()
       )[0];
 
-      // Use the proper revertPayment method with transaction ID
+
+
       await window.electronAPI.database.installments.revertPayment(
         installment.id!,
         latestPayment.id!
       );
 
-      // Update the local state directly instead of reloading all data
+
+
       setCustomers(prevCustomers =>
         prevCustomers.map(customer => {
           if (customer.installments.some(inst => inst.id === installment.id)) {
             const updatedInstallments = customer.installments.map(inst => {
               if (inst.id === installment.id) {
-                // Calculate the new status and balance after reverting the payment
+
+
                 const newPaidAmount = inst.paid_amount - latestPayment.amount;
                 const newBalance = inst.amount - newPaidAmount;
                 let newStatus: 'pending' | 'paid' = 'pending';
@@ -415,7 +429,8 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
               return inst;
             });
 
-            // Recalculate totals for this customer
+
+
             const totalOwed = updatedInstallments
               .filter(inst => inst.status !== 'paid')
               .reduce((sum, inst) => sum + inst.balance, 0);
@@ -460,24 +475,28 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
     if (!deleteCustomer?.id) return;
 
     try {
-      // Delete all installments for this customer first
+
+
       for (const installment of deleteCustomer.installments) {
         if (installment.id) {
           await window.electronAPI.database.installments.delete(installment.id);
         }
       }
 
-      // Delete all sales for this customer
+
+
       for (const sale of deleteCustomer.sales) {
         if (sale.id) {
           await window.electronAPI.database.sales.delete(sale.id);
         }
       }
 
-      // Finally delete the customer
+
+
       await window.electronAPI.database.customers.delete(deleteCustomer.id);
 
-      // Update local state by removing the deleted customer
+
+
       setCustomers(prevCustomers =>
         prevCustomers.filter(customer => customer.id !== deleteCustomer.id)
       );
@@ -498,10 +517,12 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
     try {
       const saleId = deleteSale.id;
 
-      // Find the customer owning this sale
+
+
       const targetCustomer = customers.find(c => c.sales.some(s => s.id === saleId));
 
-      // Delete installments for this sale first (to maintain integrity)
+
+
       if (targetCustomer) {
         const saleInstalls = targetCustomer.installments.filter(inst => inst.sale_id === saleId);
         for (const inst of saleInstalls) {
@@ -511,10 +532,12 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
         }
       }
 
-      // Delete the sale
+
+
       await window.electronAPI.database.sales.delete(saleId);
 
-      // Update local state: remove sale and its installments; recalc totals
+
+
       setCustomers(prevCustomers => prevCustomers
         .map(c => {
           if (c.sales.some(s => s.id === saleId)) {
@@ -544,7 +567,8 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
           }
           return c;
         })
-        // Remove customer card if no installments remain
+
+
         .filter(c => c.installments.length > 0)
       );
 
@@ -573,16 +597,18 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
   const formatPaymentPeriod = (win?: string | null, dueDate?: string) => {
     if (dueDate) {
       const day = new Date(dueDate).getDate();
-      return day <= 10 ? '1 al 10' : '20 al 30';
+      return day <= 10 ? '1 al 10' : day <= 20 ? '10 al 20' : '20 al 30';
     }
     if (win === '1 to 10') return '1 al 10';
+    if (win === '10 to 20') return '10 al 20';
     if (win === '20 to 30') return '20 al 30';
     return '1 al 10';
   };
 
 
 
-  // Determine customer's effective payment window using fallbacks
+
+
   const getEffectivePaymentWindow = (c: CustomerWithInstallments): PaymentWindow | null => {
     if (c.payment_window === '1 to 10' || c.payment_window === '20 to 30') {
       return c.payment_window;
@@ -603,18 +629,21 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
 
       if (!matchesSearch) return false;
 
-      // Exclude customers with all installments paid
+
+
       if (customer.installments.length > 0 && customer.installments.every(i => i.status === 'paid')) {
         return false;
       }
 
-      // Filter by effective payment window if selected
+
+
       if (windowFilter !== 'all') {
         const effective = getEffectivePaymentWindow(customer);
         if (effective !== windowFilter) return false;
       }
 
-      // Filter by period type (monthly/weekly)
+
+
       if (periodFilter !== 'all') {
         const hasPeriod = customer.sales.some(s => s.payment_type === 'installments' && s.period_type === periodFilter);
         if (!hasPeriod) return false;
@@ -675,10 +704,12 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
     return filtered;
   }, [customers, searchTerm, statusFilter, sortBy, sortOrder, windowFilter, periodFilter]);
 
-  // Visual feedback helpers (client-only)
+
+
   const [clientDate, setClientDate] = useState<Date | null>(null);
   useEffect(() => {
-    // Set on client after mount to avoid SSR/client mismatches
+
+
     setClientDate(new Date());
   }, []);
 
@@ -698,8 +729,20 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
 
   const getAnchorDay = (win?: string | null) => {
     if (win === '1 to 10') return 10;
+    if (win === '10 to 20') return 20;
     if (win === '20 to 30') return 30;
     return 30;
+  };
+
+
+
+  const normalizeWindow = (value?: string | null): PaymentWindow | null => {
+    if (!value) return null;
+    const v = String(value).trim();
+    if (v === '1 to 10' || v === '1-10' || v === '1 a 10' || v === '1 al 10') return '1 to 10';
+    if (v === '10 to 20' || v === '10-20' || v === '10 a 20' || v === '10 al 20') return '10 to 20';
+    if (v === '20 to 30' || v === '20-30' || v === '20 a 30' || v === '20 al 30') return '20 to 30';
+    return null;
   };
 
   const windowCounts = useMemo(() => ({
@@ -722,13 +765,19 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
     });
   };
 
-  // New helpers to clarify sale-level period/window
-  // Infer period type from installment due dates when not explicitly set on sale
-  const inferPeriodType = (installments: Installment[]): 'monthly' | 'weekly' => {
+
+
+
+
+  const inferPeriodType = (installments: Installment[]): 'monthly' | 'weekly' | 'biweekly' => {
     if (!installments || installments.length === 0) return 'monthly';
     const uniqueDays = new Set(installments.map(i => new Date(i.due_date).getDate()));
     const isOneAndFifteenOnly = Array.from(uniqueDays).every(d => d === 1 || d === 15);
-    return isOneAndFifteenOnly ? 'weekly' : 'monthly';
+    if (isOneAndFifteenOnly) return 'biweekly';
+    const sorted = [...installments].sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+    const deltas = sorted.slice(1).map((i, idx) => (new Date(i.due_date).getTime() - new Date(sorted[idx].due_date).getTime()) / (1000 * 60 * 60 * 24));
+    const avgDelta = deltas.length ? deltas.reduce((a, b) => a + b, 0) / deltas.length : 30;
+    return avgDelta <= 10 ? 'weekly' : 'monthly';
   };
 
   const getSaleEffectiveWindow = (installments: Installment[]): PaymentWindow | null => {
@@ -756,7 +805,8 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
     const currentYear = today.getFullYear();
     const currentMonth = today.getMonth();
 
-    // Rojo si hay cuotas vencidas
+
+
     const hasOverdue = customer.installments.some(inst =>
       new Date(inst.due_date) < today && inst.status !== 'paid'
     );
@@ -764,13 +814,15 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
       return <div className="w-3 h-3 bg-red-500 rounded-full" title="Tiene pagos vencidos" />;
     }
 
-    // Cuotas del mes actual
+
+
     const currentMonthInstallments = customer.installments.filter(inst => {
       const d = new Date(inst.due_date);
       return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
     });
 
-    // Si hay cuotas este mes: amarillo si alguna pendiente, verde si todas pagadas
+
+
     if (currentMonthInstallments.length > 0) {
       const anyUnpaidThisMonth = currentMonthInstallments.some(inst => inst.status !== 'paid');
       if (anyUnpaidThisMonth) {
@@ -780,8 +832,10 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
       }
     }
 
-    // Si no hay cuotas este mes: está al día (verde)
-    // Mantener verde incluso si hay cuotas futuras, ya que no corresponden a este mes
+
+
+
+
     const allPaid = customer.installments.length > 0 && customer.installments.every(inst => inst.status === 'paid');
     if (allPaid) {
       return <div className="w-3 h-3 bg-green-500 rounded-full" title="Plan de cuotas completado" />;
@@ -947,14 +1001,15 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
                   <SelectItem value="20 to 30">Cobros del 20-30</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={periodFilter} onValueChange={(value) => setPeriodFilter(value as 'all' | 'monthly' | 'weekly')}>
+              <Select value={periodFilter} onValueChange={(value) => setPeriodFilter(value as 'all' | 'monthly' | 'weekly' | 'biweekly')}>
                 <SelectTrigger className="w-44">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos los periodos</SelectItem>
                   <SelectItem value="monthly">Mensual</SelectItem>
-                  <SelectItem value="weekly">Semanal (1 y 15)</SelectItem>
+                  <SelectItem value="biweekly">Quincenal (1 y 15)</SelectItem>
+                  <SelectItem value="weekly">Semanal</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1172,16 +1227,16 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
                                                 const salePeriod = sale.period_type ?? inferPeriodType(saleInstallments);
                                                 return (
                                                   <Badge variant="secondary" className="text-xs">
-                                                    {salePeriod === 'monthly' ? 'Mensual' : 'Semanal (1 y 15)'}
+                                                    {salePeriod === 'monthly' ? 'Mensual' : salePeriod === 'biweekly' ? 'Quincenal' : 'Semanal'}
                                                   </Badge>
                                                 );
                                               })()}
                                               {(() => {
                                                 const salePeriod = sale.period_type ?? inferPeriodType(saleInstallments);
-                                                if (salePeriod !== 'monthly') return null;
-                                                const saleWin = getSaleEffectiveWindow(saleInstallments);
+                                                const normalized = normalizeWindow(sale.payment_period);
+                                                const saleWin = normalized ?? (salePeriod === 'monthly' ? getSaleEffectiveWindow(saleInstallments) : null);
                                                 if (!saleWin) return null;
-                                                const winLabel = saleWin === '1 to 10' ? '1-10' : '20-30';
+                                                const winLabel = saleWin === '1 to 10' ? '1 al 10' : saleWin === '10 to 20' ? '10 al 20' : '20 al 30';
                                                 return (
                                                   <Badge variant="outline" className="text-xs">
                                                     Ventana {winLabel} · vence el {getAnchorDay(saleWin)}
@@ -1280,9 +1335,12 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
                                                       {(() => {
                                                         const salePeriod = sale.period_type ?? inferPeriodType(saleInstallments);
                                                         if (salePeriod === 'monthly') {
-                                                          return `Mensual (${formatPaymentPeriod(customer.payment_window, installment.due_date)})`;
+                                                          const label = sale.payment_period
+                                                            ? (sale.payment_period === '1 to 10' ? '1 al 10' : sale.payment_period === '10 to 20' ? '10 al 20' : '20 al 30')
+                                                            : formatPaymentPeriod(customer.payment_window, installment.due_date);
+                                                          return `Mensual (${label})`;
                                                         }
-                                                        return 'Semanal (1 y 15)';
+                                                        return salePeriod === 'biweekly' ? 'Quincenal' : 'Semanal';
                                                       })()}
                                                     </div>
                                                   </TableCell>

@@ -171,7 +171,8 @@ export function Pagination({
   );
 }
 
-// Hook for pagination logic
+
+
 export function usePagination(totalItems: number, initialPageSize: number = 25) {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(initialPageSize);

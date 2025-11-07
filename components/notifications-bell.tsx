@@ -23,19 +23,24 @@ export function NotificationsBell() {
   const [archived, setArchived] = useState<NotificationItem[]>([]);
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'read' | 'archived'>('all');
   const [snoozeUntil, setSnoozeUntil] = useState<number | null>(null);
-  // Removed unused query state
-  // const [query, setQuery] = useState('');
+
+
+
+
   const [open, setOpen] = useState(false);
   const scrollRef = useRef<any>(null);
   const [visibleTypes, setVisibleTypes] = useState<{ alert: boolean; attention: boolean; info: boolean }>({ alert: true, attention: true, info: true });
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [renderCount, setRenderCount] = useState(30);
-  // Candado de cambios locales para evitar reversiones por polling
+
+
   const pendingChangesRef = useRef<Map<number, { read: boolean; ts: number }>>(new Map());
-  // Tick para refrescar etiquetas de tiempo relativas (e.g., "hace X min")
+
+
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
 
-  // Persist and load visibleTypes from localStorage
+
+
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem('notifications:visibleTypes');
@@ -50,7 +55,8 @@ export function NotificationsBell() {
     } catch {}
   }, []);
 
-  // Refresca periódicamente para que las etiquetas "hace unos segundos/min/h" avancen
+
+
   useEffect(() => {
     const id = setInterval(() => {
       setNowTick(Date.now());
@@ -71,18 +77,21 @@ export function NotificationsBell() {
     if (key.startsWith('upcoming|')) return 'Cuota próxima a vencer';
     if (meta?.category === 'stock') {
       if (meta?.productName) return `Producto ${meta.productName}`;
-      // Intento de fallback: extraer nombre desde el mensaje "Stock bajo: Nombre — ..."
+
+
       const firstPart = message?.split(' — ')[0] ?? '';
       const name = firstPart.replace(/^Stock bajo:\s*/i, '').trim();
       return name ? `Producto ${name}` : 'Stock';
     }
     if (meta?.category === 'system') return 'Sistema';
-    // Fallback: toma solo la primera parte antes de " — "
+
+
     const simplified = message?.split(' — ')[0] ?? message;
     return simplified || message;
   }
 
-  // Lazy rendering: increase rendered items on scroll near bottom
+
+
   useEffect(() => {
     const root = scrollRef.current as HTMLElement | null;
     const viewport = root?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null;
@@ -113,7 +122,8 @@ export function NotificationsBell() {
     el.scrollTop = el.scrollHeight;
   }, []);
 
-  // Suprimir reaparición por mensaje el mismo día (memoria local)
+
+
   const suppressedTodayRef = useRef<Set<string>>(new Set());
   const suppressedKeysRef = useRef<Set<string>>(new Set());
   const loadedOnOpenRef = useRef<boolean>(false);
@@ -129,7 +139,8 @@ export function NotificationsBell() {
     });
   }, []);
 
-  // Reconcile DB refresh with local state to avoid reverting read/archive
+
+
   const reconcileWithLocal = useCallback((prev: NotificationItem[], next: NotificationItem[]) => {
     const now = Date.now();
 
@@ -137,12 +148,14 @@ export function NotificationsBell() {
       const p = prev.find(x => x.id === n.id);
       let read_at = n.read_at ?? null;
 
-      // Prioriza estado local ya marcado leído
+
+
       if (p && p.read_at) {
         read_at = p.read_at;
       }
 
-      // Aplica candado de cambios locales con expiración
+
+
       if (typeof n.id === 'number') {
         const lock = pendingChangesRef.current.get(n.id);
         if (lock) {
@@ -173,7 +186,8 @@ export function NotificationsBell() {
 
   const DEFAULT_CVU = '747382997471';
 
-  // Mensaje detallado y con saltos de línea
+
+
   const buildWhatsAppMessage = (m: NotificationItem['meta'] = {}): string => {
     const amountStr = typeof m.amount === 'number' ? formatAmountDesign(m.amount) : '';
     const interest = (m as any)?.interest;
@@ -248,7 +262,8 @@ export function NotificationsBell() {
   
 
   const renderActions = (n: NotificationItem, m: NotificationItem['meta'] = {}, isRead: boolean) => {
-    // Base actions: mark read/unread and archive — shown for ALL notifications
+
+
     const baseActions = (
       <>
         <Button
@@ -272,7 +287,8 @@ export function NotificationsBell() {
       </>
     );
 
-    // Acción específica para stock: navegar al producto
+
+
     if (m?.category === 'stock') {
       const pid = m?.productId;
       return (
@@ -291,7 +307,8 @@ export function NotificationsBell() {
       );
     }
 
-    // Alerts keep their specific actions in addition to base actions
+
+
     if (n.type === 'alert') {
       return (
         <>
@@ -316,7 +333,8 @@ export function NotificationsBell() {
       );
     }
 
-    // Acción para recordatorios de clientes (attention): navegar a cuotas
+
+
     if (n.type === 'attention' && m?.category === 'client') {
       return (
         <>
@@ -334,7 +352,8 @@ export function NotificationsBell() {
       );
     }
 
-    // For info/system/attention, we still show the base actions
+
+
     return baseActions;
   };
 
@@ -375,7 +394,8 @@ export function NotificationsBell() {
 
   useEffect(() => {
     (async () => {
-      // Always load persisted notifications; disable demo sample mode
+
+
       const initial = await loadPersisted(50);
       setNotifications(filterSuppressed(initial));
 
@@ -386,7 +406,8 @@ export function NotificationsBell() {
           } else {
             setNotifications(filterSuppressed(next));
           }
-          // Auto-scroll to bottom when new notifications arrive and popover is open
+
+
           if (open) {
             setTimeout(scrollToBottom, 0);
           }
@@ -397,7 +418,8 @@ export function NotificationsBell() {
           setNotifications(prev => filterSuppressed(reconcileWithLocal(prev, refreshed)));
         };
         (window as any).__loadPersisted = __loadPersisted;
-        // Remove periodic polling; only refresh once when the bell opens
+
+
         if (open && !loadedOnOpenRef.current) {
           __loadPersisted();
           loadedOnOpenRef.current = true;
@@ -412,10 +434,12 @@ export function NotificationsBell() {
         if (typeof unsub === 'function') unsub();
       } catch {}
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+
   }, [snoozeUntil, open]);
 
-  // Cargar archivadas cuando se selecciona la pestaña Archivadas
+
+
   useEffect(() => {
     const loadArchived = async () => {
       try {
@@ -435,7 +459,8 @@ export function NotificationsBell() {
   const toggleNotificationRead = useCallback(async (id?: number, isRead?: boolean) => {
     if (!id) return;
     const nextRead = !isRead; // estado al que queremos ir
-    // Actualiza local y registra candado inmediatamente
+
+
     setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read_at: nextRead ? new Date().toISOString() : null } : n)));
     pendingChangesRef.current.set(id, { read: nextRead, ts: Date.now() });
     try {
@@ -462,7 +487,8 @@ export function NotificationsBell() {
   }, [notifications, toast]);
 
   const openRelated = useCallback((n: NotificationItem) => {
-    // Route to sales for all types; calendar feature is disabled/removed from bundle.
+
+
     router.push('/sales');
   }, [router]);
 
@@ -479,10 +505,12 @@ export function NotificationsBell() {
 
   const clearAllNotifications = useCallback(async () => {
     try {
-      // Tomar un snapshot actual para supresión por día
+
+
       const snapshot = [...notifications];
 
-      // Marcar por mensaje/clave del día para evitar reaparición inmediata por scheduler
+
+
       for (const n of snapshot) {
         const key = n.meta?.message_key;
         if (key) {
@@ -494,10 +522,12 @@ export function NotificationsBell() {
         }
       }
 
-      // Eliminar todas las notificaciones activas (soft delete)
+
+
       await notificationsAdapter.clearAll();
       
-      // Limpiar el estado local
+
+
       setNotifications([]);
       
       toast({ title: 'Listo', description: 'Todas las notificaciones han sido eliminadas permanentemente' });
@@ -530,15 +560,18 @@ export function NotificationsBell() {
     
     console.log('Archiving notification with id:', id);
     
-    // Remover de la UI inmediatamente
+
+
     setNotifications(prev => prev.filter(n => n.id !== id));
     
     try {
-      // Solo archivar la notificación específica
+
+
       await notificationsAdapter.delete(id);
       console.log('Notification archived successfully:', id);
 
-      // Refrescar la lista de archivadas para que aparezcan inmediatamente en la pestaña
+
+
       try {
         const rows = await notificationsAdapter.listArchived(50);
         console.log('Refreshed archived list after archiving:', rows);
@@ -548,7 +581,8 @@ export function NotificationsBell() {
       }
     } catch (e) {
       console.error('Error archiving notification:', e);
-      // En caso de error, recargar las notificaciones
+
+
       try {
         const normalized = await loadPersisted(50);
         setNotifications(normalized);
@@ -556,7 +590,8 @@ export function NotificationsBell() {
     }
   }, []);
 
-  // Helpers para render y formato
+
+
   const typeMeta = (t: NotificationItem['type']) => {
     if (t === 'alert') return { label: 'Crítica', dot: 'bg-red-500', badge: 'text-red-500 border-red-500' };
     if (t === 'attention') return { label: 'Atención', dot: 'bg-amber-500', badge: 'text-orange-500 border-orange-500' };
@@ -568,7 +603,8 @@ export function NotificationsBell() {
     return `$${base}0`;
   };
   const formatRelative = (iso: string) => {
-    // Normaliza formatos SQLite ("YYYY-MM-DD HH:MM:SS") a ISO UTC
+
+
     const normalizeTs = (s: string): number => {
       try {
         if (s && s.includes(' ') && !s.includes('T')) {
@@ -610,7 +646,8 @@ export function NotificationsBell() {
   const snoozeActive = snoozeUntil && Date.now() < snoozeUntil;
   const snoozeLabel = snoozeActive ? `Silenciado hasta ${new Date(snoozeUntil!).toLocaleTimeString('es-ES')}` : undefined;
 
-  // Render principal
+
+
   return (
     <>
       {open && <div className="fixed inset-0 bg-black/40 backdrop-blur-[1px] z-40 pointer-events-none animate-in fade-in-0 duration-200" />}
@@ -689,7 +726,8 @@ export function NotificationsBell() {
                           const multi = extras > 0 || shown.length > 1;
                           const label = multi ? 'Clientes' : 'Cliente';
                           const namesStr = shown.length > 0 ? shown.join(', ') : (m.customerName ?? 'Cliente');
-                          // Formato solicitado: "Clientes: Nombre1, Nombre2... +N"
+
+
                           return `${label}: ${namesStr}${extras > 0 ? `... +${extras}` : ''}`;
                         })()
                       : m.category === 'system'

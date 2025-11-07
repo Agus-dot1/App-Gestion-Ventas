@@ -97,7 +97,8 @@ function getStatusBadge(status: Sale['status']) {
   return variants[status] || variants.pending;
 }
 
-// Traduce el estado de la cuota a etiqueta en español para exportaciones
+
+
 function getInstallmentStatusLabel(status: Installment['status']): string {
   if (status === 'paid') return 'Pagada';
   if (status === 'overdue') return 'Vencida';
@@ -132,13 +133,15 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
     
     setIsLoading(true);
     try {
-      // Load customer details
+
+
       if (sale.customer_id) {
         const customerData = await window.electronAPI.database.customers.getById(sale.customer_id);
         setCustomer(customerData);
       }
 
-      // Load sale items
+
+
       try {
         if (window.electronAPI.database.saleItems) {
           const items = await window.electronAPI.database.saleItems.getBySale(sale.id!);
@@ -149,7 +152,8 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
         setSaleItems([]);
       }
 
-      // Load installments if payment type is installments
+
+
       if (sale.payment_type === 'installments') {
         const installmentData = await window.electronAPI.database.installments.getBySale(sale.id!);
         setInstallments(installmentData);
@@ -173,7 +177,8 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
       let yPosition = 16;
       const now = new Date();
 
-      // Encabezado tipo banner (similar al ejemplo)
+
+
       autoTable(doc, {
         body: [[
           {
@@ -188,7 +193,8 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
       });
       yPosition = (doc as any).lastAutoTable.finalY + 6;
 
-      // Bloques de direcciones (left) and reference block (right) side-by-side
+
+
       const billedTo = (
         'Facturado a:' +
         `\n${customer?.name ?? 'N/A'}` +
@@ -217,7 +223,8 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
         }
       });
       yPosition = (doc as any).lastAutoTable.finalY + 8;
-      // Información de pago y monto adeudado lado a lado
+
+
       const paymentInfo = [
         ['Método de Pago', sale?.payment_type ? getPaymentTypeBadge(sale.payment_type).label : 'N/A'],
         ['Método de cobro', sale?.payment_method ? getPaymentMethodLabel(sale.payment_method) : 'N/A'],
@@ -244,7 +251,8 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
 
       yPosition = (doc as any).lastAutoTable.finalY + 15;
 
-      // Productos
+
+
       if (saleItems.length > 0) {
         autoTable(doc, {
           body: [[{ content: 'Producto(s)', styles: { halign: 'left', fontSize: 12 } }]],
@@ -278,13 +286,15 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
 
         yPosition = (doc as any).lastAutoTable.finalY + 8;
 
-        // Bloque TOTAL (gris) y TOTAL A PAGAR (negro) estilo factura
+
+
         const pageWidth = (doc as any).internal.pageSize.getWidth();
         const left = pageWidth - 100; // ancho del bloque
         const width = 86;
         const height = 10;
           
-        // TOTAL A PAGAR (negro)
+
+
         doc.setFillColor(30, 30, 30);
         doc.rect(left, yPosition, width, height, 'F');
         doc.setTextColor(255, 255, 255);
@@ -295,9 +305,11 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
         yPosition += height + 12;
       }
 
-      // Cuotas (si aplica)
+
+
       if (sale?.payment_type === 'installments' && installments.length > 0) {
-        // Check if we need a new page
+
+
         if (yPosition > 250) {
           doc.addPage();
           yPosition = 20;
@@ -336,7 +348,8 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
         yPosition = (doc as any).lastAutoTable.finalY + 15;
       }
 
-      // Save the PDF
+
+
       doc.save(`${sale?.sale_number ?? 'unknown'}-${new Date().toISOString().split('T')[0]}.pdf`);
     } catch (error) {
       console.error('Error al exportar:', error);
@@ -347,9 +360,18 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
   const handleExportToExcel = async () => {
     try {
       const XLSX = await import('xlsx');
-      // Prepare sale data for Excel
+
+
       const periodLabel = sale?.payment_type === 'installments' ? (sale?.period_type === 'weekly' ? 'Semanal (1 y 15)' : 'Mensual') : 'N/A';
-      const windowLabel = sale?.payment_type === 'installments' ? (sale?.payment_period ? (sale.payment_period === '1 to 10' ? '1 al 10' : '20 al 30') : 'N/A') : 'N/A';
+      const windowLabel = sale?.payment_type === 'installments'
+        ? (sale?.payment_period
+            ? (sale.payment_period === '1 to 10'
+                ? '1 al 10'
+                : sale.payment_period === '10 to 20'
+                  ? '10 al 20'
+                  : '20 al 30')
+            : 'N/A')
+        : 'N/A';
       const saleData = {
         'Referencia': sale?.reference_code ?? sale?.sale_number ?? 'N/A',
         'Número de Venta': sale?.sale_number ?? 'N/A',
@@ -372,16 +394,19 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
 
       const workbook = XLSX.utils.book_new();
 
-      // Add sale details sheet
+
+
       const saleSheet = XLSX.utils.json_to_sheet([saleData]);
-      // Column widths and autofilter
+
+
       saleSheet['!cols'] = [
         { wch: 16 }, { wch: 14 }, { wch: 22 }, { wch: 14 }, { wch: 18 }, { wch: 28 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 12 }
       ];
       saleSheet['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 0, c: 13 } }) };
       XLSX.utils.book_append_sheet(workbook, saleSheet, 'Detalle de Venta');
 
-      // Add products sheet if available
+
+
       if (saleItems.length > 0) {
         const productsData = saleItems.map(item => ({
           'Producto': item.product_name || 'Producto',
@@ -397,7 +422,8 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
         XLSX.utils.book_append_sheet(workbook, productsSheet, 'Productos');
       }
 
-      // Add installments sheet if available
+
+
       if (installments.length > 0) {
         const installmentsData = installments.map(installment => ({
           'Cuota': installment.installment_number,
@@ -415,7 +441,8 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
         XLSX.utils.book_append_sheet(workbook, installmentsSheet, 'Cuotas');
       }
 
-      // Summary sheet
+
+
       const productsTotal = saleItems.reduce((sum, i) => sum + (i.line_total || 0), 0);
       const installmentsTotal = installments.reduce((sum, i) => sum + (i.amount || 0), 0);
       const summaryRows = [
@@ -430,7 +457,8 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
       summarySheet['!cols'] = [ { wch: 24 }, { wch: 16 } ];
       XLSX.utils.book_append_sheet(workbook, summarySheet, 'Resumen');
 
-      // Save the Excel file
+
+
       XLSX.writeFile(workbook, `${sale?.sale_number ?? 'unknown'}-${new Date().toISOString().split('T')[0]}.xlsx`);
     } catch (error) {
       console.error('Error al exportar a Excel:', error);
@@ -530,6 +558,11 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
                   {sale.payment_method && (
                       <Badge variant={paymentTypeBadge.variant}>{getPaymentMethodLabel(sale.payment_method)}</Badge>
                   )}
+                  {sale.payment_type === 'installments' && sale.payment_period && (
+                      <Badge variant="secondary">
+                        {sale.payment_period === '1 to 10' ? '1 al 10' : sale.payment_period === '10 to 20' ? '10 al 20' : '20 al 30'}
+                      </Badge>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -596,12 +629,12 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
                           <div className="space-y-1">
                             <div className="flex justify-between">
                               <span className="text-sm font-medium">Periodo:</span>
-                              <span className="text-sm">{sale.period_type === 'weekly' ? 'Semanal (1 y 15)' : 'Mensual'}</span>
+                              <span className="text-sm">{sale.period_type === 'weekly' ? 'Semanal' : sale.period_type === 'biweekly' ? 'Quincenal' : 'Mensual'}</span>
                             </div>
                             {sale.payment_period && (
                               <div className="flex justify-between">
                                 <span className="text-sm font-medium">Ventana de pago:</span>
-                                <span className="text-sm">{sale.payment_period === '1 to 10' ? '1 al 10' : '20 al 30'}</span>
+                                <span className="text-sm">{sale.payment_period === '1 to 10' ? '1 al 10' : sale.payment_period === '10 to 20' ? '10 al 20' : '20 al 30'}</span>
                               </div>
                             )}
                           </div>

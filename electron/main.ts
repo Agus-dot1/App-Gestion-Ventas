@@ -22,11 +22,23 @@ let isQuiting = false;
 let notificationsMuted = false;
 let openAtLogin = false;
 
+
+
+function broadcastDatabaseChange(entity: string, operation: string, payload: any = {}) {
+  try {
+    mainWindow?.webContents.send('database:changed', { entity, operation, ...payload });
+  } catch (e) {
+
+
+  }
+}
+
 function getBaseUrl(): string {
   if (isDev) {
     return process.env.ELECTRON_DEV_URL || 'http://localhost:3001';
   }
-  // Base file URL pointing to Next.js export directory
+
+
   const outDir = path.join(__dirname, '../../../out').replace(/\\/g, '/');
   return `file:///${outDir}`;
 }
@@ -62,17 +74,23 @@ function toggleMainWindowVisibility() {
 }
 
 function resolveTrayIcon(): Electron.NativeImage {
-  // Prefer an .ico if present; fall back to tiny transparent PNG
+
+
   const candidates: string[] = [
-    // Packaged resources path (electron-builder extraResources -> resources/assets)
+
+
     path.join(process.resourcesPath || '', 'assets', 'tray.ico'),
-    // Dev path under repo root
+
+
     path.join(process.cwd(), 'assets', 'tray.ico'),
-    // Built path alongside main bundle (unpacked dev builds)
+
+
     path.join(__dirname, '../assets/tray.ico'),
-    // Alternative built path
+
+
     path.join(__dirname, '../../assets/tray.ico'),
-    // Fallback to app icon if tray.ico is missing
+
+
     path.join(process.resourcesPath || '', 'assets', 'icon.ico'),
     path.join(process.cwd(), 'assets', 'icon.ico'),
     path.join(__dirname, '../assets/icon.ico'),
@@ -90,7 +108,8 @@ function resolveTrayIcon(): Electron.NativeImage {
     }
   }
   console.log('Using fallback transparent icon');
-  // 1x1 transparent PNG as last resort (base64)
+
+
   const transparent1x1 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAOeYw2kAAAAASUVORK5CYII=';
   return nativeImage.createFromDataURL(transparent1x1);
 }
@@ -161,13 +180,15 @@ function createTray() {
     ]);
 
     tray.setContextMenu(contextMenu);
-    // Left-click shows and focuses the window
+
+
     tray.on('click', () => {
       if (!mainWindow) return;
       mainWindow.show();
       mainWindow.focus();
     });
-    // Right-click shows context menu explicitly (redundant but explicit)
+
+
     tray.on('right-click', () => tray?.popUpContextMenu());
   } catch (e) {
     console.error('Failed to create tray:', e);
@@ -175,12 +196,13 @@ function createTray() {
 }
 
 function createWindow() {
-  // Create the browser window
+
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 1200,
-    minHeight: 800,
+    minWidth: 800,
+    minHeight: 600,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -193,36 +215,43 @@ function createWindow() {
     autoHideMenuBar: true // hide menu bar by default (prevents it from showing)
   });
 
-  // Ensure menu is removed and cannot reappear with Alt
+
+
   mainWindow.removeMenu();
   mainWindow.setMenuBarVisibility(false);
   mainWindow.setAutoHideMenuBar(false);
 
-  // Ensure minimum and initial size (safety in case build used old values)
-  mainWindow.setMinimumSize(1600, 800);
-  mainWindow.setSize(1600, 800);
+
+
+  mainWindow.setMinimumSize(800, 600);
+  mainWindow.setSize(1200, 800);
   
-  // Load the app
+
+
   if (isDev) {
     const devUrl = process.env.ELECTRON_DEV_URL || 'http://localhost:3001';
     mainWindow.loadURL(devUrl);
-    // Open DevTools in development
+
+
     mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '../../../out/index.html'));
   }
 
-  // Show window when ready to prevent visual flash
+
+
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
   });
 
-  // Hide to tray on minimize (no event object for 'minimize')
+
+
   mainWindow.on('minimize', () => {
     mainWindow?.minimize();
   });
                  
-  // Hide to tray on close unless quitting via menu
+
+
   mainWindow.on('close', (e) => {
     if (!isQuiting) {
       e.preventDefault();
@@ -230,15 +259,18 @@ function createWindow() {
     }
   });
 
-  // Handle window closed
+
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
 
-// Set up IPC handlers for database operations
+
+
 function setupIpcHandlers() {
-  // Customer operations
+
+
   ipcMain.handle('customers:getAll', () => customerOperations.getAll());
   ipcMain.handle('customers:getPaginated', (_, page, pageSize, searchTerm) => 
     customerOperations.getPaginated(page, pageSize, searchTerm));
@@ -252,27 +284,42 @@ function setupIpcHandlers() {
   ipcMain.handle('customers:getMonthlyComparison', () => customerOperations.getMonthlyComparison());
   ipcMain.handle('customers:deleteAll', () => customerOperations.deleteAll());
 
-  // Product operations
+
+
   ipcMain.handle('products:getAll', () => productOperations.getAll());
   ipcMain.handle('products:getPaginated', (_, page, pageSize, searchTerm) => 
     productOperations.getPaginated(page, pageSize, searchTerm));
   ipcMain.handle('products:search', (_, searchTerm, limit) => productOperations.search(searchTerm, limit));
   ipcMain.handle('products:getActive', () => productOperations.getActive());
   ipcMain.handle('products:getById', (_, id) => productOperations.getById(id));
-  ipcMain.handle('products:create', (_, product) => productOperations.create(product));
-  ipcMain.handle('products:update', (_, id, product) => productOperations.update(id, product));
-  ipcMain.handle('products:delete', (_, id) => productOperations.delete(id));
+  ipcMain.handle('products:create', (_, product) => {
+    const res = productOperations.create(product);
+    broadcastDatabaseChange('products', 'create', { id: res });
+    return res;
+  });
+  ipcMain.handle('products:update', (_, id, product) => {
+    const res = productOperations.update(id, product);
+    broadcastDatabaseChange('products', 'update', { id });
+    return res;
+  });
+  ipcMain.handle('products:delete', (_, id) => {
+    const res = productOperations.delete(id);
+    broadcastDatabaseChange('products', 'delete', { id });
+    return res;
+  });
   ipcMain.handle('products:getCount', () => productOperations.getCount());
   ipcMain.handle('products:getMonthlyComparison', () => productOperations.getMonthlyComparison());
   ipcMain.handle('products:deleteAll', () => productOperations.deleteAll());
 
-  // Partner operations
+
+
   ipcMain.handle('partners:getAll', () => partnerOperations.getAll());
   ipcMain.handle('partners:create', (_e, partner) => partnerOperations.create(partner));
   ipcMain.handle('partners:update', (_e, id, partner) => partnerOperations.update(id, partner));
   ipcMain.handle('partners:delete', (_e, id) => partnerOperations.delete(id));
 
-  // Sale operations
+
+
   ipcMain.handle('sales:getAll', () => saleOperations.getAll());
   ipcMain.handle('sales:getPaginated', (_, page, pageSize, searchTerm) => 
     saleOperations.getPaginated(page, pageSize, searchTerm));
@@ -282,12 +329,22 @@ function setupIpcHandlers() {
   ipcMain.handle('sales:getByCustomer', (_, customerId) => saleOperations.getByCustomer(customerId));
   ipcMain.handle('sales:create', async (_, saleData) => {
     const id = await saleOperations.create(saleData);
-    // Centralizado: verificar stock bajo y emitir notificación si corresponde
+
+
     checkLowStockAfterSale(saleData, () => mainWindow);
+    broadcastDatabaseChange('sales', 'create', { id });
     return id;
   });
-  ipcMain.handle('sales:update', (_, id, sale) => saleOperations.update(id, sale));
-  ipcMain.handle('sales:delete', (_, id) => saleOperations.delete(id));
+  ipcMain.handle('sales:update', (_, id, sale) => {
+    const res = saleOperations.update(id, sale);
+    broadcastDatabaseChange('sales', 'update', { id });
+    return res;
+  });
+  ipcMain.handle('sales:delete', (_, id) => {
+    const res = saleOperations.delete(id);
+    broadcastDatabaseChange('sales', 'delete', { id });
+    return res;
+  });
   ipcMain.handle('sales:getWithDetails', (_, id) => saleOperations.getWithDetails(id));
   ipcMain.handle('sales:getOverdueSales', () => saleOperations.getOverdueSales());
   ipcMain.handle('sales:getOverdueSalesCount', () => saleOperations.getOverdueSalesCount());
@@ -298,7 +355,8 @@ function setupIpcHandlers() {
   ipcMain.handle('sales:getStatsComparison', () => saleOperations.getStatsComparison());
   ipcMain.handle('sales:deleteAll', () => saleOperations.deleteAll());
 
-  // Installment operations
+
+
   ipcMain.handle('installments:getBySale', (_, saleId) => installmentOperations.getBySale(saleId));
   ipcMain.handle('installments:getOverdue', () => installmentOperations.getOverdue());
   ipcMain.handle('installments:getUpcoming', (_, limit) => installmentOperations.getUpcoming(limit));
@@ -314,22 +372,151 @@ function setupIpcHandlers() {
   ipcMain.handle('installments:delete', (_, id) => installmentOperations.delete(id));
   ipcMain.handle('installments:deleteAll', () => installmentOperations.deleteAll());
 
-  // Sale item operations
+
+
   ipcMain.handle('saleItems:getBySale', (_, saleId) => saleItemOperations.getBySale(saleId));
-ipcMain.handle('saleItems:create', (_, saleItem) => saleItemOperations.create(saleItem));
+ipcMain.handle('saleItems:create', (_, saleItem) => {
+  const res = saleItemOperations.create(saleItem);
+  broadcastDatabaseChange('saleItems', 'create', { sale_id: saleItem?.sale_id, id: res });
+  return res;
+});
 ipcMain.handle('saleItems:getSalesForProduct', (_, productId) => saleItemOperations.getSalesForProduct(productId));
 ipcMain.handle('saleItems:deleteAll', () => saleItemOperations.deleteAll());
 
 
 
-  // Payment operations
+
+
   ipcMain.handle('payments:getBySale', (_, saleId) => paymentOperations.getBySale(saleId));
   ipcMain.handle('payments:getOverdue', () => paymentOperations.getOverdue());
   ipcMain.handle('payments:create', (_, payment) => paymentOperations.create(payment));
   ipcMain.handle('payments:deleteAll', () => paymentOperations.deleteAll());
 
-  // Notifications operations centralizadas en notifications/ipc/handlers.ts
-  // Backup and restore operations
+
+
+
+
+
+
+  const coerceNumber = (v: any, fallback = 0) => {
+    const n = typeof v === 'string' ? parseFloat(v) : v;
+    return Number.isFinite(n) ? Number(n) : fallback;
+  };
+
+  const normalizePaymentWindow = (v: any): string | null => {
+    if (!v && v !== 0) return null;
+    const s = String(v).toLowerCase().trim();
+    switch (s) {
+      case 'weekly':
+      case 'semanal':
+      case 'semana':
+        return 'weekly';
+      case 'biweekly':
+      case 'quincenal':
+      case 'cada 15 dias':
+        return 'biweekly';
+      case 'monthly':
+      case 'mensual':
+        return 'monthly';
+      default:
+        return s || null;
+    }
+  };
+
+  const normalizeCustomerBackup = (c: any) => {
+    return {
+      id: c.id ?? null,
+      name: c.name ?? c.full_name ?? c.nombre ?? '',
+      dni: c.dni ?? c.identification ?? c.cedula ?? null,
+      email: c.email ?? c.correo ?? c.mail ?? null,
+      phone: c.phone ?? c.telefono ?? null,
+      secondary_phone: c.secondary_phone ?? c.alt_phone ?? c.segundo_telefono ?? null,
+      contact_info: c.contact_info ?? c.contact ?? c.telefono ?? '',
+      address: c.address ?? c.direccion ?? '',
+      payment_window: normalizePaymentWindow(c.payment_window ?? c.payment_period ?? c.periodo_pago ?? null),
+      created_at: c.created_at ?? null,
+      updated_at: c.updated_at ?? null,
+    };
+  };
+
+  const normalizeProductBackup = (p: any) => {
+    const isActive = typeof p.is_active === 'boolean'
+      ? p.is_active
+      : typeof p.active === 'boolean'
+        ? p.active
+        : p.status === 'active' || p.is_active === 1 || p.active === 1;
+    return {
+      id: p.id ?? null,
+      name: p.name ?? p.nombre ?? '',
+
+
+      price: coerceNumber(p.price ?? p.unit_price ?? p.precio, 0),
+      category: p.category ?? p.categoria ?? null,
+      description: p.description ?? p.descripcion ?? null,
+      cost_price: coerceNumber(p.cost_price ?? p.costo, 0),
+      stock: coerceNumber(p.stock ?? p.existencias, 0),
+      is_active: !!isActive,
+      created_at: p.created_at ?? null,
+      updated_at: p.updated_at ?? null,
+    };
+  };
+
+  const normalizeSaleItemBackup = (si: any) => {
+    return {
+      product_id: si.product_id ?? si.productId ?? si.product?.id ?? null,
+      quantity: coerceNumber(si.quantity ?? si.qty ?? si.cantidad, 0),
+      unit_price: coerceNumber(si.unit_price ?? si.price ?? si.precio, 0),
+      product_name: si.product_name ?? si.product?.name ?? si.nombre ?? null,
+    };
+  };
+
+  const normalizeSaleBackup = (s: any) => {
+    const paymentType = (s.payment_type ?? s.tipo_pago ?? '').toLowerCase();
+    const paymentStatus = (s.payment_status ?? s.estado_pago ?? '').toLowerCase();
+    const partnerId = s.partner_id ?? s.partnerId ?? s.partner?.id ?? null;
+    const customerId = s.customer_id ?? s.client_id ?? s.customer?.id ?? null;
+
+    const itemsSrc = Array.isArray(s.items)
+      ? s.items
+      : Array.isArray(s.line_items)
+        ? s.line_items
+        : Array.isArray(s.products)
+          ? s.products
+          : [];
+
+    const items = itemsSrc.map(normalizeSaleItemBackup).filter((i: any) => i.product_id || i.product_name);
+
+
+
+    const mapPaymentType = (t: string) => {
+      if (t === 'cash' || t === 'contado') return 'cash';
+      if (t === 'installments' || t === 'cuotas' || t === 'credit') return 'installments';
+      if (t === 'mixed') return 'installments';
+      return 'cash';
+    };
+    const mapPaymentStatus = (st: string) => {
+      if (st === 'paid' || st === 'pagado') return 'paid';
+      if (st === 'unpaid' || st === 'impago' || st === 'pending') return 'unpaid';
+      if (st === 'overdue' || st === 'vencido') return 'overdue';
+      if (st === 'partial' || st === 'parcial') return 'unpaid';
+      return 'paid';
+    };
+
+    return {
+      customer_id: customerId,
+      partner_id: partnerId,
+      payment_type: mapPaymentType(paymentType),
+      payment_status: mapPaymentStatus(paymentStatus),
+      sale_number: s.sale_number ?? s.numero ?? null,
+      total_amount: coerceNumber(s.total_amount ?? s.total ?? s.monto_total, 0),
+      number_of_installments: coerceNumber(s.number_of_installments ?? s.installments ?? s.cuotas, 0),
+      installment_amount: coerceNumber(s.installment_amount ?? s.monto_cuota, 0),
+      first_payment_date: s.first_payment_date ?? s.fecha_primer_pago ?? null,
+      notes: s.notes ?? s.nota ?? null,
+      items,
+    };
+  };
+
   ipcMain.handle('backup:save', async (_, backupData) => {
     try {
       const result = await dialog.showSaveDialog(mainWindow!, {
@@ -376,10 +563,12 @@ ipcMain.handle('saleItems:deleteAll', () => saleItemOperations.deleteAll());
     }
   });
 
-  // Import operations for backup restore
+
+
   ipcMain.handle('backup:importCustomers', async (_, customers) => {
     try {
-      // Clear existing customers
+
+
       const existingCustomers = await customerOperations.getAll();
       for (const customer of existingCustomers) {
         if (customer.id) {
@@ -387,9 +576,11 @@ ipcMain.handle('saleItems:deleteAll', () => saleItemOperations.deleteAll());
         }
       }
       
-      // Import new customers
+
+
       for (const customer of customers) {
-        await customerOperations.insertFromBackup(customer);
+        const normalized = normalizeCustomerBackup(customer);
+        await customerOperations.insertFromBackup(normalized as any);
       }
       return { success: true };
     } catch (error) {
@@ -400,7 +591,8 @@ ipcMain.handle('saleItems:deleteAll', () => saleItemOperations.deleteAll());
 
   ipcMain.handle('backup:importProducts', async (_, products) => {
     try {
-      // Clear existing products
+
+
       const existingProducts = await productOperations.getAll();
       for (const product of existingProducts) {
         if (product.id) {
@@ -408,9 +600,11 @@ ipcMain.handle('saleItems:deleteAll', () => saleItemOperations.deleteAll());
         }
       }
       
-      // Import new products
+
+
       for (const product of products) {
-        await productOperations.insertFromBackup(product);
+        const normalized = normalizeProductBackup(product);
+        await productOperations.insertFromBackup(normalized as any);
       }
       return { success: true };
     } catch (error) {
@@ -421,7 +615,8 @@ ipcMain.handle('saleItems:deleteAll', () => saleItemOperations.deleteAll());
 
   ipcMain.handle('backup:importSales', async (_, sales) => {
     try {
-      // Clear existing sales
+
+
       const existingSales = await saleOperations.getAll();
       for (const sale of existingSales) {
         if (sale.id) {
@@ -429,10 +624,11 @@ ipcMain.handle('saleItems:deleteAll', () => saleItemOperations.deleteAll());
         }
       }
       
-      // Import new sales using a tolerant import that doesn’t require items
+
+
       for (const sale of sales) {
-        const { id, ...saleData } = sale;
-        await saleOperations.importFromBackup(saleData as any);
+        const normalized = normalizeSaleBackup(sale);
+        await saleOperations.importFromBackup(normalized as any);
       }
       return { success: true };
     } catch (error) {
@@ -441,10 +637,12 @@ ipcMain.handle('saleItems:deleteAll', () => saleItemOperations.deleteAll());
     }
   });
 
-  // Cache management
+
+
   ipcMain.handle('cache:getSize', async () => {
     try {
-      // Calculate approximate cache size
+
+
       const userDataPath = app.getPath('userData');
       const cacheDir = path.join(userDataPath, 'cache');
       
@@ -462,13 +660,15 @@ ipcMain.handle('saleItems:deleteAll', () => saleItemOperations.deleteAll());
 
   ipcMain.handle('cache:clear', async () => {
     try {
-      // Clear session cache first (this is safer)
+
+
       if (mainWindow && mainWindow.webContents.session) {
         await mainWindow.webContents.session.clearCache();
         await mainWindow.webContents.session.clearStorageData();
       }
       
-      // Try to clear file system cache directories
+
+
       const userDataPath = app.getPath('userData');
       const cacheDirectories = [
         path.join(userDataPath, 'cache'),
@@ -484,13 +684,15 @@ ipcMain.handle('saleItems:deleteAll', () => saleItemOperations.deleteAll());
             await fs.promises.rm(cacheDir, { recursive: true, force: true });
           }
         } catch (dirError) {
-          // Log individual directory errors but don't fail the entire operation
+
+
           console.warn(`Could not clear cache directory ${cacheDir}:`, dirError);
           errors.push(`${path.basename(cacheDir)}: ${dirError instanceof Error ? dirError.message : 'Unknown error'}`);
         }
       }
       
-      // Return success even if some directories couldn't be cleared
+
+
       const message = errors.length > 0 
         ? `Cache cleared with some warnings: ${errors.join(', ')}`
         : 'Cache cleared successfully';
@@ -502,14 +704,17 @@ ipcMain.handle('saleItems:deleteAll', () => saleItemOperations.deleteAll());
     }
   });
 
-  // Database deletion handler
+
+
   ipcMain.handle('db:deleteAll', async () => {
     try {
-      // Clear all tables in FK-safe order
+
+
       await saleOperations.deleteAll();
       await customerOperations.deleteAll();
       await productOperations.deleteAll();
-      // The following are cascaded by sales but safe to run
+
+
       await installmentOperations.deleteAll();
       await saleItemOperations.deleteAll();
       await paymentOperations.deleteAll();
@@ -522,11 +727,14 @@ ipcMain.handle('saleItems:deleteAll', () => saleItemOperations.deleteAll());
   });
 }
 
-// setupScheduler deprecated: use centralized notifications scheduler in notifications/scheduler.ts
 
-// This method will be called when Electron has finished initialization
+
+
+
+
 app.whenReady().then(() => {
-  // Initialize the database
+
+
   try {
     initializeDatabase();
     console.log('Database initialized successfully');
@@ -534,17 +742,23 @@ app.whenReady().then(() => {
     console.error('Failed to initialize database:', error);
   }
 
-  // Remove the application menu globally so the top menu bar is not shown
+
+
   Menu.setApplicationMenu(null);
 
-  // Set up IPC handlers
+
+
   setupIpcHandlers();
-  // Centralizar IPC de notificaciones
-  // Respetar silencio: si está silenciado, no emitimos eventos al renderer
+
+
+
+
   setupNotificationIpcHandlers(() => (notificationsMuted ? null : mainWindow));
 
-  // Start background scheduler for notifications (centralizado)
-  // Permitir configurar el intervalo vía variable de entorno sin cambiar defaults
+
+
+
+
   const rawInterval = process.env.NOTIFICATIONS_SCHEDULER_INTERVAL_MS || process.env.NOTIFICATIONS_INTERVAL_MS;
   if (rawInterval) {
     const parsed = parseInt(rawInterval, 10);
@@ -557,32 +771,39 @@ app.whenReady().then(() => {
     setupNotificationScheduler(() => (notificationsMuted ? null : mainWindow));
   }
 
-  // Register protocol handler globally before creating windows
+
+
   const { session } = require('electron');
   session.defaultSession.protocol.interceptBufferProtocol('file', (request, callback) => {
     const url = request.url;
     
-    // Check if this is an RSC payload request
+
+
     if (url.includes('index.txt') && url.includes('_rsc=')) {
       console.log('Intercepted RSC request:', url);
       
-      // Map RSC requests to the correct path within the app directory
+
+
        let rscPath = url.replace('file:///', '');
        rscPath = decodeURIComponent(rscPath);
        
-       // Remove query parameters for file path
+
+
        const [pathOnly] = rscPath.split('?');
        
-       // Remove drive letter and colon (e.g., "D:/index.txt" -> "/index.txt")
+
+
        const relativePath = pathOnly.replace(/^[A-Za-z]:/, '');
        
-       // Map to the correct location in the out directory
+
+
        const appPath = path.join(__dirname, '../../../', 'out');
        const fullPath = path.join(appPath, relativePath.replace(/\//g, path.sep));
       
       console.log('Mapped RSC path:', fullPath);
       
-      // Check if the RSC file exists, if not return empty response
+
+
       if (fs.existsSync(fullPath)) {
         try {
           const rscContent = fs.readFileSync(fullPath);
@@ -600,7 +821,8 @@ app.whenReady().then(() => {
         }
       }
       
-      // Return empty response for RSC requests if file doesn't exist
+
+
       callback({
         statusCode: 200,
         headers: {
@@ -612,30 +834,40 @@ app.whenReady().then(() => {
       return;
     }
     
-    // Convert file:// URL to local path
+
+
     let filePath = url.replace('file:///', '');
-    // Handle URL encoding
+
+
     filePath = decodeURIComponent(filePath);
 
-    // Map absolute-root asset paths to the export folder.
-    // In Windows, root-relative URLs resolve like "D:/_next/static/...".
-    // Strip any drive letter before testing.
+
+
+
+
+
+
     const rootPathCandidate = filePath.replace(/^[A-Za-z]:/, '');
     if (rootPathCandidate.startsWith('/_next') || rootPathCandidate.startsWith('/static')) {
       const assetRelative = rootPathCandidate.replace(/^\//, '');
       filePath = path.join(__dirname, '../../../', 'out', assetRelative.replace(/\//g, path.sep));
     }
     
-    // Check if this is a navigation request (trying to access a route directory)
-    // If the path doesn't have a file extension and doesn't exist as a file,
-    // redirect to index.html to let Next.js handle routing
+
+
+
+
+
+
     const hasExtension = path.extname(filePath) !== '';
     const isDirectoryPath = filePath.endsWith('/') || !hasExtension;
     
     if (isDirectoryPath || (!hasExtension && !fs.existsSync(filePath))) {
-      // Try to serve a route-specific index.html from the exported out directory
+
+
       const outDir = path.join(__dirname, '../../../', 'out');
-      // Derive route from rootPathCandidate (e.g., "/ajustes" -> "ajustes/index.html")
+
+
       let routeRelative = rootPathCandidate.replace(/^\//, '').replace(/\/$/, '');
       const candidateRouteIndex = routeRelative
         ? path.join(outDir, routeRelative, 'index.html')
@@ -658,23 +890,28 @@ app.whenReady().then(() => {
       }
     }
     
-    // For static file requests, read from filesystem
-    // Convert forward slashes to backslashes on Windows
+
+
+
+
     filePath = filePath.replace(/\//g, path.sep);
     
     console.log('Loading static file:', filePath);
     
     try {
-      // Check if file exists
+
+
       if (!fs.existsSync(filePath)) {
         callback({ error: -6 }); // net::ERR_FILE_NOT_FOUND
         return;
       }
       
-      // Read file content
+
+
       const fileContent = fs.readFileSync(filePath);
       
-      // Determine MIME type based on file extension
+
+
       const ext = path.extname(filePath).toLowerCase();
       let mimeType = 'application/octet-stream';
       
@@ -729,7 +966,8 @@ app.whenReady().then(() => {
     }
   });
 
-  // Sync Start-at-Login initial state
+
+
   try {
     const loginSettings = app.getLoginItemSettings();
     openAtLogin = !!loginSettings.openAtLogin;
@@ -739,12 +977,14 @@ app.whenReady().then(() => {
 
   createWindow();
 
-  // Create system tray (Windows-focused behavior)
+
+
   if (process.platform === 'win32' || process.platform === 'darwin') {
     createTray();
   }
 
-  // On macOS, re-create window when dock icon is clicked
+
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -752,27 +992,34 @@ app.whenReady().then(() => {
   });
 });
 
-// Quit when all windows are closed
+
+
 app.on('window-all-closed', () => {
-  // On Windows/Linux, keep the app running in the tray unless explicitly quitting
-  // Only quit if we're actually quitting (not just hiding to tray)
+
+
+
+
   if (isQuiting) {
-    // Close database connection
+
+
     closeDatabase();
     
     if (process.platform !== 'darwin') {
       app.quit();
     }
   }
-  // If not quitting, keep the app alive in the tray
+
+
 });
 
-// Close database when app is quitting
+
+
 app.on('before-quit', () => {
   closeDatabase();
 });
 
-// Security: Prevent new window creation
+
+
 app.on('web-contents-created', (event, contents) => {
   contents.setWindowOpenHandler(() => {
     return { action: 'deny' };

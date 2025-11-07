@@ -9,6 +9,9 @@ const config: Config = {
   ],
   theme: {
   	extend: {
+  		screens: {
+  			short: { raw: '(max-height: 1200px)' }
+  		},
   		fontFamily: {
   			sans: [
   				'Inter',
@@ -101,7 +104,6 @@ const config: Config = {
             height: '0'
           }
         },
-  			// Custom animations for notifications bell UI
   			'ring': {
   				'0%, 100%': { transform: 'rotate(0deg)' },
   				'15%': { transform: 'rotate(15deg)' },

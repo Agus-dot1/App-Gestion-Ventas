@@ -61,10 +61,12 @@ export default function CalendarPage() {
   const [lastRefresh, setLastRefresh] = useState<number>(0);
   const [selectedEvents, setSelectedEvents] = useState<string[]>([]);
   
-  // Use data cache for performance
+
+
   const dataCache = useDataCache();
 
-  // Set isElectron after component mounts to avoid hydration mismatch
+
+
   useEffect(() => {
     setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
   }, []);
@@ -76,7 +78,8 @@ export default function CalendarPage() {
     }
 
     try {
-      // Check if we have cached sales data to avoid unnecessary loading states
+
+
       const cachedSales = dataCache.getCachedSales(1, 1000, '');
       const shouldShowLoading = (!cachedSales || forceRefresh) && events.length === 0;
       
@@ -87,19 +90,22 @@ export default function CalendarPage() {
       const calendarEvents: CalendarEvent[] = [];
       const errors: string[] = [];
 
-      // Load sales events - try cache first
+
+
       let sales: Sale[];
       if (cachedSales && !forceRefresh && !dataCache.isSalesCacheExpired(1, 1000, '')) {
         sales = cachedSales.items;
       } else {
         try {
           sales = await window.electronAPI.database.sales.getAll();
-          // Validate sales data
+
+
           if (!Array.isArray(sales)) {
             throw new Error('Invalid sales data format received');
           }
           
-          // Cache the sales data for future use
+
+
           if (sales.length > 0) {
             dataCache.setCachedSales(1, 1000, '', {
               items: sales,
@@ -118,10 +124,12 @@ export default function CalendarPage() {
         }
       }
 
-      // Process sales events with validation
+
+
       sales.forEach((sale, index) => {
         try {
-          // Validate required fields
+
+
           if (!sale.id || !sale.customer_name || !sale.date || !sale.total_amount) {
             console.warn(`Skipping invalid sale at index ${index}:`, sale);
             return;
@@ -150,7 +158,8 @@ export default function CalendarPage() {
         }
       });
 
-      // Load installment events with improved error handling
+
+
       const installmentPromises = sales
         .filter(sale => sale.payment_type === 'installments' && sale.id)
         .map(async (sale) => {
@@ -205,25 +214,29 @@ export default function CalendarPage() {
       const allInstallments = installmentResults.flat();
       calendarEvents.push(...allInstallments);
 
-      // Sort events by date for better organization
+
+
       calendarEvents.sort((a, b) => a.date.getTime() - b.date.getTime());
 
       setEvents(calendarEvents);
       setLastRefresh(Date.now());
 
-      // Log any errors that occurred during data loading
+
+
       if (errors.length > 0) {
         console.warn('Calendar data synchronization completed with errors:', errors);
       }
     } catch (error) {
       console.error('Critical error loading calendar events:', error);
-      // Don't clear existing events on error, just stop loading
+
+
     } finally {
       setLoading(false);
     }
   }, [isElectron, dataCache]);
 
-  // Initial data load
+
+
   useEffect(() => {
     if (isElectron) {
       loadCalendarEvents();
@@ -232,12 +245,14 @@ export default function CalendarPage() {
     }
   }, [isElectron, loadCalendarEvents]);
 
-  // Auto-refresh data every 5 minutes to keep calendar synchronized
+
+
   useEffect(() => {
     if (!isElectron) return;
 
     const interval = setInterval(() => {
-      // Only refresh if the page is visible and not currently loading
+
+
       if (!document.hidden && !loading) {
         loadCalendarEvents();
       }
@@ -246,13 +261,15 @@ export default function CalendarPage() {
     return () => clearInterval(interval);
   }, [isElectron, loading, loadCalendarEvents]);
 
-  // Listen for visibility changes to refresh when user returns to tab
+
+
   useEffect(() => {
     if (!isElectron) return;
 
     const handleVisibilityChange = () => {
       if (!document.hidden && !loading) {
-        // Refresh data when user returns to the tab after being away for more than 2 minutes
+
+
         const timeSinceLastRefresh = Date.now() - lastRefresh;
         if (timeSinceLastRefresh > 2 * 60 * 1000) {
           loadCalendarEvents();
@@ -280,7 +297,8 @@ export default function CalendarPage() {
     setIsEventDialogOpen(true);
   };
 
-  // Bulk operation handlers
+
+
   const handleSelectEvent = (eventId: string) => {
     setSelectedEvents(prev => 
       prev.includes(eventId) 
@@ -298,36 +316,50 @@ export default function CalendarPage() {
   };
 
   const handleEventSave = async (eventData: Partial<CalendarEvent>) => {
-    // For custom events, we'll store them in local state
-    // In a real application, this would integrate with your database
+
+
+
+
     console.log('Saving event:', eventData);
     
-    // If it's a custom event, add it to our local events
+
+
     if (eventData.type === 'custom' || eventData.type === 'reminder') {
-      // In a real app, you would save this to a database
-      // For now, we'll just reload the events which will include the new one
-      // if there was backend integration
+
+
+
+
+
+
     }
     
-    // Invalidate cache and reload
+
+
     dataCache.invalidateCache('sales');
     await loadCalendarEvents(true);
     setIsEventDialogOpen(false);
   };
 
   const handleEventDelete = async (eventId: string) => {
-    // For custom events, we'll remove them from local state
-    // In a real application, this would integrate with your database
+
+
+
+
     console.log('Deleting event:', eventId);
     
-    // If it's a custom event, remove it from our local events
+
+
     if (eventId.startsWith('custom-') || eventId.startsWith('reminder-')) {
-      // In a real app, you would delete this from a database
-      // For now, we'll just reload the events which will exclude the deleted one
-      // if there was backend integration
+
+
+
+
+
+
     }
     
-    // Invalidate cache and reload
+
+
     dataCache.invalidateCache('sales');
     await loadCalendarEvents(true);
     setIsEventDialogOpen(false);
@@ -357,17 +389,21 @@ export default function CalendarPage() {
 
   const filteredEvents = useMemo(() => {
     return events.filter(event => {
-      // Type filter
+
+
       if (filterType !== 'all' && event.type !== filterType) return false;
       
-      // Status filter
+
+
       if (filterStatus !== 'all' && event.status !== filterStatus) return false;
       
-      // Search filter
+
+
       if (searchQuery && !event.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
           !event.description?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       
-      // Date range filter
+
+
       if (dateRange.start && event.date < dateRange.start) return false;
       if (dateRange.end && event.date > dateRange.end) return false;
       
@@ -391,7 +427,8 @@ export default function CalendarPage() {
     });
   }, [filteredEvents, currentMonth]);
 
-  // Calculate statistics
+
+
   const stats = useMemo(() => {
     return {
       totalEvents: filteredEvents.length,
@@ -405,7 +442,8 @@ export default function CalendarPage() {
     };
   }, [filteredEvents]);
 
-  // Show skeleton only if loading and no cached data
+
+
   if (loading && events.length === 0) {
     return <CalendarSkeleton />;
   }

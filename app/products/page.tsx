@@ -12,6 +12,7 @@ import { Plus, Package, TrendingUp, DollarSign, Eye } from 'lucide-react';
 import { Database } from 'lucide-react';
 import type { Product } from '@/lib/database-operations';
 import { useDataCache, usePrefetch } from '@/hooks/use-data-cache';
+import { SHOW_MOCK_BUTTONS } from '@/lib/feature-flags';
 
 export default function ProductsPage() {
   const searchParams = useSearchParams();
@@ -23,11 +24,10 @@ export default function ProductsPage() {
     const dataCache = useDataCache();
   const { prefetchCustomers, prefetchSales } = usePrefetch();
 
-  // Check for Electron after component mounts to avoid hydration mismatch
   useEffect(() => {
     setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
   }, []);
-  const [isLoading, setIsLoading] = useState(false); // Start with false for optimistic navigation
+  const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [paginationInfo, setPaginationInfo] = useState({
@@ -36,22 +36,19 @@ export default function ProductsPage() {
     currentPage: 1,
     pageSize: 10
   });
-  const pageSize = 10; // Load 10 products per page for easier browsing
+  const pageSize = 10;
 
-  // Initial data load - optimistic approach
   useEffect(() => {
     if (isElectron) {
       loadProducts();
     }
   }, [isElectron]);
   
-  // Optimistic data loading on mount
+
   useEffect(() => {
     if (isElectron && dataCache) {
-      // Check if we have cached data first
       const cachedData = dataCache.getCachedProducts(currentPage, pageSize, searchTerm);
       if (cachedData) {
-        // Show cached data immediately
         setProducts(cachedData.items);
         setPaginationInfo({
           total: cachedData.total,
@@ -60,7 +57,6 @@ export default function ProductsPage() {
           pageSize: cachedData.pageSize
         });
       } else {
-        // No cache, show loading only if no data exists
         if (products.length === 0) {
           setIsLoading(true);
         }
@@ -68,17 +64,14 @@ export default function ProductsPage() {
     }
   }, [isElectron, dataCache]);
 
-  // Reload products when search term or page changes
   useEffect(() => {
     if (isElectron && products.length > 0) {
-      // Only reload if we already have data loaded
       setTimeout(() => {
         loadProducts();
       }, 0);
     }
   }, [searchTerm, currentPage]);
 
-  // Highlight product if specified in URL
   const highlightedProduct = useMemo(() => {
     if (!highlightId) return null;
     return products.find(product => product.id?.toString() === highlightId);
@@ -86,7 +79,6 @@ export default function ProductsPage() {
 
   useEffect(() => {
     if (highlightedProduct) {
-      // Scroll to highlighted product after a short delay
       setTimeout(() => {
         const element = document.getElementById(`producto-${highlightedProduct.id}`);
         if (element) {
@@ -103,12 +95,10 @@ export default function ProductsPage() {
 
   const loadProducts = async (forceRefresh = false) => {
     try {
-      // Check cache first and display immediately if available
       const cachedData = dataCache.getCachedProducts(currentPage, pageSize, searchTerm);
       const isCacheExpired = dataCache.isProductsCacheExpired(currentPage, pageSize, searchTerm);
       
       if (cachedData && !forceRefresh) {
-        // Show cached data immediately
         setProducts(cachedData.items);
         setPaginationInfo({
           total: cachedData.total,
@@ -118,18 +108,14 @@ export default function ProductsPage() {
         });
         setIsLoading(false);
         
-        // If cache is not expired, we're done
         if (!isCacheExpired) {
-          // Prefetch other pages in background
           setTimeout(() => {
             prefetchCustomers();
             prefetchSales();
           }, 100);
           return;
         }
-        // If expired, continue to refresh in background
       } else {
-        // No cache or forcing refresh, show loading only if no data exists
         if (products.length === 0) {
           setIsLoading(true);
         }
@@ -149,7 +135,6 @@ export default function ProductsPage() {
         pageSize: result.pageSize || pageSize
       });
       
-      // Cache the result
       dataCache.setCachedProducts(currentPage, pageSize, searchTerm, {
         items: result.products,
         total: result.total,
@@ -160,7 +145,6 @@ export default function ProductsPage() {
         timestamp: Date.now()
       });
       
-      // Prefetch other pages in background
       setTimeout(() => {
         prefetchCustomers();
         prefetchSales();
@@ -176,23 +160,19 @@ export default function ProductsPage() {
   const handleSaveProduct = async (productData: Omit<Product, 'id'>) => {
     try {
       if (editingProduct?.id) {
-        // Update existing product
         await window.electronAPI.database.products.update(editingProduct.id, productData);
       } else {
-        // Create new product
         await window.electronAPI.database.products.create(productData);
       }
       
-      // Clear cache and force refresh to ensure fresh data is loaded
       dataCache.invalidateCache('products');
       await loadProducts(true);
       
-      // Close form and reset editing state after successful save and reload
       setEditingProduct(undefined);
       setIsFormOpen(false);
     } catch (error) {
       console.error('Error añadiendo producto:', error);
-      throw error; // Re-throw to let the form handle the error
+      throw error; 
     }
   };
 
@@ -327,46 +307,50 @@ export default function ProductsPage() {
   const handleDeleteProduct = async (productId: number) => {
     try {
       await window.electronAPI.database.products.delete(productId);
-      // Clear cache to ensure fresh data is loaded
         setProducts(prev => prev.filter(p => p.id !== productId));
         dataCache.invalidateCache('products');
     } catch (error: any) {
       console.error('Error eliminando product:', error);
-      // Display error message to user
       alert(error.message || 'Error deleting product. Please try again.');
     }
   };
 
   const handleBulkDeleteProducts = async (productIds: number[]) => {
     try {
-      // Delete products one by one
+
+
       for (const productId of productIds) {
         await window.electronAPI.database.products.delete(productId);
       }
-      // Clear cache to ensure fresh data is loaded
+
+
       dataCache.invalidateCache('products');
       await loadProducts();
     } catch (error: any) {
       console.error('Error eliminando productos:', error);
-      // Display error message to user
+
+
       alert(error.message || 'Error deleting products. Please try again.');
     }
   };
 
   const handleToggleStatus = async (productId: number, isActive: boolean) => {
-    // Optimistic UI update: reflect change immediately
+
+
     setProducts(prev => prev.map(p => (
       p.id === productId ? { ...p, is_active: isActive } : p
     )));
 
     try {
       await window.electronAPI.database.products.update(productId, { is_active: isActive });
-      // Clear cache to ensure fresh data is loaded
+
+
       dataCache.invalidateCache('products');
       await loadProducts(true);
     } catch (error) {
       console.error('Error actualizando producto:', error);
-      // Revert change on failure
+
+
       setProducts(prev => prev.map(p => (
         p.id === productId ? { ...p, is_active: !isActive } : p
       )));
@@ -385,7 +369,8 @@ export default function ProductsPage() {
     }
   };
 
-  // Calculate statistics
+
+
   const stats = {
     total: products.length,
     active: products.filter(p => p.is_active).length,
@@ -403,7 +388,7 @@ export default function ProductsPage() {
   return (
     <DashboardLayout>
       <div className="p-8">
-        <div className="mb-8">
+        <div className="mb-4">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold tracking-tight">Productos</h1>
@@ -412,24 +397,22 @@ export default function ProductsPage() {
               </p>
             </div>
             <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                onClick={addMockProducts} 
-                disabled={!isElectron}
-              >
-                <Database className="mr-2 h-4 w-4" />
-                Añadir Productos de Prueba
-              </Button>
               <Button onClick={handleAddProduct} disabled={!isElectron}>
                 <Plus className="mr-2 h-4 w-4" />
                 Añadir Producto
               </Button>
+              {SHOW_MOCK_BUTTONS && (
+                <Button onClick={addMockProducts} variant="outline" disabled={!isElectron}>
+                  <Database className="mr-2 h-4 w-4" />
+                  Cargar datos de prueba
+                </Button>
+              )}
             </div>
           </div>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-4">
           <Card>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
@@ -512,6 +495,7 @@ export default function ProductsPage() {
           isLoading && products.length === 0 ? (
             <ProductsSkeleton />
           ) : (
+          <div>
           <ProductsTable
             products={products}
             highlightId={highlightId}
@@ -526,6 +510,7 @@ export default function ProductsPage() {
             paginationInfo={paginationInfo}
             serverSidePagination={true}
           />
+          </div>
           )
         ) : (
           <Card>

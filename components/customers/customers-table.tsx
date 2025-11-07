@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useMemo, useEffect, useRef } from 'react';
-// Defer heavy PDF/Excel libraries until export is triggered
+
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -66,7 +67,8 @@ export function EnhancedCustomersTable({
   onGetCustomersByIds
 }: EnhancedCustomersTableProps) {
   const [internalSearchTerm, setInternalSearchTerm] = useState('');
-  // Local input value to allow typing without immediate server reloads
+
+
   const [inputValue, setInputValue] = useState(externalSearchTerm || '');
   const debounceRef = useRef<number | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: keyof Customer; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
@@ -82,10 +84,12 @@ export function EnhancedCustomersTable({
     created_at: true,
   });
 
-  // Persist preferences in localStorage
+
+
   const CUSTOMERS_PERSIST_KEY = 'customersTablePrefs';
 
-  // Load persisted preferences on mount
+
+
   useEffect(() => {
     try {
       const raw = typeof window !== 'undefined' ? localStorage.getItem(CUSTOMERS_PERSIST_KEY) : null;
@@ -106,7 +110,8 @@ export function EnhancedCustomersTable({
     }
   }, [serverSidePagination]);
 
-  // Persist preferences when they change
+
+
   useEffect(() => {
     try {
       const prefs = {
@@ -122,7 +127,8 @@ export function EnhancedCustomersTable({
     }
   }, [columnVisibility, sortConfig, internalSearchTerm, serverSidePagination]);
 
-  // Bulk delete handler
+
+
   const handleBulkDelete = async () => {
     const selectedIds = Array.from(selectedCustomers);
     for (const customerId of selectedIds) {
@@ -133,15 +139,18 @@ export function EnhancedCustomersTable({
   };
   const itemsPerPage = 10;
 
-  // Use external state for server-side pagination, internal state for client-side
+
+
   const searchTerm = serverSidePagination ? (externalSearchTerm || '') : internalSearchTerm;
   const currentPage = serverSidePagination ? (externalCurrentPage || 1) : internalCurrentPage;
   
   const handleSearchChange = (term: string) => {
     if (serverSidePagination && onSearchChange) {
-      // Update local input value immediately
+
+
       setInputValue(term);
-      // Debounce emitting the server-side search to avoid locking the input
+
+
       if (debounceRef.current) {
         window.clearTimeout(debounceRef.current);
       }
@@ -155,7 +164,8 @@ export function EnhancedCustomersTable({
     }
   };
 
-  // Keep local input in sync if external search term changes (e.g., cleared)
+
+
   useEffect(() => {
     if (serverSidePagination) {
       setInputValue(externalSearchTerm || '');
@@ -170,7 +180,8 @@ export function EnhancedCustomersTable({
     }
   };
 
-  // Sort function
+
+
   const handleSort = (key: keyof Customer) => {
     setSortConfig(prev => ({
       key,
@@ -183,13 +194,15 @@ export function EnhancedCustomersTable({
     return sortConfig.direction === 'asc' ? <ArrowUp className="ml-1 h-4 w-4" /> : <ArrowDown className="ml-1 h-4 w-4" />;
   };
 
-  // Client-side filtering and sorting (only when not using server-side pagination)
+
+
   const filteredCustomers = serverSidePagination ? customers : customers.filter(customer =>
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Sort customers (apply to visible dataset; for server-side, sort current page)
+
+
   const sortedCustomers = useMemo(() => {
     const base = serverSidePagination ? customers : filteredCustomers;
     const sorted = [...base];
@@ -198,7 +211,8 @@ export function EnhancedCustomersTable({
       let aValue: any = (a as any)[key];
       let bValue: any = (b as any)[key];
 
-      // Date sorting for created_at
+
+
       if (key === 'created_at') {
         const aTime = aValue ? new Date(aValue).getTime() : 0;
         const bTime = bValue ? new Date(bValue).getTime() : 0;
@@ -206,7 +220,8 @@ export function EnhancedCustomersTable({
         return sortConfig.direction === 'asc' ? cmp : -cmp;
       }
 
-      // Default string compare
+
+
       aValue = (aValue ?? '').toString().toLowerCase();
       bValue = (bValue ?? '').toString().toLowerCase();
       const cmp = aValue.localeCompare(bValue);
@@ -215,13 +230,15 @@ export function EnhancedCustomersTable({
     return sorted;
   }, [filteredCustomers, customers, sortConfig, serverSidePagination]);
 
-  // Pagination logic
+
+
   const totalPages = serverSidePagination ? (paginationInfo?.totalPages || 1) : Math.ceil(sortedCustomers.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const paginatedCustomers = serverSidePagination ? sortedCustomers : sortedCustomers.slice(startIndex, endIndex);
 
-  // Mantener selecciones al cambiar de página (incluyendo server-side)
+
+
   const handlePageChangeWithClear = (page: number) => {
     handlePageChange(page);
   };
@@ -247,7 +264,8 @@ export function EnhancedCustomersTable({
 
   const handleSelectAll = async (checked: boolean) => {
     if (serverSidePagination && onSelectAll) {
-      // Delegar al padre (para cargar IDs si hace falta)
+
+
       onSelectAll(checked);
       if (checked) {
         if (allCustomerIds.length === 0 && typeof window !== 'undefined') {
@@ -266,7 +284,8 @@ export function EnhancedCustomersTable({
         setSelectedCustomers(new Set());
       }
     } else {
-      // Client-side: seleccionar todo del dataset filtrado
+
+
       if (checked) {
         setSelectedCustomers(new Set(sortedCustomers.map(c => c.id).filter(id => id !== undefined) as number[]));
       } else {
@@ -275,12 +294,14 @@ export function EnhancedCustomersTable({
     }
   };
 
-  // Check if all customers are selected
+
+
   const isAllSelected = serverSidePagination 
     ? allCustomerIds.length > 0 && selectedCustomers.size === allCustomerIds.length
     : sortedCustomers.length > 0 && selectedCustomers.size === sortedCustomers.filter(c => c.id !== undefined).length;
 
-  // Export functions (actualizadas con más campos y mejor formato)
+
+
   const formatDate = (dateString?: string) => {
     if (!dateString) return '-';
     try {
@@ -303,7 +324,8 @@ export function EnhancedCustomersTable({
 
     const { default: jsPDF } = await import('jspdf');
     const autoTable = (await import('jspdf-autotable')).default;
-    // Usamos orientación horizontal para dar más ancho a las columnas
+
+
     const doc = new jsPDF({ orientation: 'landscape' });
 
     doc.setFontSize(18);
@@ -332,7 +354,8 @@ export function EnhancedCustomersTable({
       margin: { left: 14, right: 14 },
       styles: { fontSize: 8, cellPadding: 2, halign: 'left' },
       headStyles: { fillColor: [30, 30, 30], textColor: 255, fontStyle: 'bold', halign: 'center', valign: 'middle', fontSize: 10 },
-      // Anchos pensados para A4 horizontal: ajustan mejor y evitan que los encabezados se rompan letra por letra
+
+
       columnStyles: {
         0: { cellWidth: 10 }, // ID
         1: { cellWidth: 28 }, // Nombre
@@ -400,7 +423,7 @@ export function EnhancedCustomersTable({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 short:[&_*]:text-sm short:[&>div_.rounded-md.border_table]:[&>table>thead>tr>th]:py-2 short:[&>div_.rounded-md.border_table]:[&>table>tbody>tr>td]:py-1">
       <Card>
         <CardHeader>
           <div className="flex items-center">
@@ -576,10 +599,6 @@ export function EnhancedCustomersTable({
                           <TableCell>
                             <div className="space-y-1">
                               <div className="flex items-center gap-1">
-                                <Mail className="h-3 w-3 text-muted-foreground" />
-                                <span className="text-sm">{customer.email || '-'}</span>
-                              </div>
-                              <div className="flex items-center gap-1">
                                 <Phone className="h-3 w-3 text-muted-foreground" />
                                 <span className="text-sm">{customer.phone || '-'}</span>
                               </div>
@@ -592,7 +611,7 @@ export function EnhancedCustomersTable({
                         {columnVisibility.created_at && (
                           <TableCell>{customer.created_at ? formatDate(customer.created_at) : '-'}</TableCell>
                         )}
-                        <TableCell className="flex">
+                        <TableCell className="flex p-2">
                           <ButtonGroup>
                             <Button variant="outline" size="sm"  onClick={() => onView(customer)}>Ver detalles</Button>
                             <Button variant="secondary" size="sm" onClick={() => onEdit(customer)}>Editar</Button>
@@ -629,12 +648,14 @@ export function EnhancedCustomersTable({
                 </Button>
                 <div className="flex items-center space-x-1">
                   {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                    // Show first page, last page, current page, and pages around current
+
+
                     const showPage = page === 1 || page === totalPages || 
                                    (page >= currentPage - 1 && page <= currentPage + 1);
                     
                     if (!showPage) {
-                      // Show ellipsis for gaps
+
+
                       if (page === currentPage - 2 || page === currentPage + 2) {
                         return <span key={page} className="px-2 text-muted-foreground">...</span>;
                       }

@@ -61,7 +61,8 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
       });
       setIsEditing(false);
     } else {
-      // New event
+
+
       setFormData({
         title: '',
         description: '',
@@ -145,7 +146,8 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
 
         <div className="space-y-6">
           {event && !isEditing ? (
-            // View Mode
+
+
             <div className="space-y-6">
               {/* Event Header */}
               <Card>
@@ -255,7 +257,8 @@ export function EventDialog({ event, open, onOpenChange, onSave, onDelete }: Eve
               )}
             </div>
           ) : (
-            // Edit/Create Mode
+
+
             <div className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">

@@ -92,7 +92,8 @@ export function SalesBulkOperations({
     const paidTotal = selectedSalesData.filter(s => s.payment_status === 'paid').reduce((sum, s) => sum + (s.total_amount || 0), 0);
     const overdueTotal = selectedSalesData.filter(s => s.payment_status === 'overdue').reduce((sum, s) => sum + (s.total_amount || 0), 0);
 
-    // Header
+
+
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(16);
     doc.text('Reporte de Ventas', 14, 16);
@@ -101,14 +102,16 @@ export function SalesBulkOperations({
     doc.text(`Generado: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`, 14, 22);
     doc.text(`Total de registros: ${selectedSalesData.length}`, 14, 28);
 
-    // Summary block
+
+
     doc.setFontSize(10);
     doc.text(`Total general: ${formatCurrency(currencyTotal)}`, 120, 16);
     doc.text(`Pendiente: ${formatCurrency(unpaidTotal)}`, 120, 22);
     doc.text(`Pagado: ${formatCurrency(paidTotal)}`, 120, 28);
     doc.text(`Vencido: ${formatCurrency(overdueTotal)}`, 120, 34);
 
-    // Table data
+
+
     const tableData = selectedSalesData.map(sale => [
       sale.sale_number,
       formatDate(sale.date),
@@ -150,7 +153,8 @@ export function SalesBulkOperations({
 
   const exportToExcel = async () => {
     const XLSX = await import('xlsx');
-    // Keep numbers as numbers so Excel can sum/filter properly
+
+
     const rows = selectedSalesData.map(sale => ({
       'N° Venta': sale.sale_number,
       'Fecha': XLSX.SSF.format('yyyy-mm-dd', new Date(sale.date)),
@@ -168,10 +172,12 @@ export function SalesBulkOperations({
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
 
-    // Header info
+
+
     const headers = Object.keys(rows[0] || {});
 
-    // Column widths
+
+
     (worksheet as any)['!cols'] = [
       { wch: 10 }, // N° Venta
       { wch: 12 }, // Fecha
@@ -186,13 +192,16 @@ export function SalesBulkOperations({
       { wch: 40 }, // Notas
     ];
 
-    // AutoFilter over header row
+
+
     (worksheet as any)['!autofilter'] = { ref: `A1:${String.fromCharCode(64 + headers.length)}1` };
 
-    // Append and write
+
+
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Ventas');
 
-    // Summary sheet
+
+
     const total = selectedSalesData.reduce((sum, s) => sum + (s.total_amount || 0), 0);
     const unpaid = selectedSalesData.filter(s => s.payment_status === 'unpaid').reduce((sum, s) => sum + (s.total_amount || 0), 0);
     const paid = selectedSalesData.filter(s => s.payment_status === 'paid').reduce((sum, s) => sum + (s.total_amount || 0), 0);

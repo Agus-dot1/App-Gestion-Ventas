@@ -16,7 +16,8 @@ import {
   RefreshCw,
   ArrowUpCircle,
   Info,
-  Bell
+  Bell,
+  Table
 } from 'lucide-react'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { Switch } from '@/components/ui/switch'
@@ -51,6 +52,7 @@ export default function AjustesPage() {
   const [lastBackup, setLastBackup] = useState<string | null>(null)
   const [migrationInfo, setMigrationInfo] = useState<MigrationInfo | null>(null)
   const [reduceAnimations, setReduceAnimations] = useState<boolean>(false)
+  const [excelFormLayout, setExcelFormLayout] = useState<boolean>(false)
   const [isClearingNotifications, setIsClearingNotifications] = useState<boolean>(false)
   const [isPurgingArchived, setIsPurgingArchived] = useState<boolean>(false)
   // Partners management state
@@ -66,6 +68,9 @@ export default function AjustesPage() {
       // Cargar preferencia de animaciones
       const savedReduce = localStorage.getItem('reduceAnimations')
       setReduceAnimations(savedReduce === 'true')
+      // Cargar preferencia de layout Excel para formularios
+      const savedExcel = localStorage.getItem('excelFormLayout')
+      setExcelFormLayout(savedExcel === 'true')
       loadCacheInfo()
       loadLastBackupInfo()
       checkMigrationStatus()
@@ -215,17 +220,29 @@ export default function AjustesPage() {
         window.electronAPI.database.sales.getAll()
       ])
 
+      // Adjuntar items por venta para un respaldo completo
+      const salesWithItems = await Promise.all(
+        (sales || []).map(async (s: any) => {
+          try {
+            const items = await window.electronAPI.database.saleItems.getBySale(s.id)
+            return { ...s, items: items || [] }
+          } catch (e) {
+            return { ...s, items: [] }
+          }
+        })
+      )
+
       const backupData: BackupData = {
         customers,
         products,
-        sales,
+        sales: salesWithItems,
         settings: {
           theme: localStorage.getItem('theme') || 'light',
           language: localStorage.getItem('language') || 'es',
           currency: localStorage.getItem('currency') || 'COP'
         },
         timestamp: new Date().toISOString(),
-        version: '1.0.0'
+        version: '1.1.0'
       }
 
       // Guardar archivo
@@ -474,12 +491,24 @@ export default function AjustesPage() {
     })
   }
 
+  const handleToggleExcelLayout = (checked: boolean) => {
+    setExcelFormLayout(checked)
+    localStorage.setItem('excelFormLayout', String(checked))
+    // Notificar globalmente para que los formularios actualicen su layout
+    window.dispatchEvent(new CustomEvent('app:settings-changed', { detail: { excelFormLayout: checked } }))
+    toast.success('Preferencia guardada', {
+      description: checked ? 'Formularios horizontales activados' : 'Formularios horizontales desactivados',
+      position: 'top-center',
+      duration: 2000,
+    })
+  }
+
   const handlePurgeArchived = async () => {
     if (!isElectron) {
       toast.error('Esta función solo está disponible en la aplicación de escritorio', {
         description: 'Usa la versión de escritorio para esta operación',
         position: 'top-center',
-        duration: 1000,
+        duration: 2000,
       })
       return
     }
@@ -490,7 +519,7 @@ export default function AjustesPage() {
       toast.success('Archivadas vaciadas', {
         description: 'Se eliminaron definitivamente todas las notificaciones archivadas',
         position: 'top-center',
-        duration: 1000,
+        duration: 2000,
       })
       window.dispatchEvent(new CustomEvent('notifications:purged'))
     } catch (error) {
@@ -498,7 +527,7 @@ export default function AjustesPage() {
       toast.error('Error al vaciar archivadas', {
         description: 'No fue posible eliminar algunas notificaciones archivadas',
         position: 'top-center',
-        duration: 1000,
+        duration: 2000,
       })
     } finally {
       setIsPurgingArchived(false)
@@ -524,6 +553,16 @@ export default function AjustesPage() {
                 <p className="text-sm text-muted-foreground">Desactiva la animación de navegación para una experiencia más fluida.</p>
               </div>
               <Switch id="reduce-animations" checked={reduceAnimations} onCheckedChange={handleToggleReduceAnimations} />
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label htmlFor="excel-form-layout" className="font-medium flex items-center gap-2">
+                  <Table className="h-4 w-4" />
+                  Formularios Horizontales
+                </Label>
+                <p className="text-sm text-muted-foreground">Aplica un layout horizontal tipo tabla en los formularios.</p>
+              </div>
+              <Switch id="excel-form-layout" checked={excelFormLayout} onCheckedChange={handleToggleExcelLayout} />
             </div>
           </div>
         </div>

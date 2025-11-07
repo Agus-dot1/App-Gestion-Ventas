@@ -1,4 +1,5 @@
-// File: use-search-shortcut.ts
+
+
 
 'use client';
 

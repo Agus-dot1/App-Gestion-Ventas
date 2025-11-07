@@ -12,26 +12,32 @@ export function mapDbTypeToUi(dbType: NotificationTypeDb): NotificationTypeUi {
   }
 }
 
-// Enhanced function to ensure overdue payments are always classified as 'alert'
+
+
 export function determineNotificationType(type: NotificationTypeDb | NotificationTypeUi, message: string): NotificationTypeUi {
-  // Force overdue payment messages to be 'alert' type regardless of input type
+
+
   if (message.toLowerCase().includes('cuota vencida') || message.toLowerCase().includes('vencida hoy')) {
     return 'alert'
   }
   
-  // Normalize depending on input domain
+
+
   if (type === 'alert' || type === 'info') return type
-  // Map DB 'reminder' and UI 'attention' to UI 'attention'
+
+
   return 'attention'
 }
 
 function deriveCategory(type: NotificationTypeUi, message: string, message_key?: string): 'client' | 'system' | 'stock' {
-  // Prefer semantic key namespaces for deterministic category
+
+
   if (message_key) {
     if (message_key.startsWith('overdue|') || message_key.startsWith('upcoming|')) return CATEGORY.client
     if (message_key.startsWith('stock_low|')) return CATEGORY.stock
   }
-  // Fallback to content heuristics
+
+
   if (STOCK_LOW_REGEX.test(message)) return CATEGORY.stock
   if (CLIENT_ALERT_REGEX.test(message)) return CATEGORY.client
   if (type === 'attention') return CATEGORY.client
@@ -40,17 +46,21 @@ function deriveCategory(type: NotificationTypeUi, message: string, message_key?:
 
 function parseClientFields(message: string): Partial<NotificationItem['meta']> {
   try {
-    // Caso especial: Recordatorio semanal agregador (no contiene la palabra "cuota")
+
+
     const weeklyPattern = /Recordatorio\s*\(Semanal\).*revisar pago/i
     if (weeklyPattern.test(message)) {
       const parts = message.split('—').map(s => s.trim())
-      // Estructura generada por el scheduler:
-      // "Recordatorio (Semanal): Mañana X — revisar pago — Nombre1, Nombre2, Nombre3 y +N"
+
+
+
+
       const namesPart = parts[2] || parts[parts.length - 1] || ''
       let namesStr = namesPart
       let extraCount: number | undefined
 
-      // Remover sufijo "y +N" y calcular cantidad total
+
+
       const extrasMatch = namesStr.match(/\+\s*(\d+)/)
       if (extrasMatch) {
         const plusN = parseInt(extrasMatch[1], 10)
@@ -69,10 +79,12 @@ function parseClientFields(message: string): Partial<NotificationItem['meta']> {
       }
     }
 
-    // Manejo habitual: mensajes que contienen "cuota"
+
+
     if (!CLIENT_ALERT_REGEX.test(message)) return {}
 
-    // Handle simple format like "Cuota vencida hoy"
+
+
     if (message.toLowerCase().includes('cuota vencida hoy')) {
       return { 
         category: CATEGORY.client,
@@ -82,9 +94,12 @@ function parseClientFields(message: string): Partial<NotificationItem['meta']> {
     }
 
     const parts = message.split('—').map(s => s.trim())
-    // Ejemplos:
-    // "Cuota vencida — Nombre — 30/9/2024 — $ 10.000"
-    // "Cuota próxima a vencer — Nombre — 25/10 — $ 20.000"
+
+
+
+
+
+
     let customerName: string | undefined
     let due_at: string | undefined
     let amount: number | undefined
@@ -116,7 +131,8 @@ function parseClientFields(message: string): Partial<NotificationItem['meta']> {
 function parseStockFields(message: string, message_key?: string | null): Partial<NotificationItem['meta']> {
   const meta: Partial<NotificationItem['meta']> = {}
   try {
-    // Extrae: nombre, unidades, precio opcional y categoría opcional
+
+
     const m = message.match(STOCK_LOW_REGEX)
     if (m) {
       const name = (m[1] || '').trim()
@@ -136,7 +152,8 @@ function parseStockFields(message: string, message_key?: string | null): Partial
       }
       if (categoryStr) meta.productCategory = categoryStr
     }
-    // Product id from semantic key
+
+
     if (message_key && message_key.startsWith('stock_low|')) {
       const pidStr = message_key.split('|')[1]
       const pid = parseInt(pidStr, 10)
@@ -159,19 +176,20 @@ export function normalizeDbToUi(n: NotificationRecord): NotificationItem {
             message_key: n.message_key || undefined,
         },
     }
-    // Enriquecer con campos de cliente y stock, pero dejando que meta existente prevalezca
+
+
     const parsedClient = parseClientFields(n.message);
     const parsedStock = parseStockFields(n.message, n.message_key);
     base.meta = { ...parsedClient, ...parsedStock, ...base.meta };
 
-    // Si es cliente y es "overdue|" o "upcoming|", preferir due_at para la etiqueta de tiempo
-    const key = base.meta?.message_key || ''
-    const dueAt = parsedClient?.due_at
-    if (base.meta?.category === CATEGORY.client && typeof dueAt === 'string') {
-      if (key.startsWith('overdue|') || key.startsWith('upcoming|')) {
-        base.created_at = dueAt
-      }
-    }
+
+
+
+
+
+
+
+
 
     return base
 }
@@ -189,39 +207,44 @@ export function normalizeEventToUi(ev: NotificationEventPayload): NotificationIt
         read_at: null,
         meta: {
             category: deriveCategory(type, ev.message, ev.meta?.message_key),
-            // Incluye todo meta del evento (si trae más campos, se respetan)
+
+
             ...ev.meta,
         },
     }
 
-    // Enriquecer meta calculada
+
+
     base.meta = { ...parsedClient, ...parsedStock, ...base.meta };
 
-    // Si es cliente y es "overdue|" o "upcoming|", preferir due_at para la etiqueta de tiempo
-    const key = base.meta?.message_key || ''
-    const dueAt = parsedClient?.due_at
-    if (base.meta?.category === CATEGORY.client && typeof dueAt === 'string') {
-      if (key.startsWith('overdue|') || key.startsWith('upcoming|')) {
-        base.created_at = dueAt
-      }
-    }
+
+
+
+
+
+
+
+
 
     return base
 }
 
 export function isDuplicate(a: NotificationItem, b: NotificationItem): boolean {
-  // Exact match by persisted id
+
+
   if (typeof a.id === 'number' && typeof b.id === 'number' && a.id === b.id) return true;
 
   const dayA = a.created_at ? new Date(a.created_at).toDateString() : '';
   const dayB = b.created_at ? new Date(b.created_at).toDateString() : '';
 
-  // Prefer semantic key if provided; treat same key as duplicate regardless of day
+
+
   const keyA = a.meta?.message_key;
   const keyB = b.meta?.message_key;
   if (keyA && keyB && keyA === keyB) return true;
 
-  // Fallback: same message, day, type, and category
+
+
   if (a.message !== b.message) return false;
   return dayA === dayB && a.type === b.type && (a.meta?.category ?? '') === (b.meta?.category ?? '');
 }

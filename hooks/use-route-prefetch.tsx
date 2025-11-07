@@ -7,7 +7,8 @@ export function useRoutePrefetch() {
   const dataCache = useDataCache();
 
   const prefetchProducts = useCallback(async () => {
-    // Only prefetch if we're in Electron and don't have cached data
+
+
     if (typeof window !== 'undefined' && window.electronAPI) {
       const cached = dataCache.getCachedProducts(1, 25, '');
       if (!cached) {
@@ -33,7 +34,8 @@ export function useRoutePrefetch() {
   }, [dataCache]);
 
   const prefetchCustomers = useCallback(async () => {
-    // Only prefetch if we're in Electron and don't have cached data
+
+
     if (typeof window !== 'undefined' && window.electronAPI) {
       const cached = dataCache.getCachedCustomers(1, 10, '');
       if (!cached) {
@@ -59,7 +61,8 @@ export function useRoutePrefetch() {
   }, [dataCache]);
 
   const prefetchSales = useCallback(async () => {
-    // Only prefetch if we're in Electron and don't have cached data
+
+
     if (typeof window !== 'undefined' && window.electronAPI) {
       const cached = dataCache.getCachedSales(1, 25, '');
       if (!cached) {
@@ -85,14 +88,18 @@ export function useRoutePrefetch() {
   }, [dataCache]);
 
   const prefetchCalendar = useCallback(async () => {
-    // Calendar events are handled differently - no prefetching needed
-    // as they are loaded directly in the calendar component
+
+
+
+
     console.log('Calendar prefetch skipped - handled by component');
   }, []);
 
-  // Prefetch all common routes
+
+
   const prefetchAllRoutes = useCallback(async () => {
-    // Use setTimeout to avoid blocking the main thread
+
+
     setTimeout(() => {
       prefetchProducts();
     }, 100);

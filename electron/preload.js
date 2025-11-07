@@ -1,7 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Expose protected methods that allow the renderer process to use
-// the ipcRenderer without exposing the entire object
+
+
+
+
 contextBridge.exposeInMainWorld('electronAPI', {
   database: {
     customers: {
@@ -81,14 +83,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
       create: (partner) => ipcRenderer.invoke('partners:create', partner),
       update: (id, partner) => ipcRenderer.invoke('partners:update', id, partner),
       delete: (id) => ipcRenderer.invoke('partners:delete', id)
+    },
+
+
+    onChanged: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on('database:changed', handler);
+      return () => {
+        ipcRenderer.removeListener('database:changed', handler);
+      };
     }
   },
-  // Cache management
+
+
   cache: {
     getSize: () => ipcRenderer.invoke('cache:getSize'),
     clear: () => ipcRenderer.invoke('cache:clear')
   },
-  // Backup management
+
+
   backup: {
     save: (data) => ipcRenderer.invoke('backup:save', data),
     load: () => ipcRenderer.invoke('backup:load'),
@@ -96,7 +109,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     importProducts: (products) => ipcRenderer.invoke('backup:importProducts', products),
     importSales: (sales) => ipcRenderer.invoke('backup:importSales', sales)
   },
-  // Notifications API
+
+
   notifications: {
     list: (limit) => ipcRenderer.invoke('notifications:list', limit),
     markRead: (id) => ipcRenderer.invoke('notifications:markRead', id),
@@ -119,7 +133,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     emitTestEvent: (payload) => ipcRenderer.invoke('notifications:emitTestEvent', payload)
   },
-  // Utility functions
+
+
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),
   showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options)

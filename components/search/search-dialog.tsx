@@ -25,7 +25,8 @@ import type { Customer, Sale, Product } from '@/lib/database-operations';
 
 type ProductBuyer = { sale_id: number; sale_number: string; date: string; customer_id: number; customer_name: string };
 
-// Translation functions
+
+
 const translatePaymentType = (type: string) => {
   const translations: Record<string, string> = {
     'cash': 'Efectivo',
@@ -81,13 +82,16 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
 
 
   
-  // Data states
+
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [productBuyers, setProductBuyers] = useState<Record<number, ProductBuyer[]>>({});
   const [saleFirstItemName, setSaleFirstItemName] = useState<Record<number, string>>({});
-  // Debounce search query
+  const [saleItemNames, setSaleItemNames] = useState<Record<number, string[]>>({});
+
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedQuery(query);
@@ -98,10 +102,10 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
 
   useEffect(() => {
     setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
-    if (open && typeof window !== 'undefined' && window.electronAPI && !dataLoaded) {
-      loadData();
+    if (open && typeof window !== 'undefined' && window.electronAPI) {
+      loadData(true);
     }
-  }, [open, dataLoaded]);
+  }, [open]);
 
   useEffect(() => {
     if (open) {
@@ -118,9 +122,8 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
     }).format(amount);
   };
 
-  const loadData = useCallback(async () => {
-    if (dataLoaded) return;
-    
+  const loadData = useCallback(async (force: boolean = false) => {
+    if (dataLoaded && !force) return;
     setLoading(true);
     try {
       const [customersData, salesData, productsData] = await Promise.all([
@@ -128,10 +131,46 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
         window.electronAPI.database.sales.getAll(),
         window.electronAPI.database.products.getAll()
       ]);
-      
+
       setCustomers(customersData);
       setSales(salesData);
       setProducts(productsData);
+
+
+
+      try {
+        const namesMap: Record<number, string> = {};
+        const allItemsMap: Record<number, string[]> = {};
+        await Promise.all(
+          salesData
+            .filter(s => s.id != null)
+            .map(async (s) => {
+              try {
+                const items = await window.electronAPI.database.saleItems.getBySale(s.id!);
+                const first = items && items.length > 0 ? items[0] : undefined;
+                const firstName = first?.product_name || (first?.product_id ? `Producto ${first.product_id}` : undefined);
+                if (firstName) namesMap[s.id!] = firstName;
+
+                const itemNames = (items || [])
+                  .map(it => (it.product_name || (it.product_id ? `Producto ${it.product_id}` : '')))
+                  .filter(Boolean);
+                allItemsMap[s.id!] = itemNames;
+              } catch (e) {
+
+
+              }
+            })
+        );
+        if (Object.keys(namesMap).length > 0) {
+          setSaleFirstItemName(namesMap);
+        } else {
+          setSaleFirstItemName({});
+        }
+        setSaleItemNames(allItemsMap);
+      } catch (e) {
+        console.error('Error precomputing sale item names:', e);
+      }
+
       setDataLoaded(true);
     } catch (error) {
       console.error('Error loading search data:', error);
@@ -140,36 +179,58 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
     }
   }, [dataLoaded]);
 
+
+
+  useEffect(() => {
+    if (!isElectron || !open || !window.electronAPI?.database?.onChanged) return;
+    const off = window.electronAPI.database.onChanged((payload: any) => {
+      const entity = payload?.entity;
+      if (entity && ['sales', 'customers', 'products', 'saleItems'].includes(entity)) {
+        loadData(true);
+      }
+    });
+    return () => {
+      try { if (typeof off === 'function') off(); } catch {}
+    };
+  }, [open, isElectron, loadData]);
+
   const searchResults = useMemo(() => {
     if (!debouncedQuery.trim()) return [];
 
     const results: SearchResult[] = [];
     const searchTerm = debouncedQuery.toLowerCase();
+    const tokens = searchTerm.split(/\s+/).filter(Boolean);
 
-    // Check if search term looks like a DNI (7-8 digits)
+
+
     const isDNISearch = /^\d{7,8}$/.test(searchTerm);
 
-    // Search customers
+
+
     customers.forEach(customer => {
       let matchScore = 0;
       let matchReason = '';
 
-      // DNI search gets highest priority
+
+
       if (customer.dni?.toLowerCase().includes(searchTerm)) {
         matchScore = isDNISearch ? 100 : 80; // Exact DNI match gets highest score
         matchReason = customer.dni === searchTerm ? 'DNI exacto' : 'DNI parcial';
       }
-      // Name search
+
+
       else if (customer.name.toLowerCase().includes(searchTerm)) {
         matchScore = customer.name.toLowerCase().startsWith(searchTerm) ? 70 : 50;
         matchReason = 'Nombre';
       }
-      // Email search
+
+
       else if (customer.email?.toLowerCase().includes(searchTerm)) {
         matchScore = 40;
         matchReason = 'Email';
       }
-      // Contact info search
+
+
       else if (customer.contact_info?.toLowerCase().includes(searchTerm)) {
         matchScore = 20;
         matchReason = 'Contacto';
@@ -180,7 +241,8 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
         const totalSpent = customerSales.reduce((sum, sale) => sum + sale.total_amount, 0);
         const overdueSales = customerSales.filter(sale => sale.payment_status === 'overdue');
 
-        // Enhanced subtitle to show DNI when available and relevant
+
+
         let subtitle = `${customerSales.length} ventas • $${totalSpent.toLocaleString()}`;
         if (customer.dni && (isDNISearch || matchReason.includes('DNI'))) {
           subtitle = `DNI: ${customer.dni} • ${subtitle}`;
@@ -208,16 +270,25 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
           }
         });
 
-        // Add customer's sales as separate results
-        customerSales.slice(0, 3).forEach(sale => {
-          const firstItemName = saleFirstItemName[sale.id!] || '';
-          const saleMatches = 
-            (sale.reference_code || '').toLowerCase().includes(searchTerm) ||
-            sale.sale_number.toLowerCase().includes(searchTerm) ||
-            (sale.notes?.toLowerCase().includes(searchTerm) ?? false) ||
-            firstItemName.toLowerCase().includes(searchTerm);
 
-          // Only add if sale matches search term or customer matched
+
+        customerSales.slice(0, 3).forEach(sale => {
+        const firstItemName = saleFirstItemName[sale.id!] || '';
+        const itemNames = saleItemNames[sale.id!] || [];
+        const itemsSingleMatch = tokens.length === 1
+          ? (firstItemName.toLowerCase().includes(tokens[0]) || itemNames.some(n => n.toLowerCase().includes(tokens[0])))
+          : false;
+        const itemsMultiMatch = tokens.length > 1
+          ? tokens.every(t => itemNames.some(n => n.toLowerCase().includes(t)))
+          : false;
+        const saleMatches = 
+          (sale.reference_code || '').toLowerCase().includes(searchTerm) ||
+          sale.sale_number.toLowerCase().includes(searchTerm) ||
+          (sale.notes?.toLowerCase().includes(searchTerm) ?? false) ||
+          itemsSingleMatch || itemsMultiMatch;
+
+
+
           if (saleMatches || matchScore > 0) {
             results.push({
               id: `sale-${sale.id}`,
@@ -236,19 +307,28 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
       }
     });
 
-    // Search sales directly
+
+
     sales.forEach(sale => {
       const refCode = (sale.reference_code || '').toLowerCase();
       const firstItemName = saleFirstItemName[sale.id!] || '';
+      const itemNames = saleItemNames[sale.id!] || [];
+      const itemsSingleMatch = tokens.length === 1
+        ? (firstItemName.toLowerCase().includes(tokens[0]) || itemNames.some(n => n.toLowerCase().includes(tokens[0])))
+        : false;
+      const itemsMultiMatch = tokens.length > 1
+        ? tokens.every(t => itemNames.some(n => n.toLowerCase().includes(t)))
+        : false;
       const matches =
         refCode.includes(searchTerm) ||
         sale.sale_number.toLowerCase().includes(searchTerm) ||
         (sale.customer_name?.toLowerCase().includes(searchTerm) ?? false) ||
         (sale.notes?.toLowerCase().includes(searchTerm) ?? false) ||
-        firstItemName.toLowerCase().includes(searchTerm);
+        itemsSingleMatch || itemsMultiMatch;
 
       if (matches) {
-        // Skip if already added through customer search
+
+
         if (!results.find(r => r.id === `sale-${sale.id}`)) {
           results.push({
             id: `sale-${sale.id}`,
@@ -266,7 +346,8 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
       }
     });
 
-    // Search products (only if not hidden)
+
+
     if (!hideProducts) {
       products.forEach(product => {
         if (
@@ -295,7 +376,8 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
       });
     }
 
-    // Search installments for overdue payments
+
+
     if (searchTerm.includes('vencido') || searchTerm.includes('pago') || searchTerm.includes('overdue') || searchTerm.includes('payment')) {
       const overdueSales = sales.filter(sale => sale.payment_status === 'overdue');
       overdueSales.forEach(sale => {
@@ -316,7 +398,8 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
       });
     }
 
-    // Sort results by match score (highest first) and then by type priority
+
+
     results.sort((a, b) => {
       const scoreA = a.metadata?.matchScore || 0;
       const scoreB = b.metadata?.matchScore || 0;
@@ -325,7 +408,8 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
         return scoreB - scoreA; // Higher score first
       }
       
-      // If scores are equal, prioritize by type
+
+
       const typePriority = { customer: 4, sale: 3, product: 2, installment: 1 };
       return (typePriority[b.type] || 0) - (typePriority[a.type] || 0);
     });
@@ -356,33 +440,8 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
     });
   }, [searchResults, productBuyers, isElectron]);
 
-  // Lazily load first product name for each sale shown in results
-  useEffect(() => {
-    if (!isElectron) return;
-    const saleResults = searchResults.filter(r => r.type === 'sale');
-    saleResults.forEach(async (r) => {
-      const sale = r.metadata?.sale as Sale | undefined;
-      if (
-        sale &&
-        sale.id != null &&
-        !saleFirstItemName[sale.id] &&
-        typeof window !== 'undefined' &&
-        window.electronAPI?.database?.saleItems?.getBySale
-      ) {
-        try {
-          const items = await window.electronAPI.database.saleItems.getBySale(sale.id);
-          const first = items && items.length > 0 ? items[0] : undefined;
-          const name = first?.product_name || (first?.product_id ? `Producto ${first.product_id}` : undefined);
-          if (name) {
-            const sid = sale.id!;
-            setSaleFirstItemName(prev => ({ ...prev, [sid]: name }));
-          }
-        } catch (error) {
-          console.error('Error obteniendo primer producto de la venta:', error);
-        }
-      }
-    });
-  }, [searchResults, saleFirstItemName, isElectron]);
+
+
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
@@ -469,7 +528,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
             Buscar Todo
           </DialogTitle>
           <DialogDescription id="search-instructions">
-            Buscar clientes por DNI, nombre, email, ventas, productos y pagos. Usa ↑↓ para navegar, Enter para seleccionar.
+            Buscar clientes por DNI, nombre, email, ventas, productos y pagos. Usa ↑↓ para navegar, Enter para seleccionar. Para ventas, separa nombres de items con espacios para combinar.
           </DialogDescription>
         </DialogHeader>
 

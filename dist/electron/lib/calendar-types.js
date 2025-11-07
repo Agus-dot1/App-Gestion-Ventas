@@ -1,15 +1,18 @@
 "use strict";
-// Calendar types and interfaces for the calendar system
+
+
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getEventStatusColor = exports.getEventTypeColor = exports.formatEventDate = exports.formatEventTime = exports.getShortDayName = exports.getDayName = exports.getMonthName = exports.isToday = exports.isSameMonth = exports.isSameDay = void 0;
-// Utility functions for calendar operations
+
+
 const isSameDay = (date1, date2, timeZone) => {
     if (!timeZone) {
         return date1.getDate() === date2.getDate() &&
             date1.getMonth() === date2.getMonth() &&
             date1.getFullYear() === date2.getFullYear();
     }
-    // For time zone-aware comparison, we need to convert both dates to the same time zone
+
+
     const d1 = new Date(date1.toLocaleString("en-US", { timeZone }));
     const d2 = new Date(date2.toLocaleString("en-US", { timeZone }));
     return d1.getDate() === d2.getDate() &&
@@ -22,7 +25,8 @@ const isSameMonth = (date1, date2, timeZone) => {
         return date1.getMonth() === date2.getMonth() &&
             date1.getFullYear() === date2.getFullYear();
     }
-    // For time zone-aware comparison, we need to convert both dates to the same time zone
+
+
     const d1 = new Date(date1.toLocaleString("en-US", { timeZone }));
     const d2 = new Date(date2.toLocaleString("en-US", { timeZone }));
     return d1.getMonth() === d2.getMonth() &&
@@ -99,4 +103,4 @@ const getEventStatusColor = (status) => {
     }
 };
 exports.getEventStatusColor = getEventStatusColor;
-//# sourceMappingURL=calendar-types.js.map
+

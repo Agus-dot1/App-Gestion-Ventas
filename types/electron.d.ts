@@ -1,4 +1,5 @@
-// Global type declaration for Electron preload API
+
+
 
 export type InvokeResult<T = any> = Promise<T>
 
@@ -81,6 +82,7 @@ export interface ElectronAPI {
       update: (id: number, partner: { name?: string; is_active?: boolean }) => InvokeResult<void>
       delete: (id: number) => InvokeResult<void>
     }
+    onChanged: (callback: (payload: any) => void) => () => void
   }
   cache: {
     getSize: () => InvokeResult<string>
