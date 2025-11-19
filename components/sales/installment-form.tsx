@@ -190,8 +190,8 @@ export function InstallmentForm({ installment, open, onOpenChange, onSave }: Ins
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={cn(
-          'max-w-[95vw] max-h-[90vh] overflow-y-auto',
-          isExcelLayout ? 'sm:max-w-[98vw] lg:max-w-[75vw] xl:max-w-[50vw]' : 'sm:max-w-[500px]'
+          'max-w-[95vw] max-h-[80vh] overflow-y-auto',
+          isExcelLayout ? 'sm:max-w-[98vw] lg:max-w-[75vw] xl:max-w-[50vw]' : 'sm:max-w-[480px]'
         )}
       >
         <DialogHeader>
@@ -282,7 +282,7 @@ export function InstallmentForm({ installment, open, onOpenChange, onSave }: Ins
                       min="0"
                       value={formData.amount}
                       onChange={(e) => handleInputChange('amount', Math.round(parseFloat(e.target.value) || 0))}
-                      className={`pl-10 ${errors.amount ? 'border-red-500' : ''}`}
+                      className={`pl-10 font-medium text-foreground ${errors.amount ? 'border-red-500' : ''}`}
                     />
                   </div>
                   {errors.amount && (
@@ -413,7 +413,7 @@ export function InstallmentForm({ installment, open, onOpenChange, onSave }: Ins
                         min="0"
                         value={formData.amount}
                         onChange={(e) => handleInputChange('amount', Math.round(parseFloat(e.target.value) || 0))}
-                        className={`pl-10 ${errors.amount ? 'border-red-500' : ''}`}
+                        className={`pl-10 font-medium text-foreground ${errors.amount ? 'border-red-500' : ''}`}
                       />
                     </div>
                     {errors.amount && (

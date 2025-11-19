@@ -3,34 +3,22 @@ import { notificationOperations } from './repository'
 import { customerOperations, productOperations, saleOperations, installmentOperations } from '../lib/database-operations'
 import { IPC_NOTIFICATIONS } from './constants'
 
-const isDev = process.env.NODE_ENV === 'development'
 
 function cleanupOrphanedNotifications() {
-  try {
-    const all = notificationOperations.list(500)
-    const seen = new Set<string>()
-    for (const n of all) {
-      if (n.message_key) {
-        const key = `${n.message_key}|active` // distinct label for active
-        if (seen.has(key)) {
-          notificationOperations.delete(n.id as number)
-        } else {
-          seen.add(key)
-        }
-      }
-    }
-  } catch (e) {
-    console.error('Error during notification cleanup:', e)
-  }
+  try { notificationOperations.dedupeActiveByMessageKey() } catch (e) { console.error('Error during notification cleanup:', e) }
 }
 
-export function setupNotificationScheduler(getMainWindow: () => BrowserWindow | null, intervalMs: number = isDev ? 30_000 : 5 * 60_000) {
+export function setupNotificationScheduler(getMainWindow: () => BrowserWindow | null, intervalMs: number = 5 * 60_000) {
   function tick() {
     try {
       cleanupOrphanedNotifications()
+      const suppressIfMuted = (process.env.NOTIFICATIONS_SUPPRESS_WHEN_MUTED ?? 'true') !== 'false'
+      const isMuted = !getMainWindow()
       
       const overdue = installmentOperations.getOverdue();
       if (overdue && overdue.length > 0) {
+        const batchThreshold = parseInt(process.env.NOTIFICATIONS_BATCH_THRESHOLD || '10', 10)
+        const payloads: any[] = []
         overdue.forEach((inst: any) => {
           try {
 
@@ -46,26 +34,34 @@ export function setupNotificationScheduler(getMainWindow: () => BrowserWindow | 
             const existsActive = notificationOperations.existsActiveWithKey(key)
             const existsToday = notificationOperations.existsTodayWithKey(key)
             if (!existsActive && !existsToday) {
-              const dbType = 'alert'
-              const nid = notificationOperations.create(msg, dbType as any, key as any)
-              const win = getMainWindow()
-
-              if (win) {
+              if (!(suppressIfMuted && isMuted)) {
+                const dbType = 'alert'
+                const nid = notificationOperations.create(msg, dbType as any, key as any)
                 const latest = notificationOperations.getLatestByKey(key)
                 const createdAt = latest?.created_at
-                win.webContents.send(IPC_NOTIFICATIONS.event, { id: nid, message: msg, type: 'alert', meta: { message_key: key, customerName: customer, due_at: inst.due_date ? new Date(inst.due_date).toISOString() : new Date().toISOString(), amount: inst.balance, ...(createdAt ? { created_at: createdAt } : {}) } })
+                payloads.push({ id: nid, message: msg, type: 'alert', meta: { message_key: key, customerName: customer, due_at: inst.due_date ? new Date(inst.due_date).toISOString() : new Date().toISOString(), amount: inst.balance, ...(createdAt ? { created_at: createdAt } : {}) } })
               }
             }
           } catch (e) {
             console.error('Error processing overdue installment:', e)
           }
         })
+        const win = getMainWindow()
+        if (win && payloads.length > 0) {
+          if (payloads.length >= batchThreshold) {
+            win.webContents.send(IPC_NOTIFICATIONS.eventBatch, payloads)
+          } else {
+            for (const p of payloads) { win.webContents.send(IPC_NOTIFICATIONS.event, p) }
+          }
+        }
       }
 
 
 
       const upcoming = installmentOperations.getUpcoming()
       if (upcoming && upcoming.length > 0) {
+        const batchThreshold = parseInt(process.env.NOTIFICATIONS_BATCH_THRESHOLD || '10', 10)
+        const payloads: any[] = []
         upcoming.forEach((inst: any) => {
           try {
 
@@ -81,12 +77,11 @@ export function setupNotificationScheduler(getMainWindow: () => BrowserWindow | 
             const existsActive = notificationOperations.existsActiveWithKey(key)
             const existsToday = notificationOperations.existsTodayWithKey(key)
             if (!existsActive && !existsToday) {
-              const nid = notificationOperations.create(msg, 'reminder' as any, key as any)
-              const win = getMainWindow()
-              if (win) {
+              if (!(suppressIfMuted && isMuted)) {
+                const nid = notificationOperations.create(msg, 'reminder' as any, key as any)
                 const latest = notificationOperations.getLatestByKey(key)
                 const createdAt = latest?.created_at
-                win.webContents.send(IPC_NOTIFICATIONS.event, {
+                payloads.push({
                   id: nid,
                   message: msg,
                   type: 'attention',
@@ -97,13 +92,21 @@ export function setupNotificationScheduler(getMainWindow: () => BrowserWindow | 
                       amount: inst.balance,
                       ...(createdAt ? { created_at: createdAt } : {}),
                   }
-              })
+                })
               }
             }
           } catch (e) {
             console.error('Error processing upcoming installment:', e)
           }
         })
+        const win = getMainWindow()
+        if (win && payloads.length > 0) {
+          if (payloads.length >= batchThreshold) {
+            win.webContents.send(IPC_NOTIFICATIONS.eventBatch, payloads)
+          } else {
+            for (const p of payloads) { win.webContents.send(IPC_NOTIFICATIONS.event, p) }
+          }
+        }
       }
 
 
@@ -141,26 +144,28 @@ export function setupNotificationScheduler(getMainWindow: () => BrowserWindow | 
                 const existsActive = notificationOperations.existsActiveWithKey(key)
                 const existsToday = notificationOperations.existsTodayWithKey(key)
                 if (!existsActive && !existsToday) {
-                  const nid = notificationOperations.create(msg, 'reminder' as any, key as any)
-                  const win = getMainWindow()
-                  if (win) {
-                    const latest = notificationOperations.getLatestByKey(key)
-                    const createdAt = latest?.created_at
-                    win.webContents.send(IPC_NOTIFICATIONS.event, {
-                      id: nid,
-                      message: msg,
-                      type: 'attention',
-                      meta: {
-                        message_key: key,
-                        customerName: customers[0],
-                        customerNames: customers.slice(0, 3),
-                        customerCount: customers.length,
-                        due_at: tomorrow.toISOString(),
-                        actionLabel: 'Revisar',
-                        route: '/sales?tab=installments',
-                        ...(createdAt ? { created_at: createdAt } : {}),
-                      }
-                    })
+                  if (!(suppressIfMuted && isMuted)) {
+                    const nid = notificationOperations.create(msg, 'reminder' as any, key as any)
+                    const win = getMainWindow()
+                    if (win) {
+                      const latest = notificationOperations.getLatestByKey(key)
+                      const createdAt = latest?.created_at
+                      win.webContents.send(IPC_NOTIFICATIONS.event, {
+                        id: nid,
+                        message: msg,
+                        type: 'attention',
+                        meta: {
+                          message_key: key,
+                          customerName: customers[0],
+                          customerNames: customers.slice(0, 3),
+                          customerCount: customers.length,
+                          due_at: tomorrow.toISOString(),
+                          actionLabel: 'Revisar',
+                          route: '/sales?tab=installments',
+                          ...(createdAt ? { created_at: createdAt } : {}),
+                        }
+                      })
+                    }
                   }
                 }
               }
@@ -171,6 +176,18 @@ export function setupNotificationScheduler(getMainWindow: () => BrowserWindow | 
         }
       } catch (e) {
         console.error('Weekly precheck scheduler error:', e)
+      }
+
+      try {
+        const now = new Date()
+        const retentionDays = parseInt(process.env.NOTIFICATIONS_RETENTION_DAYS || '90', 10)
+        if (Number.isFinite(retentionDays) && retentionDays > 0) {
+          if (now.getHours() === 1) {
+            notificationOperations.purgeArchivedOlderThan(retentionDays)
+          }
+        }
+      } catch (e) {
+        console.error('Retention purge scheduler error:', e)
       }
     } catch (e) {
       console.error('Scheduler error:', e)
@@ -202,27 +219,31 @@ export function checkLowStockAfterSale(saleData: any, getMainWindow: () => Brows
               const recoveredSinceLast = !!latest && productUpdatedAt > lastCreatedAt
               const shouldNotify = !existsActive && (!latest || recoveredSinceLast)
               if (shouldNotify) {
-                const dbType = 'reminder'
-                const nid = notificationOperations.create(msg, dbType as any, key as any)
-                const win = getMainWindow()
-                if (win) {
-                  const latestNew = notificationOperations.getLatestByKey(key)
-                  const createdAtNew = latestNew?.created_at
-                  win.webContents.send(IPC_NOTIFICATIONS.event, { 
-                    id: nid, 
-                    message: msg, 
-                    type: 'attention', 
-                    meta: { 
-                      message_key: key, 
-                      stockStatus: `${p.stock} unidad${p.stock === 1 ? '' : 'es'}`, 
-                      productId: p.id,
-                      productName: p.name,
-                      productPrice: p.price,
-                      productCategory: p.category || 'Sin categoría',
-                      currentStock: p.stock,
-                      ...(createdAtNew ? { created_at: createdAtNew } : {}),
-                    } 
-                  })
+                const suppressIfMuted = (process.env.NOTIFICATIONS_SUPPRESS_WHEN_MUTED ?? 'true') !== 'false'
+                const isMuted = !getMainWindow()
+                if (!(suppressIfMuted && isMuted)) {
+                  const dbType = 'reminder'
+                  const nid = notificationOperations.create(msg, dbType as any, key as any)
+                  const win = getMainWindow()
+                  if (win) {
+                    const latestNew = notificationOperations.getLatestByKey(key)
+                    const createdAtNew = latestNew?.created_at
+                    win.webContents.send(IPC_NOTIFICATIONS.event, { 
+                      id: nid, 
+                      message: msg, 
+                      type: 'attention', 
+                      meta: { 
+                        message_key: key, 
+                        stockStatus: `${p.stock} unidad${p.stock === 1 ? '' : 'es'}`, 
+                        productId: p.id,
+                        productName: p.name,
+                        productPrice: p.price,
+                        productCategory: p.category || 'Sin categoría',
+                        currentStock: p.stock,
+                        ...(createdAtNew ? { created_at: createdAtNew } : {}),
+                      } 
+                    })
+                  }
                 }
               }
             }

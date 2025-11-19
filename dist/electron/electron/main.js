@@ -24,6 +24,9 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const electron_1 = require("electron");
+const dotenv = __importStar(require("dotenv"));
+dotenv.config();
+// Removed auto-updater imports as update logic is no longer needed
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
 const database_1 = require("../lib/database");
@@ -36,23 +39,17 @@ let tray = null;
 let isQuiting = false;
 let notificationsMuted = false;
 let openAtLogin = false;
-
-
 function broadcastDatabaseChange(entity, operation, payload = {}) {
     try {
         mainWindow?.webContents.send('database:changed', { entity, operation, ...payload });
     }
     catch (e) {
-
-
     }
 }
 function getBaseUrl() {
     if (isDev) {
         return process.env.ELECTRON_DEV_URL || 'http://localhost:3001';
     }
-
-
     const outDir = path.join(__dirname, '../../../out').replace(/\\/g, '/');
     return `file:///${outDir}`;
 }
@@ -89,23 +86,11 @@ function toggleMainWindowVisibility() {
     }
 }
 function resolveTrayIcon() {
-
-
     const candidates = [
-
-
         path.join(process.resourcesPath || '', 'assets', 'tray.ico'),
-
-
         path.join(process.cwd(), 'assets', 'tray.ico'),
-
-
         path.join(__dirname, '../assets/tray.ico'),
-
-
         path.join(__dirname, '../../assets/tray.ico'),
-
-
         path.join(process.resourcesPath || '', 'assets', 'icon.ico'),
         path.join(process.cwd(), 'assets', 'icon.ico'),
         path.join(__dirname, '../assets/icon.ico'),
@@ -125,8 +110,6 @@ function resolveTrayIcon() {
         }
     }
     console.log('Using fallback transparent icon');
-
-
     const transparent1x1 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAOeYw2kAAAAASUVORK5CYII=';
     return electron_1.nativeImage.createFromDataURL(transparent1x1);
 }
@@ -195,16 +178,12 @@ function createTray() {
             },
         ]);
         tray.setContextMenu(contextMenu);
-
-
         tray.on('click', () => {
             if (!mainWindow)
                 return;
             mainWindow.show();
             mainWindow.focus();
         });
-
-
         tray.on('right-click', () => tray?.popUpContextMenu());
     }
     catch (e) {
@@ -212,8 +191,23 @@ function createTray() {
     }
 }
 function createWindow() {
-
-
+    const preloadCandidates = [
+        path.join(process.cwd(), 'electron', 'preload.js'),
+        path.join(__dirname, '../preload.js'),
+        path.join(__dirname, '../../preload.js')
+    ];
+    let resolvedPreload = preloadCandidates.find(p => {
+        try {
+            return fs.existsSync(p);
+        }
+        catch {
+            return false;
+        }
+    });
+    if (!resolvedPreload) {
+        // fallback to cwd path
+        resolvedPreload = path.join(process.cwd(), 'electron', 'preload.js');
+    }
     mainWindow = new electron_1.BrowserWindow({
         width: 1200,
         height: 800,
@@ -222,77 +216,75 @@ function createWindow() {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
-            preload: isDev
-                ? path.join(process.cwd(), 'electron/preload.js')
-                : path.join(__dirname, '../preload.js')
+            preload: resolvedPreload
         },
         titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
         show: false,
         autoHideMenuBar: true // hide menu bar by default (prevents it from showing)
     });
-
-
     mainWindow.removeMenu();
     mainWindow.setMenuBarVisibility(false);
     mainWindow.setAutoHideMenuBar(false);
-
-
     mainWindow.setMinimumSize(800, 600);
     mainWindow.setSize(1200, 800);
-
-
     if (isDev) {
         const devUrl = process.env.ELECTRON_DEV_URL || 'http://localhost:3001';
         mainWindow.loadURL(devUrl);
-
-
         mainWindow.webContents.openDevTools();
     }
     else {
         mainWindow.loadFile(path.join(__dirname, '../../../out/index.html'));
     }
-
-
     mainWindow.once('ready-to-show', () => {
         mainWindow?.show();
     });
-
-
     mainWindow.on('minimize', () => {
         mainWindow?.minimize();
     });
-
-
     mainWindow.on('close', (e) => {
         if (!isQuiting) {
             e.preventDefault();
             mainWindow?.hide();
         }
     });
-
-
     mainWindow.on('closed', () => {
         mainWindow = null;
     });
 }
-
-
 function setupIpcHandlers() {
-
-
     electron_1.ipcMain.handle('customers:getAll', () => database_operations_1.customerOperations.getAll());
     electron_1.ipcMain.handle('customers:getPaginated', (_, page, pageSize, searchTerm) => database_operations_1.customerOperations.getPaginated(page, pageSize, searchTerm));
     electron_1.ipcMain.handle('customers:search', (_, searchTerm, limit) => database_operations_1.customerOperations.search(searchTerm, limit));
     electron_1.ipcMain.handle('customers:getById', (_, id) => database_operations_1.customerOperations.getById(id));
-    electron_1.ipcMain.handle('customers:create', (_, customer) => database_operations_1.customerOperations.create(customer));
-    electron_1.ipcMain.handle('customers:update', (_, id, customer) => database_operations_1.customerOperations.update(id, customer));
-    electron_1.ipcMain.handle('customers:delete', (_, id) => database_operations_1.customerOperations.delete(id));
+    electron_1.ipcMain.handle('customers:create', (_, customer) => {
+        const res = database_operations_1.customerOperations.create(customer);
+        broadcastDatabaseChange('customers', 'create', { id: res });
+        return res;
+    });
+    electron_1.ipcMain.handle('customers:update', (_, id, customer) => {
+        const res = database_operations_1.customerOperations.update(id, customer);
+        broadcastDatabaseChange('customers', 'update', { id });
+        return res;
+    });
+    electron_1.ipcMain.handle('customers:delete', (_, id) => {
+        const res = database_operations_1.customerOperations.delete(id);
+        broadcastDatabaseChange('customers', 'delete', { id });
+        return res;
+    });
+    electron_1.ipcMain.handle('customers:archive', (_e, id, anonymize) => {
+        database_operations_1.customerOperations.archive(id, !!anonymize);
+        broadcastDatabaseChange('customers', 'archive', { id });
+        return true;
+    });
+    electron_1.ipcMain.handle('customers:unarchive', (_e, id) => {
+        database_operations_1.customerOperations.unarchive(id);
+        broadcastDatabaseChange('customers', 'unarchive', { id });
+        return true;
+    });
     electron_1.ipcMain.handle('customers:getCount', () => database_operations_1.customerOperations.getCount());
     electron_1.ipcMain.handle('customers:getRecent', (_, limit) => database_operations_1.customerOperations.getRecent(limit));
     electron_1.ipcMain.handle('customers:getMonthlyComparison', () => database_operations_1.customerOperations.getMonthlyComparison());
     electron_1.ipcMain.handle('customers:deleteAll', () => database_operations_1.customerOperations.deleteAll());
-
-
     electron_1.ipcMain.handle('products:getAll', () => database_operations_1.productOperations.getAll());
     electron_1.ipcMain.handle('products:getPaginated', (_, page, pageSize, searchTerm) => database_operations_1.productOperations.getPaginated(page, pageSize, searchTerm));
     electron_1.ipcMain.handle('products:search', (_, searchTerm, limit) => database_operations_1.productOperations.search(searchTerm, limit));
@@ -316,14 +308,10 @@ function setupIpcHandlers() {
     electron_1.ipcMain.handle('products:getCount', () => database_operations_1.productOperations.getCount());
     electron_1.ipcMain.handle('products:getMonthlyComparison', () => database_operations_1.productOperations.getMonthlyComparison());
     electron_1.ipcMain.handle('products:deleteAll', () => database_operations_1.productOperations.deleteAll());
-
-
     electron_1.ipcMain.handle('partners:getAll', () => database_operations_1.partnerOperations.getAll());
     electron_1.ipcMain.handle('partners:create', (_e, partner) => database_operations_1.partnerOperations.create(partner));
     electron_1.ipcMain.handle('partners:update', (_e, id, partner) => database_operations_1.partnerOperations.update(id, partner));
     electron_1.ipcMain.handle('partners:delete', (_e, id) => database_operations_1.partnerOperations.delete(id));
-
-
     electron_1.ipcMain.handle('sales:getAll', () => database_operations_1.saleOperations.getAll());
     electron_1.ipcMain.handle('sales:getPaginated', (_, page, pageSize, searchTerm) => database_operations_1.saleOperations.getPaginated(page, pageSize, searchTerm));
     electron_1.ipcMain.handle('sales:search', (_, searchTerm, limit) => database_operations_1.saleOperations.search(searchTerm, limit));
@@ -331,8 +319,6 @@ function setupIpcHandlers() {
     electron_1.ipcMain.handle('sales:getByCustomer', (_, customerId) => database_operations_1.saleOperations.getByCustomer(customerId));
     electron_1.ipcMain.handle('sales:create', async (_, saleData) => {
         const id = await database_operations_1.saleOperations.create(saleData);
-
-
         (0, scheduler_1.checkLowStockAfterSale)(saleData, () => mainWindow);
         broadcastDatabaseChange('sales', 'create', { id });
         return id;
@@ -356,21 +342,48 @@ function setupIpcHandlers() {
     electron_1.ipcMain.handle('sales:getSalesChartData', (_, days) => database_operations_1.saleOperations.getSalesChartData(days));
     electron_1.ipcMain.handle('sales:getStatsComparison', () => database_operations_1.saleOperations.getStatsComparison());
     electron_1.ipcMain.handle('sales:deleteAll', () => database_operations_1.saleOperations.deleteAll());
-
-
     electron_1.ipcMain.handle('installments:getBySale', (_, saleId) => database_operations_1.installmentOperations.getBySale(saleId));
     electron_1.ipcMain.handle('installments:getOverdue', () => database_operations_1.installmentOperations.getOverdue());
     electron_1.ipcMain.handle('installments:getUpcoming', (_, limit) => database_operations_1.installmentOperations.getUpcoming(limit));
     electron_1.ipcMain.handle('installments:create', (_, installment) => database_operations_1.installmentOperations.create(installment));
-    electron_1.ipcMain.handle('installments:markAsPaid', (_, id) => database_operations_1.installmentOperations.markAsPaid(id));
-    electron_1.ipcMain.handle('installments:recordPayment', (_, installmentId, amount, paymentMethod, reference) => database_operations_1.installmentOperations.recordPayment(installmentId, amount, paymentMethod, reference));
+    electron_1.ipcMain.handle('installments:markAsPaid', (_, id, paymentDate) => {
+        const result = database_operations_1.installmentOperations.markAsPaid(id, paymentDate);
+        try {
+            if (result && result.rescheduled) {
+                broadcastDatabaseChange('installments', 'update', { id: result.rescheduled.nextPendingId });
+            }
+            else {
+                broadcastDatabaseChange('installments', 'update', { id });
+            }
+        }
+        catch { }
+        return result;
+    });
+    electron_1.ipcMain.handle('installments:recordPayment', (_, installmentId, amount, paymentMethod, reference, paymentDate) => {
+        const result = database_operations_1.installmentOperations.recordPayment(installmentId, amount, paymentMethod, reference, paymentDate);
+        try {
+            if (result && result.rescheduled) {
+                broadcastDatabaseChange('installments', 'update', { id: result.rescheduled.nextPendingId });
+            }
+            else {
+                broadcastDatabaseChange('installments', 'update', { id: installmentId });
+            }
+        }
+        catch { }
+        return result;
+    });
     electron_1.ipcMain.handle('installments:applyLateFee', (_, installmentId, fee) => database_operations_1.installmentOperations.applyLateFee(installmentId, fee));
     electron_1.ipcMain.handle('installments:revertPayment', (_, installmentId, transactionId) => database_operations_1.installmentOperations.revertPayment(installmentId, transactionId));
-    electron_1.ipcMain.handle('installments:update', (_, id, data) => database_operations_1.installmentOperations.update(id, data));
+    electron_1.ipcMain.handle('installments:update', (_, id, data) => {
+        const res = database_operations_1.installmentOperations.update(id, data);
+        try {
+            broadcastDatabaseChange('installments', 'update', { id });
+        }
+        catch { }
+        return res;
+    });
     electron_1.ipcMain.handle('installments:delete', (_, id) => database_operations_1.installmentOperations.delete(id));
     electron_1.ipcMain.handle('installments:deleteAll', () => database_operations_1.installmentOperations.deleteAll());
-
-
     electron_1.ipcMain.handle('saleItems:getBySale', (_, saleId) => database_operations_1.saleItemOperations.getBySale(saleId));
     electron_1.ipcMain.handle('saleItems:create', (_, saleItem) => {
         const res = database_operations_1.saleItemOperations.create(saleItem);
@@ -379,18 +392,10 @@ function setupIpcHandlers() {
     });
     electron_1.ipcMain.handle('saleItems:getSalesForProduct', (_, productId) => database_operations_1.saleItemOperations.getSalesForProduct(productId));
     electron_1.ipcMain.handle('saleItems:deleteAll', () => database_operations_1.saleItemOperations.deleteAll());
-
-
     electron_1.ipcMain.handle('payments:getBySale', (_, saleId) => database_operations_1.paymentOperations.getBySale(saleId));
     electron_1.ipcMain.handle('payments:getOverdue', () => database_operations_1.paymentOperations.getOverdue());
     electron_1.ipcMain.handle('payments:create', (_, payment) => database_operations_1.paymentOperations.create(payment));
     electron_1.ipcMain.handle('payments:deleteAll', () => database_operations_1.paymentOperations.deleteAll());
-
-
-
-
-
-
     const coerceNumber = (v, fallback = 0) => {
         const n = typeof v === 'string' ? parseFloat(v) : v;
         return Number.isFinite(n) ? Number(n) : fallback;
@@ -439,8 +444,6 @@ function setupIpcHandlers() {
         return {
             id: p.id ?? null,
             name: p.name ?? p.nombre ?? '',
-
-
             price: coerceNumber(p.price ?? p.unit_price ?? p.precio, 0),
             category: p.category ?? p.categoria ?? null,
             description: p.description ?? p.descripcion ?? null,
@@ -472,8 +475,6 @@ function setupIpcHandlers() {
                     ? s.products
                     : [];
         const items = itemsSrc.map(normalizeSaleItemBackup).filter((i) => i.product_id || i.product_name);
-
-
         const mapPaymentType = (t) => {
             if (t === 'cash' || t === 'contado')
                 return 'cash';
@@ -500,7 +501,16 @@ function setupIpcHandlers() {
             payment_type: mapPaymentType(paymentType),
             payment_status: mapPaymentStatus(paymentStatus),
             sale_number: s.sale_number ?? s.numero ?? null,
+            // Preserve original sale date from backup to avoid resetting to current
+            // Accept common field aliases used across exports/backups
+            date: s.date ?? s.fecha ?? s.created_at ?? null,
+            due_date: s.due_date ?? s.fecha_vencimiento ?? null,
+            subtotal: coerceNumber(s.subtotal ?? s.sub_total ?? s.subtotal_amount, 0),
             total_amount: coerceNumber(s.total_amount ?? s.total ?? s.monto_total, 0),
+            payment_method: s.payment_method ?? s.metodo_pago ?? null,
+            payment_period: s.payment_period ?? s.ventana_pago ?? null,
+            period_type: s.period_type ?? s.tipo_periodo ?? null,
+            reference_code: s.reference_code ?? s.referencia ?? null,
             number_of_installments: coerceNumber(s.number_of_installments ?? s.installments ?? s.cuotas, 0),
             installment_amount: coerceNumber(s.installment_amount ?? s.monto_cuota, 0),
             first_payment_date: s.first_payment_date ?? s.fecha_primer_pago ?? null,
@@ -552,20 +562,14 @@ function setupIpcHandlers() {
             return { success: false, error: error instanceof Error ? error.message : 'Error al cargar archivo' };
         }
     });
-
-
     electron_1.ipcMain.handle('backup:importCustomers', async (_, customers) => {
         try {
-
-
             const existingCustomers = await database_operations_1.customerOperations.getAll();
             for (const customer of existingCustomers) {
                 if (customer.id) {
                     await database_operations_1.customerOperations.delete(customer.id);
                 }
             }
-
-
             for (const customer of customers) {
                 const normalized = normalizeCustomerBackup(customer);
                 await database_operations_1.customerOperations.insertFromBackup(normalized);
@@ -579,16 +583,12 @@ function setupIpcHandlers() {
     });
     electron_1.ipcMain.handle('backup:importProducts', async (_, products) => {
         try {
-
-
             const existingProducts = await database_operations_1.productOperations.getAll();
             for (const product of existingProducts) {
                 if (product.id) {
                     await database_operations_1.productOperations.delete(product.id);
                 }
             }
-
-
             for (const product of products) {
                 const normalized = normalizeProductBackup(product);
                 await database_operations_1.productOperations.insertFromBackup(normalized);
@@ -602,16 +602,12 @@ function setupIpcHandlers() {
     });
     electron_1.ipcMain.handle('backup:importSales', async (_, sales) => {
         try {
-
-
             const existingSales = await database_operations_1.saleOperations.getAll();
             for (const sale of existingSales) {
                 if (sale.id) {
                     await database_operations_1.saleOperations.delete(sale.id);
                 }
             }
-
-
             for (const sale of sales) {
                 const normalized = normalizeSaleBackup(sale);
                 await database_operations_1.saleOperations.importFromBackup(normalized);
@@ -623,12 +619,8 @@ function setupIpcHandlers() {
             return { success: false, error: error instanceof Error ? error.message : 'Error desconocido' };
         }
     });
-
-
     electron_1.ipcMain.handle('cache:getSize', async () => {
         try {
-
-
             const userDataPath = electron_1.app.getPath('userData');
             const cacheDir = path.join(userDataPath, 'cache');
             if (fs.existsSync(cacheDir)) {
@@ -645,14 +637,10 @@ function setupIpcHandlers() {
     });
     electron_1.ipcMain.handle('cache:clear', async () => {
         try {
-
-
             if (mainWindow && mainWindow.webContents.session) {
                 await mainWindow.webContents.session.clearCache();
                 await mainWindow.webContents.session.clearStorageData();
             }
-
-
             const userDataPath = electron_1.app.getPath('userData');
             const cacheDirectories = [
                 path.join(userDataPath, 'cache'),
@@ -668,14 +656,10 @@ function setupIpcHandlers() {
                     }
                 }
                 catch (dirError) {
-
-
                     console.warn(`Could not clear cache directory ${cacheDir}:`, dirError);
                     errors.push(`${path.basename(cacheDir)}: ${dirError instanceof Error ? dirError.message : 'Unknown error'}`);
                 }
             }
-
-
             const message = errors.length > 0
                 ? `Cache cleared with some warnings: ${errors.join(', ')}`
                 : 'Cache cleared successfully';
@@ -686,17 +670,11 @@ function setupIpcHandlers() {
             return { success: false, error: error instanceof Error ? error.message : 'Error desconocido' };
         }
     });
-
-
     electron_1.ipcMain.handle('db:deleteAll', async () => {
         try {
-
-
             await database_operations_1.saleOperations.deleteAll();
             await database_operations_1.customerOperations.deleteAll();
             await database_operations_1.productOperations.deleteAll();
-
-
             await database_operations_1.installmentOperations.deleteAll();
             await database_operations_1.saleItemOperations.deleteAll();
             await database_operations_1.paymentOperations.deleteAll();
@@ -708,13 +686,7 @@ function setupIpcHandlers() {
         }
     });
 }
-
-
-
-
 electron_1.app.whenReady().then(() => {
-
-
     try {
         (0, database_1.initializeDatabase)();
         console.log('Database initialized successfully');
@@ -722,21 +694,9 @@ electron_1.app.whenReady().then(() => {
     catch (error) {
         console.error('Failed to initialize database:', error);
     }
-
-
     electron_1.Menu.setApplicationMenu(null);
-
-
     setupIpcHandlers();
-
-
-
-
     (0, handlers_1.setupNotificationIpcHandlers)(() => (notificationsMuted ? null : mainWindow));
-
-
-
-
     const rawInterval = process.env.NOTIFICATIONS_SCHEDULER_INTERVAL_MS || process.env.NOTIFICATIONS_INTERVAL_MS;
     if (rawInterval) {
         const parsed = parseInt(rawInterval, 10);
@@ -750,32 +710,17 @@ electron_1.app.whenReady().then(() => {
     else {
         (0, scheduler_1.setupNotificationScheduler)(() => (notificationsMuted ? null : mainWindow));
     }
-
-
-    const { session } = require('electron');
-    session.defaultSession.protocol.interceptBufferProtocol('file', (request, callback) => {
+    electron_1.session.defaultSession.protocol.interceptBufferProtocol('file', (request, callback) => {
         const url = request.url;
-
-
         if (url.includes('index.txt') && url.includes('_rsc=')) {
             console.log('Intercepted RSC request:', url);
-
-
             let rscPath = url.replace('file:///', '');
             rscPath = decodeURIComponent(rscPath);
-
-
             const [pathOnly] = rscPath.split('?');
-
-
             const relativePath = pathOnly.replace(/^[A-Za-z]:/, '');
-
-
             const appPath = path.join(__dirname, '../../../', 'out');
             const fullPath = path.join(appPath, relativePath.replace(/\//g, path.sep));
             console.log('Mapped RSC path:', fullPath);
-
-
             if (fs.existsSync(fullPath)) {
                 try {
                     const rscContent = fs.readFileSync(fullPath);
@@ -793,8 +738,6 @@ electron_1.app.whenReady().then(() => {
                     console.log('Error reading RSC file:', error);
                 }
             }
-
-
             callback({
                 statusCode: 200,
                 headers: {
@@ -805,37 +748,17 @@ electron_1.app.whenReady().then(() => {
             });
             return;
         }
-
-
         let filePath = url.replace('file:///', '');
-
-
         filePath = decodeURIComponent(filePath);
-
-
-
-
-
-
         const rootPathCandidate = filePath.replace(/^[A-Za-z]:/, '');
         if (rootPathCandidate.startsWith('/_next') || rootPathCandidate.startsWith('/static')) {
             const assetRelative = rootPathCandidate.replace(/^\//, '');
             filePath = path.join(__dirname, '../../../', 'out', assetRelative.replace(/\//g, path.sep));
         }
-
-
-
-
-
-
         const hasExtension = path.extname(filePath) !== '';
         const isDirectoryPath = filePath.endsWith('/') || !hasExtension;
         if (isDirectoryPath || (!hasExtension && !fs.existsSync(filePath))) {
-
-
             const outDir = path.join(__dirname, '../../../', 'out');
-
-
             let routeRelative = rootPathCandidate.replace(/^\//, '').replace(/\/$/, '');
             const candidateRouteIndex = routeRelative
                 ? path.join(outDir, routeRelative, 'index.html')
@@ -855,24 +778,14 @@ electron_1.app.whenReady().then(() => {
                 console.error('Error serving route index.html:', error);
             }
         }
-
-
-
-
         filePath = filePath.replace(/\//g, path.sep);
         console.log('Loading static file:', filePath);
         try {
-
-
             if (!fs.existsSync(filePath)) {
                 callback({ error: -6 }); // net::ERR_FILE_NOT_FOUND
                 return;
             }
-
-
             const fileContent = fs.readFileSync(filePath);
-
-
             const ext = path.extname(filePath).toLowerCase();
             let mimeType = 'application/octet-stream';
             switch (ext) {
@@ -925,8 +838,6 @@ electron_1.app.whenReady().then(() => {
             callback({ error: -2 }); // net::ERR_FAILED
         }
     });
-
-
     try {
         const loginSettings = electron_1.app.getLoginItemSettings();
         openAtLogin = !!loginSettings.openAtLogin;
@@ -935,44 +846,26 @@ electron_1.app.whenReady().then(() => {
         console.warn('Failed to read login item settings:', e);
     }
     createWindow();
-
-
     if (process.platform === 'win32' || process.platform === 'darwin') {
         createTray();
     }
-
-
     electron_1.app.on('activate', () => {
         if (electron_1.BrowserWindow.getAllWindows().length === 0) {
             createWindow();
         }
     });
 });
-
-
 electron_1.app.on('window-all-closed', () => {
-
-
-
-
     if (isQuiting) {
-
-
         (0, database_1.closeDatabase)();
         if (process.platform !== 'darwin') {
             electron_1.app.quit();
         }
     }
-
-
 });
-
-
 electron_1.app.on('before-quit', () => {
     (0, database_1.closeDatabase)();
 });
-
-
 electron_1.app.on('web-contents-created', (event, contents) => {
     contents.setWindowOpenHandler(() => {
         return { action: 'deny' };
@@ -988,4 +881,38 @@ electron_1.ipcMain.handle('open-external', async (_event, url) => {
         return false;
     }
 });
-
+electron_1.ipcMain.handle('show-item-in-folder', async (_event, pathStr) => {
+    try {
+        if (typeof pathStr !== 'string' || pathStr.length === 0)
+            return false;
+        electron_1.shell.showItemInFolder(pathStr);
+        return true;
+    }
+    catch (err) {
+        console.error('show-item-in-folder failed:', err);
+        return false;
+    }
+});
+electron_1.ipcMain.handle('get-downloads-path', async () => {
+    try {
+        return electron_1.app.getPath('downloads');
+    }
+    catch (err) {
+        console.error('get-downloads-path failed:', err);
+        return null;
+    }
+});
+electron_1.ipcMain.handle('open-path', async (_event, pathStr) => {
+    try {
+        if (typeof pathStr !== 'string' || pathStr.length === 0)
+            return false;
+        const res = await electron_1.shell.openPath(pathStr);
+        return !res;
+    }
+    catch (err) {
+        console.error('open-path failed:', err);
+        return false;
+    }
+});
+// Auto-updater removed per request
+//# sourceMappingURL=main.js.map

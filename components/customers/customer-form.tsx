@@ -16,6 +16,7 @@ type PaymentWindow = '1 to 10' | '10 to 20' | '20 to 30';
 interface CustomerFormState {
   name: string;
   dni: string;
+  email: string;
   phone: string;
   secondary_phone: string;
   address: string;
@@ -34,6 +35,7 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
   const [formData, setFormData] = useState<CustomerFormState>({
     name: customer?.name || '',
     dni: customer?.dni || '',
+    email: customer?.email || '',
     phone: customer?.phone || '',
     secondary_phone: customer?.secondary_phone || '',
     address: customer?.address || '',
@@ -51,6 +53,7 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
       setFormData({
         name: customer.name || '',
         dni: customer.dni || '',
+        email: customer.email || '',
         phone: customer.phone || '',
         secondary_phone: customer.secondary_phone || '',
         address: customer.address || '',
@@ -61,6 +64,7 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
       setFormData({
         name: '',
         dni: '',
+        email: '',
         phone: '',
         secondary_phone: '',
         address: '',  
@@ -104,6 +108,13 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
       }
     }
 
+    if (formData.email?.trim()) {
+      const emailRegex = /^[^\s@]+@gmail\.com$/i;
+      if (!emailRegex.test(formData.email.trim())) {
+        newErrors.email = 'Debe ser un correo Gmail válido';
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -139,6 +150,7 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
       await onSave({
         name: formData.name.trim(),
         dni: formData.dni.trim() || undefined,
+        email: formData.email.trim() || undefined,
         phone: formData.phone.trim() || undefined,
         secondary_phone: formData.secondary_phone.trim() || undefined,
         address: formData.address.trim() || undefined,
@@ -152,6 +164,7 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
       setFormData({
         name: '',
         dni: '',
+        email: '',
         phone: '',
         secondary_phone: '',
         address: '',
@@ -216,6 +229,26 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
                   <div className="flex items-center gap-1 text-xs text-red-600">
                     <AlertCircle className="h-3 w-3" />
                     {errors.dni}
+                  </div>
+                )}
+              </div>
+
+              <div className="md:col-span-2 space-y-1">
+                <Label htmlFor="email" className="text-xs">Gmail</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="email"
+                    value={formData.email}
+                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    placeholder="usuario@gmail.com"
+                    className={`pl-10 ${errors.email ? 'border-red-500' : ''}`}
+                  />
+                </div>
+                {errors.email && (
+                  <div className="flex items-center gap-1 text-xs text-red-600">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.email}
                   </div>
                 )}
               </div>
@@ -371,6 +404,27 @@ export function CustomerForm({ customer, open, onOpenChange, onSave }: CustomerF
                         className="pl-10"
                       />
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Gmail</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="email"
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => handleInputChange('email', e.target.value)}
+                        placeholder="usuario@gmail.com"
+                        className={`pl-10 ${errors.email ? 'border-red-500' : ''}`}
+                      />
+                    </div>
+                    {errors.email && (
+                      <div className="flex items-center gap-1 text-sm text-red-600">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.email}
+                      </div>
+                    )}
                   </div>
 
                   {/* Secondary Phone */}

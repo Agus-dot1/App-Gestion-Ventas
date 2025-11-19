@@ -24,8 +24,9 @@ import {
   X,
   Loader2
 } from 'lucide-react';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { Customer, Sale, Installment } from '@/lib/database-operations';
+import type { Customer, Sale, Installment, SaleItem } from '@/lib/database-operations';
 import { toast } from 'sonner';
 
 interface CustomerProfileProps {
@@ -57,6 +58,8 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [activeInstallments, setActiveInstallments] = useState<Array<Installment & { sale_number?: string }>>([]);
+  const [saleItemsBySale, setSaleItemsBySale] = useState<Record<number, SaleItem[]>>({});
+  const [salesStatusById, setSalesStatusById] = useState<Record<number, string>>({});
 
   const copyToClipboard = async (text: string, fieldName: string) => {
     try {
@@ -121,6 +124,32 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
           .filter(inst => inst.status === 'pending' || inst.status === 'partial')
           .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
         setActiveInstallments(active);
+
+        // Calcular estado de cada venta en historial: Completada / Cuotas activas / Vencida
+        const now = new Date();
+        const statusMap: Record<number, string> = {};
+        for (const sale of customerSales) {
+          if (sale.payment_type === 'cash') {
+            statusMap[sale.id!] = 'Completada';
+            continue;
+          }
+          const saleInsts = allInstallments.filter(inst => inst.sale_id === sale.id);
+          const hasOverdue = saleInsts.some(inst => inst.status === 'overdue' || (new Date(inst.due_date) < now && inst.status !== 'paid'));
+          const hasActive = saleInsts.some(inst => inst.status === 'pending' || (inst as any).status === 'partial');
+          statusMap[sale.id!] = hasOverdue ? 'Vencida' : (hasActive ? 'Cuotas activas' : 'Completada');
+        }
+        setSalesStatusById(statusMap);
+
+        // Fetch sale items for each sale to show product (+quantity)
+        if (customerSales.length > 0) {
+          const saleItemsPromises = customerSales.map(sale => window.electronAPI.database.saleItems.getBySale(sale.id!));
+          const saleItemsResults = await Promise.all(saleItemsPromises);
+          const itemsMap: Record<number, SaleItem[]> = {};
+          customerSales.forEach((sale, idx) => {
+            itemsMap[sale.id!] = (saleItemsResults[idx] || []) as SaleItem[];
+          });
+          setSaleItemsBySale(itemsMap);
+        }
       } catch (error) {
         console.error('Error fetching customer data:', error);
       } finally {
@@ -437,36 +466,63 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                   </CardHeader>
                   <CardContent>
                     {activeInstallments.length > 0 ? (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Venta</TableHead>
-                            <TableHead>Cuota</TableHead>
-                            <TableHead>Vencimiento</TableHead>
-                            <TableHead>Monto</TableHead>
-                            <TableHead>Pagado</TableHead>
-                            <TableHead>Saldo</TableHead>
-                            <TableHead>Estado</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {activeInstallments.map((inst) => (
-                            <TableRow key={inst.id}>
-                              <TableCell className="font-medium">#{inst.sale_number ?? sales.find(s => s.id === inst.sale_id)?.sale_number ?? inst.sale_id}</TableCell>
-                              <TableCell>{inst.installment_number}</TableCell>
-                              <TableCell className={new Date(inst.due_date) < new Date() ? 'text-red-600 font-medium' : ''}>{new Date(inst.due_date).toLocaleDateString()}</TableCell>
-                              <TableCell className="font-medium">{formatCurrency(inst.amount)}</TableCell>
-                              <TableCell>{formatCurrency(inst.paid_amount)}</TableCell>
-                              <TableCell>{formatCurrency(inst.balance)}</TableCell>
-                              <TableCell>
-                                <Badge variant={new Date(inst.due_date) < new Date() ? 'destructive' : (inst.status === 'overdue' ? 'destructive' : 'outline')}>
-                                  {new Date(inst.due_date) < new Date() ? 'Vencida' : (inst.status === 'overdue' ? 'Vencida' : 'Pendiente')}
-                                </Badge>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                      (() => {
+                        const activeBySale: Record<number, Array<Installment & { sale_number?: string }>> = activeInstallments.reduce((acc, inst) => {
+                          (acc[inst.sale_id] = acc[inst.sale_id] || []).push(inst);
+                          return acc;
+                        }, {} as Record<number, Array<Installment & { sale_number?: string }>>);
+
+                        return (
+                          <div className="space-y-6">
+                            {Object.entries(activeBySale).map(([saleIdStr, insts]) => {
+                              const saleId = Number(saleIdStr);
+                              const firstItem = saleItemsBySale[saleId]?.[0];
+                              const sale = sales.find(s => s.id === saleId);
+                              const productLabel = firstItem ? `${firstItem.product_name}` : `#${sale?.sale_number ?? saleId}`;
+                              const saleDate = sale?.created_at ? new Date(sale.created_at).toLocaleDateString() : 'Fecha desconocida';
+
+                              return (
+                                <Collapsible key={saleId} className="border rounded-md">
+                                  <CollapsibleTrigger className="flex items-center justify-between px-4 py-3 bg-muted/50 w-full text-left">
+                                    <div className="font-medium">{productLabel}</div>
+                                    <div className="text-sm text-muted-foreground">{saleDate}</div>
+                                  </CollapsibleTrigger>
+                                  <CollapsibleContent className="p-0">
+                                    <Table>
+                                      <TableHeader>
+                                        <TableRow>
+                                          <TableHead>Cuota</TableHead>
+                                          <TableHead>Vencimiento</TableHead>
+                                          <TableHead>Monto</TableHead>
+                                          <TableHead>Pagado</TableHead>
+                                          <TableHead>Saldo</TableHead>
+                                          <TableHead>Estado</TableHead>
+                                        </TableRow>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {insts.map((inst) => (
+                                          <TableRow key={inst.id}>
+                                            <TableCell>{inst.installment_number}</TableCell>
+                                            <TableCell className={new Date(inst.due_date) < new Date() ? 'text-red-600 font-medium' : ''}>{new Date(inst.due_date).toLocaleDateString()}</TableCell>
+                                            <TableCell className="font-medium">{formatCurrency(inst.amount)}</TableCell>
+                                            <TableCell>{formatCurrency(inst.paid_amount)}</TableCell>
+                                            <TableCell>{formatCurrency(inst.balance)}</TableCell>
+                                            <TableCell>
+                                              <Badge variant={new Date(inst.due_date) < new Date() ? 'destructive' : (inst.status === 'overdue' ? 'destructive' : 'outline')}>
+                                                {new Date(inst.due_date) < new Date() ? 'Vencida' : (inst.status === 'overdue' ? 'Vencida' : 'Pendiente')}
+                                              </Badge>
+                                            </TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </CollapsibleContent>
+                                </Collapsible>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()
                     ) : (
                       <div className="text-center py-8">
                         <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -493,7 +549,7 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead>Número de Venta</TableHead>
+                            <TableHead>Producto</TableHead>
                             <TableHead>Fecha</TableHead>
                             <TableHead>Total</TableHead>
                             <TableHead>Estado</TableHead>
@@ -502,11 +558,20 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                         <TableBody>
                           {sales.map((sale) => (
                             <TableRow key={sale.id}>
-                              <TableCell className="font-medium">#{sale.sale_number}</TableCell>
+                              <TableCell className="font-medium">
+                                {saleItemsBySale[sale.id!]?.length
+                                  ? `${saleItemsBySale[sale.id!][0].product_name}`
+                                  : `#${sale.sale_number}`
+                                }
+                              </TableCell>
                               <TableCell>{sale.created_at ? new Date(sale.created_at).toLocaleDateString() : 'Fecha desconocida'}</TableCell>
                               <TableCell className="font-medium">{formatCurrency(sale.total_amount)}</TableCell>
                               <TableCell>
-                                <Badge variant="outline">Completada</Badge>
+                                {(() => {
+                                  const status = salesStatusById[sale.id!] || 'Completada';
+                                  const variant = status === 'Vencida' ? 'destructive' : (status === 'Completada' ? 'outline' : 'secondary');
+                                  return <Badge variant={variant as any}>{status}</Badge>;
+                                })()}
                               </TableCell>
                             </TableRow>
                           ))}

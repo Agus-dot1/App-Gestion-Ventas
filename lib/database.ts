@@ -34,6 +34,7 @@ export function initializeDatabase(): Database.Database {
 
   createTables();
   runMigrations();
+  applyPendingMigrations();
   
   return db;
 }
@@ -55,6 +56,8 @@ function createTables() {
       notes TEXT,
       payment_window TEXT,
       contact_info TEXT, -- Keep for backward compatibility
+      is_active BOOLEAN DEFAULT 1,
+      archived_at DATETIME,
       created_at DATETIME DEFAULT (datetime('now')),
       updated_at DATETIME DEFAULT (datetime('now'))
     )
@@ -83,6 +86,22 @@ function createTables() {
   try {
     db.exec('ALTER TABLE customers ADD COLUMN payment_window TEXT');
   } catch (e) { /* Column already exists */ }
+
+  try {
+    const info = db.prepare("PRAGMA table_info(customers)").all();
+    const hasIsActive = info.some((col: any) => col.name === 'is_active');
+    if (!hasIsActive) {
+      db.exec('ALTER TABLE customers ADD COLUMN is_active BOOLEAN DEFAULT 1');
+      db.exec('UPDATE customers SET is_active = 1 WHERE is_active IS NULL');
+    }
+  } catch (e) { /* Column already exists or add failed */ }
+  try {
+    const info2 = db.prepare("PRAGMA table_info(customers)").all();
+    const hasArchivedAt = info2.some((col: any) => col.name === 'archived_at');
+    if (!hasArchivedAt) {
+      db.exec('ALTER TABLE customers ADD COLUMN archived_at DATETIME');
+    }
+  } catch (e) { /* Column already exists or add failed */ }
 
 
 
@@ -250,7 +269,9 @@ function createTables() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sale_id INTEGER NOT NULL,
       installment_number INTEGER NOT NULL,
+      original_installment_number INTEGER,
       due_date DATE NOT NULL,
+      original_due_date DATE,
       amount DECIMAL(10,2) NOT NULL,
       paid_amount DECIMAL(10,2) DEFAULT 0,
       balance DECIMAL(10,2) NOT NULL,
@@ -405,9 +426,11 @@ function createTables() {
      CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
      CREATE INDEX IF NOT EXISTS idx_customers_secondary_phone ON customers(secondary_phone);
      CREATE INDEX IF NOT EXISTS idx_customers_created_at ON customers(created_at);
-     CREATE INDEX IF NOT EXISTS idx_customers_updated_at ON customers(updated_at);
-     CREATE INDEX IF NOT EXISTS idx_customers_name_email ON customers(name, email);
-     CREATE INDEX IF NOT EXISTS idx_customers_search ON customers(name, email);
+    CREATE INDEX IF NOT EXISTS idx_customers_updated_at ON customers(updated_at);
+    CREATE INDEX IF NOT EXISTS idx_customers_is_active ON customers(is_active);
+    CREATE INDEX IF NOT EXISTS idx_customers_archived_at ON customers(archived_at);
+    CREATE INDEX IF NOT EXISTS idx_customers_name_email ON customers(name, email);
+    CREATE INDEX IF NOT EXISTS idx_customers_search ON customers(name, email);
     
     -- Product table indexes
     CREATE INDEX IF NOT EXISTS idx_products_name ON products(name);
@@ -745,7 +768,9 @@ function createSalesRelatedTables() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sale_id INTEGER NOT NULL,
       installment_number INTEGER NOT NULL,
+      original_installment_number INTEGER,
       due_date DATE NOT NULL,
+      original_due_date DATE,
       amount DECIMAL(10,2) NOT NULL,
       paid_amount DECIMAL(10,2) DEFAULT 0,
       balance DECIMAL(10,2) NOT NULL,
@@ -800,6 +825,117 @@ function createSalesRelatedTables() {
       FOREIGN KEY (installment_id) REFERENCES installments(id)
     )
   `);
+}
+
+export function getSchemaVersion(): number {
+  if (!db) throw new Error('Database not initialized');
+  const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
+  return row?.user_version || 0;
+}
+
+function setSchemaVersion(v: number) {
+  if (!db) throw new Error('Database not initialized');
+  db.pragma(`user_version = ${v}`);
+}
+
+export function getLatestSchemaVersion(): number {
+  // Keep this in sync with applyPendingMigrations highest version
+  return 2;
+}
+
+export function applyPendingMigrations() {
+  if (!db) throw new Error('Database not initialized');
+  const currentVersion = getSchemaVersion();
+
+  if (currentVersion < 1) {
+    const salesInfo = db.prepare('PRAGMA table_info(sales)').all();
+    const columns = new Set((salesInfo as any[]).map((c: any) => c.name));
+    if (!columns.has('partner_id')) {
+      try { db.exec('ALTER TABLE sales ADD COLUMN partner_id INTEGER'); } catch {}
+      try { db.exec('CREATE INDEX IF NOT EXISTS idx_sales_partner_id ON sales(partner_id)'); } catch {}
+    }
+    if (!columns.has('period_type')) {
+      try { db.exec('ALTER TABLE sales ADD COLUMN period_type TEXT'); } catch {}
+    }
+    if (!columns.has('payment_period')) {
+      try { db.exec('ALTER TABLE sales ADD COLUMN payment_period TEXT'); } catch {}
+    }
+    if (!columns.has('payment_method')) {
+      try { db.exec('ALTER TABLE sales ADD COLUMN payment_method TEXT'); } catch {}
+    }
+    if (!columns.has('reference_code')) {
+      try { db.exec('ALTER TABLE sales ADD COLUMN reference_code TEXT'); } catch {}
+    }
+    try {
+      const needBackfill = db.prepare("SELECT COUNT(1) as c FROM sales WHERE reference_code IS NULL OR reference_code = ''").get() as { c: number };
+      if (needBackfill.c > 0) {
+        const selectStmt = db.prepare("SELECT id FROM sales WHERE reference_code IS NULL OR reference_code = ''");
+        const updateStmt = db.prepare('UPDATE sales SET reference_code = ? WHERE id = ?');
+        const existsStmt = db.prepare('SELECT COUNT(1) as c FROM sales WHERE reference_code = ?');
+        const generateCode = (length: number = 8): string => {
+          let code = '';
+          for (let i = 0; i < length; i++) {
+            code += Math.floor(Math.random() * 10).toString();
+          }
+          return code;
+        };
+        const rows = selectStmt.all() as Array<{ id: number }>;
+        for (const row of rows) {
+          let code = generateCode(8);
+          let attempts = 0;
+          while (true) {
+            const { c } = existsStmt.get(code) as { c: number };
+            if (c === 0) break;
+            code = generateCode(attempts < 3 ? 9 : 12);
+            attempts++;
+          }
+          updateStmt.run(code, row.id);
+        }
+        db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_reference_code_unique ON sales(reference_code)');
+      }
+    } catch {}
+    setSchemaVersion(1);
+  }
+
+  if (currentVersion < 2) {
+    try {
+      db.exec('CREATE TABLE IF NOT EXISTS payment_transactions (\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        sale_id INTEGER NOT NULL,\n        installment_id INTEGER,\n        amount DECIMAL(10,2) NOT NULL,\n        payment_method TEXT CHECK(payment_method IN (\'cash\', \'credit_card\', \'debit_card\', \'bank_transfer\', \'check\')) NOT NULL,\n        payment_reference TEXT,\n        transaction_date DATETIME NOT NULL,\n        processed_by INTEGER,\n        status TEXT CHECK(status IN (\'pending\', \'completed\', \'failed\', \'cancelled\')) DEFAULT \'pending\',\n        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n        notes TEXT,\n        FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE,\n        FOREIGN KEY (installment_id) REFERENCES installments(id)\n      )');
+    } catch {}
+    try {
+      const duplicates = db.prepare('SELECT sale_number, COUNT(*) as c FROM sales GROUP BY sale_number HAVING c > 1').all() as any[];
+      if (duplicates.length === 0) {
+        db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_sale_number_unique ON sales(sale_number)');
+      }
+    } catch {}
+    try {
+      const partnerInfo = db.prepare('PRAGMA table_info(partners)').all();
+      const hasIsActive = (partnerInfo as any[]).some((col: any) => col.name === 'is_active');
+      if (!hasIsActive) { db.exec('ALTER TABLE partners ADD COLUMN is_active BOOLEAN DEFAULT 1'); }
+      db.exec('UPDATE partners SET is_active = 1 WHERE is_active IS NULL OR is_active = 0');
+    } catch {}
+    setSchemaVersion(2);
+  }
+
+  // Migration v3: add original fields to installments and backfill
+  if (currentVersion < 3) {
+    try {
+      const info = db.prepare('PRAGMA table_info(installments)').all() as any[];
+      const cols = new Set(info.map((c: any) => c.name));
+      if (!cols.has('original_due_date')) {
+        db.exec('ALTER TABLE installments ADD COLUMN original_due_date DATE');
+      }
+      if (!cols.has('original_installment_number')) {
+        db.exec('ALTER TABLE installments ADD COLUMN original_installment_number INTEGER');
+      }
+
+      // Backfill original fields where null
+      db.exec(`UPDATE installments SET original_due_date = due_date WHERE original_due_date IS NULL`);
+      db.exec(`UPDATE installments SET original_installment_number = installment_number WHERE original_installment_number IS NULL`);
+    } catch (e) {
+      console.error('Error applying v3 installments original fields migration:', e);
+    }
+    setSchemaVersion(3);
+  }
 }
 
 export function getDatabase(): Database.Database {

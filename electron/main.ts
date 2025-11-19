@@ -1,4 +1,9 @@
-import { app, BrowserWindow, Menu, ipcMain, dialog, shell, Tray, nativeImage } from 'electron';
+import { app, BrowserWindow, Menu, ipcMain, dialog, shell, Tray, nativeImage, session } from 'electron';
+import * as dotenv from 'dotenv';
+dotenv.config();
+import * as https from 'https';
+import * as url from 'url';
+// Removed auto-updater imports as update logic is no longer needed
 import * as path from 'path';
 import * as fs from 'fs';
 import { initializeDatabase, closeDatabase } from '../lib/database';
@@ -198,6 +203,19 @@ function createTray() {
 function createWindow() {
 
 
+  const preloadCandidates = [
+    path.join(process.cwd(), 'electron', 'preload.js'),
+    path.join(__dirname, '../preload.js'),
+    path.join(__dirname, '../../preload.js')
+  ];
+  let resolvedPreload = preloadCandidates.find(p => {
+    try { return fs.existsSync(p); } catch { return false; }
+  });
+  if (!resolvedPreload) {
+    // fallback to cwd path
+    resolvedPreload = path.join(process.cwd(), 'electron', 'preload.js');
+  }
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -206,9 +224,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: isDev 
-        ? path.join(process.cwd(), 'electron/preload.js')
-        : path.join(__dirname, '../preload.js')
+      preload: resolvedPreload
     },
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     show: false,
@@ -276,9 +292,31 @@ function setupIpcHandlers() {
     customerOperations.getPaginated(page, pageSize, searchTerm));
   ipcMain.handle('customers:search', (_, searchTerm, limit) => customerOperations.search(searchTerm, limit));
   ipcMain.handle('customers:getById', (_, id) => customerOperations.getById(id));
-  ipcMain.handle('customers:create', (_, customer) => customerOperations.create(customer));
-  ipcMain.handle('customers:update', (_, id, customer) => customerOperations.update(id, customer));
-  ipcMain.handle('customers:delete', (_, id) => customerOperations.delete(id));
+  ipcMain.handle('customers:create', (_, customer) => {
+    const res = customerOperations.create(customer);
+    broadcastDatabaseChange('customers', 'create', { id: res });
+    return res;
+  });
+  ipcMain.handle('customers:update', (_, id, customer) => {
+    const res = customerOperations.update(id, customer);
+    broadcastDatabaseChange('customers', 'update', { id });
+    return res;
+  });
+  ipcMain.handle('customers:delete', (_, id) => {
+    const res = customerOperations.delete(id);
+    broadcastDatabaseChange('customers', 'delete', { id });
+    return res;
+  });
+  ipcMain.handle('customers:archive', (_e, id, anonymize) => {
+    customerOperations.archive(id, !!anonymize);
+    broadcastDatabaseChange('customers', 'archive', { id });
+    return true;
+  });
+  ipcMain.handle('customers:unarchive', (_e, id) => {
+    customerOperations.unarchive(id);
+    broadcastDatabaseChange('customers', 'unarchive', { id });
+    return true;
+  });
   ipcMain.handle('customers:getCount', () => customerOperations.getCount());
   ipcMain.handle('customers:getRecent', (_, limit) => customerOperations.getRecent(limit));
   ipcMain.handle('customers:getMonthlyComparison', () => customerOperations.getMonthlyComparison());
@@ -361,14 +399,37 @@ function setupIpcHandlers() {
   ipcMain.handle('installments:getOverdue', () => installmentOperations.getOverdue());
   ipcMain.handle('installments:getUpcoming', (_, limit) => installmentOperations.getUpcoming(limit));
   ipcMain.handle('installments:create', (_, installment) => installmentOperations.create(installment));
-  ipcMain.handle('installments:markAsPaid', (_, id) => installmentOperations.markAsPaid(id));
-  ipcMain.handle('installments:recordPayment', (_, installmentId, amount, paymentMethod, reference) =>
-    installmentOperations.recordPayment(installmentId, amount, paymentMethod, reference));
+  ipcMain.handle('installments:markAsPaid', (_, id, paymentDate) => {
+    const result = installmentOperations.markAsPaid(id, paymentDate);
+    try {
+      if (result && result.rescheduled) {
+        broadcastDatabaseChange('installments', 'update', { id: result.rescheduled.nextPendingId });
+      } else {
+        broadcastDatabaseChange('installments', 'update', { id });
+      }
+    } catch {}
+    return result;
+  });
+  ipcMain.handle('installments:recordPayment', (_, installmentId, amount, paymentMethod, reference, paymentDate) => {
+    const result = installmentOperations.recordPayment(installmentId, amount, paymentMethod, reference, paymentDate);
+    try {
+      if (result && result.rescheduled) {
+        broadcastDatabaseChange('installments', 'update', { id: result.rescheduled.nextPendingId });
+      } else {
+        broadcastDatabaseChange('installments', 'update', { id: installmentId });
+      }
+    } catch {}
+    return result;
+  });
   ipcMain.handle('installments:applyLateFee', (_, installmentId, fee) =>
     installmentOperations.applyLateFee(installmentId, fee));
   ipcMain.handle('installments:revertPayment', (_, installmentId, transactionId) =>
     installmentOperations.revertPayment(installmentId, transactionId));
-  ipcMain.handle('installments:update', (_, id, data) => installmentOperations.update(id, data));
+  ipcMain.handle('installments:update', (_, id, data) => {
+    const res = installmentOperations.update(id, data);
+    try { broadcastDatabaseChange('installments', 'update', { id }); } catch {}
+    return res;
+  });
   ipcMain.handle('installments:delete', (_, id) => installmentOperations.delete(id));
   ipcMain.handle('installments:deleteAll', () => installmentOperations.deleteAll());
 
@@ -508,7 +569,16 @@ ipcMain.handle('saleItems:deleteAll', () => saleItemOperations.deleteAll());
       payment_type: mapPaymentType(paymentType),
       payment_status: mapPaymentStatus(paymentStatus),
       sale_number: s.sale_number ?? s.numero ?? null,
+      // Preserve original sale date from backup to avoid resetting to current
+      // Accept common field aliases used across exports/backups
+      date: s.date ?? s.fecha ?? s.created_at ?? null,
+      due_date: s.due_date ?? s.fecha_vencimiento ?? null,
+      subtotal: coerceNumber(s.subtotal ?? s.sub_total ?? s.subtotal_amount, 0),
       total_amount: coerceNumber(s.total_amount ?? s.total ?? s.monto_total, 0),
+      payment_method: s.payment_method ?? s.metodo_pago ?? null,
+      payment_period: s.payment_period ?? s.ventana_pago ?? null,
+      period_type: s.period_type ?? s.tipo_periodo ?? null,
+      reference_code: s.reference_code ?? s.referencia ?? null,
       number_of_installments: coerceNumber(s.number_of_installments ?? s.installments ?? s.cuotas, 0),
       installment_amount: coerceNumber(s.installment_amount ?? s.monto_cuota, 0),
       first_payment_date: s.first_payment_date ?? s.fecha_primer_pago ?? null,
@@ -693,12 +763,12 @@ ipcMain.handle('saleItems:deleteAll', () => saleItemOperations.deleteAll());
       
 
 
-      const message = errors.length > 0 
-        ? `Cache cleared with some warnings: ${errors.join(', ')}`
-        : 'Cache cleared successfully';
-      
-      return { success: true, message };
-    } catch (error) {
+  const message = errors.length > 0 
+    ? `Cache cleared with some warnings: ${errors.join(', ')}`
+    : 'Cache cleared successfully';
+  
+  return { success: true, message };
+  } catch (error) {
       console.error('Error clearing cache:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Error desconocido' };
     }
@@ -725,6 +795,7 @@ ipcMain.handle('saleItems:deleteAll', () => saleItemOperations.deleteAll());
       return { success: false, error: error instanceof Error ? error.message : 'Error desconocido' };
     }
   });
+
 }
 
 
@@ -765,7 +836,7 @@ app.whenReady().then(() => {
     if (!Number.isNaN(parsed) && parsed > 0) {
       setupNotificationScheduler(() => (notificationsMuted ? null : mainWindow), parsed);
     } else {
-      setupNotificationScheduler(() => (notificationsMuted ? null : mainWindow));
+  setupNotificationScheduler(() => (notificationsMuted ? null : mainWindow));
     }
   } else {
     setupNotificationScheduler(() => (notificationsMuted ? null : mainWindow));
@@ -773,7 +844,6 @@ app.whenReady().then(() => {
 
 
 
-  const { session } = require('electron');
   session.defaultSession.protocol.interceptBufferProtocol('file', (request, callback) => {
     const url = request.url;
     
@@ -1020,11 +1090,12 @@ app.on('before-quit', () => {
 
 
 
-app.on('web-contents-created', (event, contents) => {
-  contents.setWindowOpenHandler(() => {
-    return { action: 'deny' };
+  app.on('web-contents-created', (event, contents) => {
+    contents.setWindowOpenHandler(() => {
+      return { action: 'deny' };
+    });
   });
-});
+  
 ipcMain.handle('open-external', async (_event, url: string) => {
   try {
     await shell.openExternal(url);
@@ -1034,3 +1105,32 @@ ipcMain.handle('open-external', async (_event, url: string) => {
     return false;
   }
 });
+ipcMain.handle('show-item-in-folder', async (_event, pathStr: string) => {
+  try {
+    if (typeof pathStr !== 'string' || pathStr.length === 0) return false;
+    shell.showItemInFolder(pathStr);
+    return true;
+  } catch (err) {
+    console.error('show-item-in-folder failed:', err);
+    return false;
+  }
+});
+ipcMain.handle('get-downloads-path', async () => {
+  try {
+    return app.getPath('downloads');
+  } catch (err) {
+    console.error('get-downloads-path failed:', err);
+    return null;
+  }
+});
+ipcMain.handle('open-path', async (_event, pathStr: string) => {
+  try {
+    if (typeof pathStr !== 'string' || pathStr.length === 0) return false;
+    const res = await shell.openPath(pathStr);
+    return !res;
+  } catch (err) {
+    console.error('open-path failed:', err);
+    return false;
+  }
+});
+// Auto-updater removed per request

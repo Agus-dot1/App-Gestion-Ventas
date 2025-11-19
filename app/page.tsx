@@ -202,8 +202,8 @@ export default function Home() {
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight">Panel de control</h1>
-              <p className="text-muted-foreground">
+              <h1 className="text-2xl md:text-4xl font-bold tracking-tight">Panel de control</h1>
+              <p className="text-muted-foreground text-sm md:text-base">
                 Bienvenido a tu panel de control. Acá podes ver un resumen de tus ventas, clientes y productos.
               </p>
             </div>
@@ -240,7 +240,7 @@ export default function Home() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-xl md:text-2xl font-bold">
                 {"$" + stats.totalRevenue.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
               </div>
             </CardContent>
@@ -256,7 +256,7 @@ export default function Home() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.totalCustomers}</div>
+              <div className="text-xl md:text-2xl font-bold">{stats.totalCustomers}</div>
             </CardContent>
           </Card>
 
@@ -270,7 +270,7 @@ export default function Home() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.totalSales}</div>
+              <div className="text-xl md:text-2xl font-bold">{stats.totalSales}</div>
             </CardContent>
           </Card>
 
@@ -284,7 +284,7 @@ export default function Home() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.totalProducts}</div>
+              <div className="text-xl md:text-2xl font-bold">{stats.totalProducts}</div>
             </CardContent>
           </Card>
         </div>

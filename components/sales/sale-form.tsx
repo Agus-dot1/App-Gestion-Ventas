@@ -8,12 +8,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
-import { AlertCircle, Plus, Trash2, ShoppingCart, User, CreditCard, Calculator, Search, Users, List } from 'lucide-react';
+import { AlertCircle, Plus, Trash2, ShoppingCart, User, CreditCard, Calculator, Search, Users, List, CircleAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
-type Sale = any;
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { parseSaleDateInputToISO, formatISOToDDMMYYYY } from '@/lib/date-utils';
+import type { Sale, SaleFormData } from '@/lib/database-operations';
+// Keep Customer/Product as any to preserve current flexibility
 type Customer = any;
 type Product = any;
-type SaleFormData = any;
 
 interface SaleFormProps {
   sale?: Sale;
@@ -31,17 +33,24 @@ interface SaleItem {
 }
 
 export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('es-AR', {
+      style: 'currency',
+      currency: 'ARS',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(amount || 0);
+  };
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [partners, setPartners] = useState<any[]>([]);
-  const [isExcelLayout, setIsExcelLayout] = useState(false);
   const [formData, setFormData] = useState({
     customer_id: 0,
     partner_id: 0,
     payment_type: 'cash' as 'cash' | 'installments',
     payment_method: 'cash' as 'cash' | 'bank_transfer',
     payment_period: '1 to 10' as '1 to 10' | '10 to 20' | '20 to 30',
-    period_type: 'monthly' as 'monthly' | 'weekly',
+    period_type: 'monthly' as 'monthly' | 'weekly' | 'biweekly',
     number_of_installments: 6,
     notes: ''
   });
@@ -52,9 +61,12 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
   const [productQuery, setProductQuery] = useState('');
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [customerQuery, setCustomerQuery] = useState('');
+  const [saleDateInput, setSaleDateInput] = useState<string>('');
+  const [saleDateError, setSaleDateError] = useState<string>('');
 
 
   const [installmentsBuffer, setInstallmentsBuffer] = useState<string | undefined>(undefined);
+  const [priceBuffers, setPriceBuffers] = useState<Record<number, string | undefined>>({});
 
   useEffect(() => {
     if (open && typeof window !== 'undefined' && window.electronAPI) {
@@ -65,27 +77,6 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
   }, [open]);
 
 
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('excelFormLayout');
-      setIsExcelLayout(saved === 'true');
-    } catch {}
-
-    const handler = (e: any) => {
-      const detail = e?.detail || {};
-      if (Object.prototype.hasOwnProperty.call(detail, 'excelFormLayout')) {
-        setIsExcelLayout(Boolean(detail.excelFormLayout));
-      } else {
-        try {
-          const saved = localStorage.getItem('excelFormLayout');
-          setIsExcelLayout(saved === 'true');
-        } catch {}
-      }
-    };
-    window.addEventListener('app:settings-changed', handler);
-    return () => window.removeEventListener('app:settings-changed', handler);
-  }, []);
 
   useEffect(() => {
     if (sale) {
@@ -100,6 +91,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         notes: sale.notes || ''
       });
       loadSaleItems(sale.id!);
+      setSaleDateInput(formatISOToDDMMYYYY(sale.date));
     } else {
       setFormData({
         customer_id: 0,
@@ -112,6 +104,8 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         notes: ''
       });
       setItems([]);
+      setSaleDateInput('');
+      setSaleDateError('');
     }
   }, [sale]);
 
@@ -279,7 +273,16 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
       }
     }
 
+    // Fecha de venta (opcional): validar formato si se cargó
+    if (saleDateInput.trim()) {
+      const parsed = parseSaleDateInputToISO(saleDateInput);
+      if (!parsed.valid) {
+        newErrors.sale_date = typeof parsed.error === 'string' ? parsed.error : 'Fecha inválida';
+      }
+    }
+
     setErrors(newErrors);
+    setSaleDateError(newErrors.sale_date || '');
     return Object.keys(newErrors).length === 0;
   };
 
@@ -290,6 +293,20 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
 
     setIsSubmitting(true);
     try {
+      let dateISO: string;
+      const raw = saleDateInput.trim();
+      if (!raw) {
+        dateISO = new Date().toISOString();
+      } else {
+        const parsed = parseSaleDateInputToISO(raw);
+        if (!parsed.valid || !parsed.iso) {
+          setSaleDateError(parsed.error || 'Fecha inválida');
+          setIsSubmitting(false);
+          return;
+        }
+        dateISO = parsed.iso;
+      }
+
       const payment_type = formData.payment_type;
       const saleData: SaleFormData = {
         customer_id: formData.customer_id,
@@ -305,7 +322,8 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
         payment_period: payment_type === 'installments' ? formData.payment_period : undefined,
         period_type: payment_type === 'installments' ? formData.period_type : undefined,
         number_of_installments: payment_type === 'installments' ? formData.number_of_installments : undefined,
-        notes: formData.notes
+        notes: formData.notes,
+        date: dateISO
       };
 
       await onSave(saleData);
@@ -322,6 +340,8 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
       });
       setItems([]);
       setErrors({});
+      setSaleDateInput('');
+      setSaleDateError('');
     } catch (error) {
       console.error('Error al registrar venta:', error);
     } finally {
@@ -334,10 +354,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={cn(
-          'max-w-[95vw] max-h-[90vh] overflow-x-auto overflow-y-auto',
-          isExcelLayout ? 'sm:max-w-[98vw] lg:max-w-[90vw] xl:max-w-[80vw]' : 'sm:max-w-[600px]'
-        )}
+        className="max-w-[95vw] max-h-[90vh] short:max-h-[80vh] overflow-y-auto"
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -349,7 +366,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6 min-w-[1200px]">
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div className="flex gap-6">
             <div className="flex-1 space-y-6">
               {/* Cliente y Pago lado a lado */}
@@ -577,7 +594,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                                   <SelectContent>
                                     {products.map((product) => (
                                       <SelectItem key={product.id} value={product.id!.toString()}>
-                                        {product.name} - ${product.price}
+                                        {product.name} - {formatCurrency(product.price)}
                                       </SelectItem>
                                     ))}
                                   </SelectContent>
@@ -605,15 +622,36 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                                 type="number"
                                 step="1"
                                 min="0"
-                                value={item.unit_price}
-                                onChange={(e) => updateItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
+                                value={priceBuffers[index] ?? String(item.unit_price)}
+                                onChange={(e) => {
+                                  setPriceBuffers(prev => ({ ...prev, [index]: e.target.value }));
+                                }}
+                                onBlur={() => {
+                                  const v = (priceBuffers[index] ?? '').trim();
+                                  if (v === '') {
+                                    updateItem(index, 'unit_price', 0);
+                                    setPriceBuffers(prev => ({ ...prev, [index]: undefined }));
+                                    return;
+                                  }
+                                  const num = parseFloat(v.replace(',', '.'));
+                                  const next = Number.isFinite(num) ? Math.max(0, num) : 0;
+                                  updateItem(index, 'unit_price', next);
+                                  setPriceBuffers(prev => ({ ...prev, [index]: undefined }));
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.currentTarget.blur();
+                                  } else if (e.key === 'Escape') {
+                                    setPriceBuffers(prev => ({ ...prev, [index]: String(item.unit_price) }));
+                                  }
+                                }}
                                 className={`h-9 text-sm ${errors[`item_${index}_price`] ? 'border-red-500' : ''}`}
                               />
                             </td>
                             
                             <td className="p-2">
                               <div className="h-9 px-3 py-2 border rounded-md bg-muted flex items-center text-sm font-medium">
-                                ${item.line_total}
+                                {formatCurrency(item.line_total)}
                               </div>
                             </td>
                             <td className="p-2">
@@ -653,7 +691,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                 <div className="space-y-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Subtotal:</span>
-                    <span className="font-medium">${Math.round(subtotal)}</span>
+                    <span className="font-medium">{formatCurrency(subtotal)}</span>
                   </div>
 
                   {/* Removed Descuento display */}
@@ -662,7 +700,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
 
                   <div className="flex justify-between text-lg font-bold">
                     <span>Total:</span>
-                    <span className="text-primary">${Math.round(total)}</span>
+                    <span className="text-primary">{formatCurrency(total)}</span>
                   </div>
 
                   {formData.payment_type === 'installments' && formData.number_of_installments > 0 && (
@@ -672,7 +710,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                         <div className="text-xs font-medium text-muted-foreground mb-2">Detalles de cuotas</div>
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">Pago mensual:</span>
-                          <span className="font-semibold text-blue-600">${Math.round(total / formData.number_of_installments)}</span>
+                          <span className="font-semibold text-blue-600">{formatCurrency(total / formData.number_of_installments)}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">Total cuotas:</span>
@@ -686,7 +724,7 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                 
 
               </div>
-                <div>
+              <div>
                 <Label className="text-xs mb-1.5 block">Notas</Label>
                 <Textarea
                   value={formData.notes}
@@ -696,7 +734,39 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
                   className="text-sm resize-none"
                 />
               </div>
-              
+
+              <div>
+                <div className="flex items-center gap-1">
+                  <Label className="text-xs mb-1.5 block">Fecha de venta (opcional)</Label>
+                  <TooltipProvider delayDuration={0}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <CircleAlert className="self-center h-4 w-4 mb-1.5" />
+                      </TooltipTrigger>
+                      <TooltipContent side="left">
+                        Ingresa la fecha en formato dd/mm o dd/mm/aaaa. <br /> Si lo dejas vacío va a usar la fecha actual.
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                <Input
+                  value={saleDateInput}
+                  onChange={(e) => {
+                    setSaleDateInput(e.target.value);
+                    if (saleDateError) setSaleDateError('');
+                    if (errors.sale_date) setErrors(prev => { const { sale_date, ...rest } = prev; return rest; });
+                  }}
+                  placeholder="dd/mm/aaaa"
+                  className={cn('h-10 text-sm', saleDateError ? 'border-red-500' : '')}
+                />
+                {saleDateError && (
+                  <div className="flex items-center gap-1 text-xs text-red-600 mt-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {saleDateError}
+                  </div>
+                )}
+              </div>
+
             </div>
           </div>
 
@@ -833,3 +903,4 @@ export function SaleForm({ sale, open, onOpenChange, onSave }: SaleFormProps) {
     </Dialog>
   );
 }
+  

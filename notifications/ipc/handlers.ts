@@ -25,9 +25,9 @@ export function setupNotificationIpcHandlers(getMainWindow: () => BrowserWindow 
 
 
   ipcMain.handle(IPC_NOTIFICATIONS.purgeArchived, () => notificationOperations.purgeArchived())
-  ipcMain.handle(IPC_NOTIFICATIONS.emitTestEvent, (_e, payload: { message: string; type: 'attention' | 'alert' | 'info', message_key?: string }) => {
+  ipcMain.handle(IPC_NOTIFICATIONS.emitTestEvent, (_e, payload: { message: string; type: 'attention' | 'alert' | 'info', message_key?: string, meta?: Record<string, any> }) => {
     try {
-      const { message, type, message_key } = payload || ({} as any)
+      const { message, type, message_key, meta } = payload || ({} as any)
       if (!message || !type) return false
 
 
@@ -45,7 +45,7 @@ export function setupNotificationIpcHandlers(getMainWindow: () => BrowserWindow 
 
         const latest = message_key ? notificationOperations.getLatestByKey(message_key) : null
         const createdAt = latest?.created_at
-        win.webContents.send(IPC_NOTIFICATIONS.event, { id: nid, message, type: normalizedType, meta: { message_key, ...(createdAt ? { created_at: createdAt } : {}) } })
+        win.webContents.send(IPC_NOTIFICATIONS.event, { id: nid, message, type: normalizedType, meta: { message_key, ...(createdAt ? { created_at: createdAt } : {}) , ...(meta || {}) } })
       }
       return true
     } catch (e) {

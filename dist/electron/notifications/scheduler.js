@@ -4,55 +4,41 @@ exports.checkLowStockAfterSale = exports.setupNotificationScheduler = void 0;
 const repository_1 = require("./repository");
 const database_operations_1 = require("../lib/database-operations");
 const constants_1 = require("./constants");
-const isDev = process.env.NODE_ENV === 'development';
 function cleanupOrphanedNotifications() {
     try {
-        const all = repository_1.notificationOperations.list(500);
-        const seen = new Set();
-        for (const n of all) {
-            if (n.message_key) {
-                const key = `${n.message_key}|active`; // distinct label for active
-                if (seen.has(key)) {
-                    repository_1.notificationOperations.delete(n.id);
-                }
-                else {
-                    seen.add(key);
-                }
-            }
-        }
+        repository_1.notificationOperations.dedupeActiveByMessageKey();
     }
     catch (e) {
         console.error('Error during notification cleanup:', e);
     }
 }
-function setupNotificationScheduler(getMainWindow, intervalMs = isDev ? 30000 : 5 * 60000) {
+function setupNotificationScheduler(getMainWindow, intervalMs = 5 * 60000) {
     function tick() {
         try {
             cleanupOrphanedNotifications();
+            const suppressIfMuted = (process.env.NOTIFICATIONS_SUPPRESS_WHEN_MUTED ?? 'true') !== 'false';
+            const isMuted = !getMainWindow();
             const overdue = database_operations_1.installmentOperations.getOverdue();
             if (overdue && overdue.length > 0) {
+                const batchThreshold = parseInt(process.env.NOTIFICATIONS_BATCH_THRESHOLD || '10', 10);
+                const payloads = [];
                 overdue.forEach((inst) => {
                     try {
-
-
                         if (!inst.id || (!inst.customerName && !inst.customer_name) || !inst.balance || inst.balance <= 0) {
                             return;
                         }
                         const customer = inst.customerName || inst.customer_name;
                         const msg = `Hay una cuota vencida — ${customer} — ${new Date(inst.due_date).toLocaleDateString('es-AR')} — $ ${inst.balance}`;
                         const key = `overdue|${inst.id}`;
-
-
                         const existsActive = repository_1.notificationOperations.existsActiveWithKey(key);
                         const existsToday = repository_1.notificationOperations.existsTodayWithKey(key);
                         if (!existsActive && !existsToday) {
-                            const dbType = 'alert';
-                            const nid = repository_1.notificationOperations.create(msg, dbType, key);
-                            const win = getMainWindow();
-                            if (win) {
+                            if (!(suppressIfMuted && isMuted)) {
+                                const dbType = 'alert';
+                                const nid = repository_1.notificationOperations.create(msg, dbType, key);
                                 const latest = repository_1.notificationOperations.getLatestByKey(key);
                                 const createdAt = latest?.created_at;
-                                win.webContents.send(constants_1.IPC_NOTIFICATIONS.event, { id: nid, message: msg, type: 'alert', meta: { message_key: key, customerName: customer, due_at: inst.due_date ? new Date(inst.due_date).toISOString() : new Date().toISOString(), amount: inst.balance, ...(createdAt ? { created_at: createdAt } : {}) } });
+                                payloads.push({ id: nid, message: msg, type: 'alert', meta: { message_key: key, customerName: customer, due_at: inst.due_date ? new Date(inst.due_date).toISOString() : new Date().toISOString(), amount: inst.balance, ...(createdAt ? { created_at: createdAt } : {}) } });
                             }
                         }
                     }
@@ -60,32 +46,38 @@ function setupNotificationScheduler(getMainWindow, intervalMs = isDev ? 30000 : 
                         console.error('Error processing overdue installment:', e);
                     }
                 });
+                const win = getMainWindow();
+                if (win && payloads.length > 0) {
+                    if (payloads.length >= batchThreshold) {
+                        win.webContents.send(constants_1.IPC_NOTIFICATIONS.eventBatch, payloads);
+                    }
+                    else {
+                        for (const p of payloads) {
+                            win.webContents.send(constants_1.IPC_NOTIFICATIONS.event, p);
+                        }
+                    }
+                }
             }
-
-
             const upcoming = database_operations_1.installmentOperations.getUpcoming();
             if (upcoming && upcoming.length > 0) {
+                const batchThreshold = parseInt(process.env.NOTIFICATIONS_BATCH_THRESHOLD || '10', 10);
+                const payloads = [];
                 upcoming.forEach((inst) => {
                     try {
-
-
                         if (!inst.id || (!inst.customerName && !inst.customer_name) || !inst.balance || inst.balance <= 0) {
                             return;
                         }
                         const customer = inst.customerName || inst.customer_name;
                         const msg = `Cuota próxima a vencer — ${customer} — ${new Date(inst.due_date).toLocaleDateString('es-AR')} — ${inst.balance.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}`;
                         const key = `upcoming|${inst.id}`;
-
-
                         const existsActive = repository_1.notificationOperations.existsActiveWithKey(key);
                         const existsToday = repository_1.notificationOperations.existsTodayWithKey(key);
                         if (!existsActive && !existsToday) {
-                            const nid = repository_1.notificationOperations.create(msg, 'reminder', key);
-                            const win = getMainWindow();
-                            if (win) {
+                            if (!(suppressIfMuted && isMuted)) {
+                                const nid = repository_1.notificationOperations.create(msg, 'reminder', key);
                                 const latest = repository_1.notificationOperations.getLatestByKey(key);
                                 const createdAt = latest?.created_at;
-                                win.webContents.send(constants_1.IPC_NOTIFICATIONS.event, {
+                                payloads.push({
                                     id: nid,
                                     message: msg,
                                     type: 'attention',
@@ -104,9 +96,18 @@ function setupNotificationScheduler(getMainWindow, intervalMs = isDev ? 30000 : 
                         console.error('Error processing upcoming installment:', e);
                     }
                 });
+                const win = getMainWindow();
+                if (win && payloads.length > 0) {
+                    if (payloads.length >= batchThreshold) {
+                        win.webContents.send(constants_1.IPC_NOTIFICATIONS.eventBatch, payloads);
+                    }
+                    else {
+                        for (const p of payloads) {
+                            win.webContents.send(constants_1.IPC_NOTIFICATIONS.event, p);
+                        }
+                    }
+                }
             }
-
-
             try {
                 const now = new Date();
                 const tomorrow = new Date(now);
@@ -139,26 +140,28 @@ function setupNotificationScheduler(getMainWindow, intervalMs = isDev ? 30000 : 
                                 const existsActive = repository_1.notificationOperations.existsActiveWithKey(key);
                                 const existsToday = repository_1.notificationOperations.existsTodayWithKey(key);
                                 if (!existsActive && !existsToday) {
-                                    const nid = repository_1.notificationOperations.create(msg, 'reminder', key);
-                                    const win = getMainWindow();
-                                    if (win) {
-                                        const latest = repository_1.notificationOperations.getLatestByKey(key);
-                                        const createdAt = latest?.created_at;
-                                        win.webContents.send(constants_1.IPC_NOTIFICATIONS.event, {
-                                            id: nid,
-                                            message: msg,
-                                            type: 'attention',
-                                            meta: {
-                                                message_key: key,
-                                                customerName: customers[0],
-                                                customerNames: customers.slice(0, 3),
-                                                customerCount: customers.length,
-                                                due_at: tomorrow.toISOString(),
-                                                actionLabel: 'Revisar',
-                                                route: '/sales?tab=installments',
-                                                ...(createdAt ? { created_at: createdAt } : {}),
-                                            }
-                                        });
+                                    if (!(suppressIfMuted && isMuted)) {
+                                        const nid = repository_1.notificationOperations.create(msg, 'reminder', key);
+                                        const win = getMainWindow();
+                                        if (win) {
+                                            const latest = repository_1.notificationOperations.getLatestByKey(key);
+                                            const createdAt = latest?.created_at;
+                                            win.webContents.send(constants_1.IPC_NOTIFICATIONS.event, {
+                                                id: nid,
+                                                message: msg,
+                                                type: 'attention',
+                                                meta: {
+                                                    message_key: key,
+                                                    customerName: customers[0],
+                                                    customerNames: customers.slice(0, 3),
+                                                    customerCount: customers.length,
+                                                    due_at: tomorrow.toISOString(),
+                                                    actionLabel: 'Revisar',
+                                                    route: '/sales?tab=installments',
+                                                    ...(createdAt ? { created_at: createdAt } : {}),
+                                                }
+                                            });
+                                        }
                                     }
                                 }
                             }
@@ -172,6 +175,18 @@ function setupNotificationScheduler(getMainWindow, intervalMs = isDev ? 30000 : 
             catch (e) {
                 console.error('Weekly precheck scheduler error:', e);
             }
+            try {
+                const now = new Date();
+                const retentionDays = parseInt(process.env.NOTIFICATIONS_RETENTION_DAYS || '90', 10);
+                if (Number.isFinite(retentionDays) && retentionDays > 0) {
+                    if (now.getHours() === 1) {
+                        repository_1.notificationOperations.purgeArchivedOlderThan(retentionDays);
+                    }
+                }
+            }
+            catch (e) {
+                console.error('Retention purge scheduler error:', e);
+            }
         }
         catch (e) {
             console.error('Scheduler error:', e);
@@ -181,8 +196,6 @@ function setupNotificationScheduler(getMainWindow, intervalMs = isDev ? 30000 : 
     setInterval(tick, intervalMs);
 }
 exports.setupNotificationScheduler = setupNotificationScheduler;
-
-
 function checkLowStockAfterSale(saleData, getMainWindow) {
     try {
         if (saleData && Array.isArray(saleData.items)) {
@@ -193,8 +206,6 @@ function checkLowStockAfterSale(saleData, getMainWindow) {
                         if (p && typeof p.stock === 'number' && p.stock <= 1) {
                             const msg = `Stock bajo: ${p.name} — quedó en ${p.stock} unidad${p.stock === 1 ? '' : 'es'} — $${p.price}${p.category ? ` — ${p.category}` : ''}`;
                             const key = `stock_low|${p.id}`;
-
-
                             const existsActive = repository_1.notificationOperations.existsActiveWithKey(key);
                             const latest = repository_1.notificationOperations.getLatestByKey(key);
                             const productUpdatedAt = p.updated_at ? new Date(p.updated_at).getTime() : 0;
@@ -202,27 +213,31 @@ function checkLowStockAfterSale(saleData, getMainWindow) {
                             const recoveredSinceLast = !!latest && productUpdatedAt > lastCreatedAt;
                             const shouldNotify = !existsActive && (!latest || recoveredSinceLast);
                             if (shouldNotify) {
-                                const dbType = 'reminder';
-                                const nid = repository_1.notificationOperations.create(msg, dbType, key);
-                                const win = getMainWindow();
-                                if (win) {
-                                    const latestNew = repository_1.notificationOperations.getLatestByKey(key);
-                                    const createdAtNew = latestNew?.created_at;
-                                    win.webContents.send(constants_1.IPC_NOTIFICATIONS.event, {
-                                        id: nid,
-                                        message: msg,
-                                        type: 'attention',
-                                        meta: {
-                                            message_key: key,
-                                            stockStatus: `${p.stock} unidad${p.stock === 1 ? '' : 'es'}`,
-                                            productId: p.id,
-                                            productName: p.name,
-                                            productPrice: p.price,
-                                            productCategory: p.category || 'Sin categoría',
-                                            currentStock: p.stock,
-                                            ...(createdAtNew ? { created_at: createdAtNew } : {}),
-                                        }
-                                    });
+                                const suppressIfMuted = (process.env.NOTIFICATIONS_SUPPRESS_WHEN_MUTED ?? 'true') !== 'false';
+                                const isMuted = !getMainWindow();
+                                if (!(suppressIfMuted && isMuted)) {
+                                    const dbType = 'reminder';
+                                    const nid = repository_1.notificationOperations.create(msg, dbType, key);
+                                    const win = getMainWindow();
+                                    if (win) {
+                                        const latestNew = repository_1.notificationOperations.getLatestByKey(key);
+                                        const createdAtNew = latestNew?.created_at;
+                                        win.webContents.send(constants_1.IPC_NOTIFICATIONS.event, {
+                                            id: nid,
+                                            message: msg,
+                                            type: 'attention',
+                                            meta: {
+                                                message_key: key,
+                                                stockStatus: `${p.stock} unidad${p.stock === 1 ? '' : 'es'}`,
+                                                productId: p.id,
+                                                productName: p.name,
+                                                productPrice: p.price,
+                                                productCategory: p.category || 'Sin categoría',
+                                                currentStock: p.stock,
+                                                ...(createdAtNew ? { created_at: createdAtNew } : {}),
+                                            }
+                                        });
+                                    }
                                 }
                             }
                         }
@@ -239,4 +254,4 @@ function checkLowStockAfterSale(saleData, getMainWindow) {
     }
 }
 exports.checkLowStockAfterSale = checkLowStockAfterSale;
-
+//# sourceMappingURL=scheduler.js.map

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { DashboardLayout } from '@/components/dashboard-layout'
@@ -13,9 +13,6 @@ import {
   AlertTriangle,
   CheckCircle,
   Loader2,
-  RefreshCw,
-  ArrowUpCircle,
-  Info,
   Bell,
   Table
 } from 'lucide-react'
@@ -33,29 +30,18 @@ interface BackupData {
   version: string
 }
 
-interface MigrationInfo {
-  currentVersion: string
-  latestVersion: string
-  needsMigration: boolean
-  migrationSteps: string[]
-}
-
 export default function AjustesPage() {
   const [isElectron, setIsElectron] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [isClearingCache, setIsClearingCache] = useState(false)
-  const [isMigrating, setIsMigrating] = useState(false)
-  const [isCheckingMigration, setIsCheckingMigration] = useState(false)
   const [isDeletingDatabase, setIsDeletingDatabase] = useState(false)
   const [cacheSize, setCacheSize] = useState<string>('0 MB')
   const [lastBackup, setLastBackup] = useState<string | null>(null)
-  const [migrationInfo, setMigrationInfo] = useState<MigrationInfo | null>(null)
   const [reduceAnimations, setReduceAnimations] = useState<boolean>(false)
   const [excelFormLayout, setExcelFormLayout] = useState<boolean>(false)
   const [isClearingNotifications, setIsClearingNotifications] = useState<boolean>(false)
   const [isPurgingArchived, setIsPurgingArchived] = useState<boolean>(false)
-  // Partners management state
   const [partners, setPartners] = useState<any[]>([])
   const [isLoadingPartners, setIsLoadingPartners] = useState<boolean>(false)
   const [newPartnerName, setNewPartnerName] = useState<string>('')
@@ -65,19 +51,16 @@ export default function AjustesPage() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setIsElectron(!!window.electronAPI)
-      // Cargar preferencia de animaciones
       const savedReduce = localStorage.getItem('reduceAnimations')
       setReduceAnimations(savedReduce === 'true')
-      // Cargar preferencia de layout Excel para formularios
       const savedExcel = localStorage.getItem('excelFormLayout')
       setExcelFormLayout(savedExcel === 'true')
       loadCacheInfo()
       loadLastBackupInfo()
-      checkMigrationStatus()
+      
     }
   }, [])
 
-  // Gestión de perfiles/partners
   const loadPartners = async () => {
     try {
       if (!window.electronAPI?.database?.partners?.getAll) return
@@ -103,7 +86,6 @@ export default function AjustesPage() {
     try {
       await window.electronAPI.database.partners.create({ name })
       setNewPartnerName('')
-      // Notify other UI parts to refresh partners immediately
       try {
         window.dispatchEvent(new CustomEvent('partners:changed'))
       } catch {}
@@ -140,7 +122,6 @@ export default function AjustesPage() {
     try {
       await window.electronAPI.database.partners.update(editingPartnerId, { name })
       cancelEditPartner()
-      // Notify other UI parts to refresh partners immediately
       try {
         window.dispatchEvent(new CustomEvent('partners:changed'))
       } catch {}
@@ -163,7 +144,6 @@ export default function AjustesPage() {
   const handleDeletePartner = async (id: number) => {
     try {
       await window.electronAPI.database.partners.delete(id)
-      // Notify other UI parts to refresh partners immediately
       try {
         window.dispatchEvent(new CustomEvent('partners:changed'))
       } catch {}
@@ -213,14 +193,12 @@ export default function AjustesPage() {
 
     setIsExporting(true)
     try {
-      // Obtener todos los datos
       const [customers, products, sales] = await Promise.all([
         window.electronAPI.database.customers.getAll(),
         window.electronAPI.database.products.getAll(),
         window.electronAPI.database.sales.getAll()
       ])
 
-      // Adjuntar items por venta para un respaldo completo
       const salesWithItems = await Promise.all(
         (sales || []).map(async (s: any) => {
           try {
@@ -245,7 +223,6 @@ export default function AjustesPage() {
         version: '1.1.0'
       }
 
-      // Guardar archivo
       const result = await window.electronAPI.backup.save(backupData)
       if (result.success) {
         localStorage.setItem('lastBackupDate', new Date().toISOString())
@@ -290,7 +267,6 @@ export default function AjustesPage() {
       if (result.success && result.data) {
         const backupData = result.data as BackupData
         
-        // Validar estructura del respaldo
         if (!backupData.customers || !backupData.products || !backupData.sales) {
           toast.error('Archivo de respaldo inválido', {
             description: 'Falta estructura de clientes, productos o ventas',
@@ -300,14 +276,12 @@ export default function AjustesPage() {
           return
         }
 
-        // Importar datos
         const importResults = await Promise.all([
           window.electronAPI.backup.importCustomers(backupData.customers),
           window.electronAPI.backup.importProducts(backupData.products),
           window.electronAPI.backup.importSales(backupData.sales)
         ])
 
-        // Verificar si todas las importaciones fueron exitosas
         const failedImports = importResults.filter(result => !result.success)
         if (failedImports.length > 0) {
           toast.error('Error en algunas importaciones: ' + failedImports.map(r => r.error).join(', '), {
@@ -318,7 +292,6 @@ export default function AjustesPage() {
           return
         }
 
-        // Restaurar configuraciones
         if (backupData.settings) {
           Object.entries(backupData.settings).forEach(([key, value]) => {
             localStorage.setItem(key, value as string)
@@ -351,82 +324,9 @@ export default function AjustesPage() {
     }
   }
 
-  const checkMigrationStatus = async () => {
-    if (!isElectron) return
-    
-    setIsCheckingMigration(true)
-    try {
-      const currentVersion = localStorage.getItem('dataVersion') || '1.0.0'
-      const latestVersion = '1.1.0' // This would come from app config
-      
-      const needsMigration = currentVersion !== latestVersion
-      const migrationSteps = needsMigration ? [
-        'Actualizar estructura de base de datos',
-        'Migrar datos de clientes',
-        'Actualizar índices de búsqueda',
-        'Verificar integridad de datos'
-      ] : []
-      
-      setMigrationInfo({
-        currentVersion,
-        latestVersion,
-        needsMigration,
-        migrationSteps
-      })
-    } catch (error) {
-      console.error('Error checking migration status:', error)
-    } finally {
-      setIsCheckingMigration(false)
-    }
-  }
+  
 
-  const handleDataMigration = async () => {
-    if (!isElectron || !migrationInfo?.needsMigration) return
-    
-    setIsMigrating(true)
-    try {
-      for (let i = 0; i < migrationInfo.migrationSteps.length; i++) {
-        const step = migrationInfo.migrationSteps[i]
-        toast.info(`Ejecutando: ${step}`, {
-          description: 'Aplicando paso de migración de datos',
-          position: 'top-center',
-          duration: 1000,
-        })
-        
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        
-      
-      }
-      
-      localStorage.setItem('dataVersion', migrationInfo.latestVersion)
-      
-      await checkMigrationStatus()
-      
-      toast.success('Migración de datos completada exitosamente', {
-        description: 'Versión actualizada y verificada',
-        position: 'top-center',
-        duration: 1000,
-      })
-    } catch (error) {
-      console.error('Error during migration:', error)
-      toast.error('Error durante la migración de datos', {
-        description: 'Revisa el log para más detalles',
-        position: 'top-center',
-        duration: 1000,
-      })
-    } finally {
-      setIsMigrating(false)
-    }
-  }
-
-  const handleCheckForUpdates = async () => {
-    await checkMigrationStatus()
-    toast.info('Verificación de actualizaciones completada', {
-      description: 'Estado de migración actualizado',
-      position: 'top-center',
-      duration: 1000,
-    })
-  }
+  
 
   const handleDeleteDatabase = async () => {
     if (!isElectron) {
@@ -482,7 +382,6 @@ export default function AjustesPage() {
   const handleToggleReduceAnimations = (checked: boolean) => {
     setReduceAnimations(checked)
     localStorage.setItem('reduceAnimations', String(checked))
-    // Notificar a toda la app para que el layout se actualice inmediatamente
     window.dispatchEvent(new CustomEvent('app:settings-changed', { detail: { reduceAnimations: checked } }))
     toast.success('Preferencia guardada', {
       description: checked ? 'Animaciones reducidas activadas' : 'Animaciones reducidas desactivadas',
@@ -494,7 +393,6 @@ export default function AjustesPage() {
   const handleToggleExcelLayout = (checked: boolean) => {
     setExcelFormLayout(checked)
     localStorage.setItem('excelFormLayout', String(checked))
-    // Notificar globalmente para que los formularios actualicen su layout
     window.dispatchEvent(new CustomEvent('app:settings-changed', { detail: { excelFormLayout: checked } }))
     toast.success('Preferencia guardada', {
       description: checked ? 'Formularios horizontales activados' : 'Formularios horizontales desactivados',
@@ -539,8 +437,8 @@ export default function AjustesPage() {
       <div className="max-w-4xl mx-auto p-8 space-y-8">
         {/* Header */}
         <div className="space-y-2">
-          <h1 className="text-2xl font-semibold tracking-tight">Ajustes</h1>
-          <p className="text-muted-foreground">Gestiona la configuración y datos de tu aplicación</p>
+          <h1 className="text-2xl xl:text-4xl font-bold tracking-tight">Ajustes</h1>
+          <p className="text-muted-foreground text-sm xl:text-base">Gestiona la configuración y datos de tu aplicación</p>
         </div>
 
         {/* Preferencias de Interfaz */}
@@ -719,96 +617,9 @@ export default function AjustesPage() {
                 </AlertDialog>
               </div>
             </div>
-          </div>
-
-          {/* Data Migration Section
-          <div className="space-y-6">
-            <h2 className="text-lg font-medium">Migración y Actualización de Datos</h2>
-            
-            {/* Migration Status 
-            <div className="p-4 border rounded-lg space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <h3 className="font-medium">Estado de Migración</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {migrationInfo ? 
-                      `Versión actual: ${migrationInfo.currentVersion} | Última: ${migrationInfo.latestVersion}` :
-                      'Verificando estado de migración...'
-                    }
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  {migrationInfo?.needsMigration ? (
-                    <Badge variant="destructive" className="text-xs">
-                      <AlertTriangle className="h-3 w-3 mr-1" />
-                      Migración Requerida
-                    </Badge>
-                  ) : (
-                    <Badge variant="default" className="text-xs bg-green-500">
-                      <CheckCircle className="h-3 w-3 mr-1" />
-                      Actualizado
-                    </Badge>
-                  )}
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={handleCheckForUpdates}
-                    disabled={isCheckingMigration}
-                  >
-                    {isCheckingMigration ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Verificando...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        Verificar
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
               
-              {/* Migration Steps
-              {migrationInfo?.needsMigration && (
-                <div className="space-y-3">
-                  <div className="text-sm font-medium text-amber-600 flex items-center gap-2">
-                    <Info className="h-4 w-4" />
-                    Pasos de migración requeridos:
-                  </div>
-                  <ul className="text-sm text-muted-foreground space-y-1 ml-6">
-                    {migrationInfo.migrationSteps.map((step, index) => (
-                      <li key={index} className="flex items-center gap-2">
-                        <div className="w-1.5 h-1.5 bg-amber-500 rounded-full" />
-                        {step}
-                      </li>
-                    ))}
-                  </ul>
-                  <Button 
-                    onClick={handleDataMigration}
-                    disabled={isMigrating || !isElectron}
-                    className="w-full mt-3"
-                    size="sm"
-                  >
-                    {isMigrating ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Migrando datos...
-                      </>
-                    ) : (
-                      <>
-                        <ArrowUpCircle className="h-4 w-4 mr-2" />
-                        Ejecutar Migración
-                      </>
-                    )}
-                  </Button>
-                </div>
-              )}
-            </div>
           </div>
-           */}
-
+          
           {/* System Maintenance Section */}
           <div className="space-y-6">
             <h2 className="text-lg font-medium">Mantenimiento del Sistema</h2>

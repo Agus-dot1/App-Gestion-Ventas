@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { 
   User, 
   Calendar, 
@@ -49,11 +50,17 @@ function formatCurrency(amount: number): string {
 }
 
 function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('es-ES', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
+  const str = String(dateString);
+  const m = /^([0-9]{4})-([0-9]{2})-([0-9]{2})/.exec(str);
+  if (m) {
+    const y = Number(m[1]);
+    const mo = Number(m[2]) - 1;
+    const d = Number(m[3]);
+    const dt = new Date(y, mo, d);
+    return dt.toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' });
+  }
+  const dt = new Date(str);
+  return dt.toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 function formatDateTime(dateString: string): string {
@@ -83,9 +90,12 @@ function getPaymentTypeBadge(type: Sale['payment_type']) {
   return variants[type] || variants.cash;
 }
 
-function getPaymentMethodLabel(method: Sale['payment_method']) {
+function getPaymentMethodLabel(method: Sale['payment_method'] | string | undefined) {
   if (method === 'bank_transfer') return 'Transferencia';
   if (method === 'cash') return 'Efectivo';
+  if (method === 'credit_card') return 'Tarjeta de Crédito';
+  if (method === 'debit_card') return 'Tarjeta de Débito';
+  if (method === 'check') return 'Cheque';
   return 'N/A';
 }
 
@@ -111,6 +121,10 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
   const [installments, setInstallments] = useState<Installment[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailTransactions, setDetailTransactions] = useState<any[]>([]);
+  const [detailInstallment, setDetailInstallment] = useState<Installment | null>(null);
+  const [detailPopoverId, setDetailPopoverId] = useState<number | null>(null);
 
   const copyToClipboard = async (text: string, fieldName: string) => {
     try {
@@ -162,6 +176,30 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
       console.error('Error loading sale details:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const openInstallmentDetails = async (inst: Installment) => {
+    try {
+      const tx = await window.electronAPI.database.payments.getBySale(inst.sale_id);
+      const related = (tx || [])
+        .filter((t: any) => t.installment_id === inst.id && t.status === 'completed')
+        .sort((a: any, b: any) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime());
+      const dedup = [] as any[];
+      const seen = new Set<string>();
+      for (const t of related) {
+        const key = `${t.transaction_date}|${t.amount}|${t.payment_method}|${t.payment_reference || ''}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        dedup.push(t);
+      }
+      setDetailTransactions(dedup.slice(0, 5));
+      setDetailInstallment(inst);
+      setDetailPopoverId(inst.id!);
+    } catch {
+      setDetailTransactions([]);
+      setDetailInstallment(inst);
+      setDetailPopoverId(inst.id!);
     }
   };
 
@@ -262,25 +300,40 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
         });
         yPosition = (doc as any).lastAutoTable.finalY + 4;
 
-        const productsData = saleItems.map(item => [
-          item.product_name || 'Producto',
-          item.quantity.toString(),
-          formatCurrency(item.unit_price),
-          formatCurrency(item.line_total)
-        ]);
+        const isInstallmentSale = sale?.payment_type === 'installments';
+        const productsData = saleItems.map(item => (
+          isInstallmentSale
+            ? [
+                item.product_name || 'Producto',
+                item.quantity.toString()
+              ]
+            : [
+                item.product_name || 'Producto',
+                item.quantity.toString(),
+                formatCurrency(item.unit_price),
+                formatCurrency(item.line_total)
+              ]
+        ));
 
          autoTable(doc, {
-            head: [['Descripción', 'Cantidad', 'Precio Unit.', 'Importe']],
+            head: isInstallmentSale
+              ? [['Descripción', 'Cantidad']]
+              : [['Descripción', 'Cantidad', 'Precio Unit.', 'Importe']],
             body: productsData,
             startY: yPosition,
             styles: { fontSize: 9, lineColor: [220, 220, 220], lineWidth: 0.1 },
             headStyles: { fillColor: [232, 232, 232], textColor: [20, 20, 20], fontStyle: 'bold' },
-            columnStyles: {
-              0: { cellWidth: 90 },
-              1: { halign: 'center', cellWidth: 20 },
-              2: { halign: 'right', cellWidth: 35 },
-              3: { halign: 'right', cellWidth: 35 }
-            },
+            columnStyles: isInstallmentSale
+              ? {
+                  0: { cellWidth: 160 },
+                  1: { halign: 'center', cellWidth: 20 }
+                }
+              : {
+                  0: { cellWidth: 90 },
+                  1: { halign: 'center', cellWidth: 20 },
+                  2: { halign: 'right', cellWidth: 35 },
+                  3: { halign: 'right', cellWidth: 35 }
+                },
             margin: { left: 14, right: 14 }
           });
 
@@ -290,7 +343,7 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
 
         const pageWidth = (doc as any).internal.pageSize.getWidth();
         const left = pageWidth - 100; // ancho del bloque
-        const width = 86;
+        const width = 84;
         const height = 10;
           
 
@@ -300,14 +353,27 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
         doc.setTextColor(255, 255, 255);
         doc.setFontSize(10);
         doc.text(`TOTAL A PAGAR:`, left + 4, yPosition + 7);
-        doc.text(`${formatCurrency(sale?.total_amount ?? 0)}`, left + width - 4, yPosition + 7, { align: 'right' });
+        const totalDisplay = isInstallmentSale
+          ? `${sale?.number_of_installments ?? 0} cuotas de ${formatCurrency(sale?.installment_amount ?? 0)}`
+          : `${formatCurrency(sale?.total_amount ?? 0)}`;
+        doc.text(totalDisplay, left + width - 4, yPosition + 7, { align: 'right' });
         doc.setTextColor(0, 0, 0);
         yPosition += height + 12;
       }
 
 
 
-      if (sale?.payment_type === 'installments' && installments.length > 0) {
+      // Always fetch latest installments to avoid stale export data
+      let latestInstallments: Installment[] = installments;
+      if (sale?.payment_type === 'installments' && typeof window !== 'undefined' && (window as any).electronAPI?.database?.installments && sale.id) {
+        try {
+          latestInstallments = await (window as any).electronAPI.database.installments.getBySale(sale.id);
+        } catch (e) {
+          console.warn('No se pudieron obtener cuotas actualizadas, usando estado actual.', e);
+        }
+      }
+
+      if (sale?.payment_type === 'installments' && latestInstallments.length > 0) {
 
 
         if (yPosition > 250) {
@@ -319,17 +385,22 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
         doc.text('Cuotas:', 14, yPosition);
         yPosition += 5;
 
-        const installmentsData = installments.map(installment => [
-          installment.installment_number.toString(),
-          formatDate(installment.due_date),
-          formatCurrency(installment.amount),
-          formatCurrency(installment.paid_amount),
-          formatCurrency(installment.balance),
-          getInstallmentStatusLabel(installment.status)
-        ]);
+        const installmentsData = latestInstallments.map(installment => {
+          const displayDate = (installment.status === 'paid' && installment.paid_date)
+            ? installment.paid_date
+            : installment.due_date;
+          return [
+            installment.installment_number.toString(),
+            formatDate(displayDate),
+            formatCurrency(installment.amount),
+            formatCurrency(installment.paid_amount),
+            formatCurrency(installment.balance),
+            getInstallmentStatusLabel(installment.status)
+          ];
+        });
 
          autoTable(doc, {
-            head: [['#', 'Vencimiento', 'Monto', 'Pagado', 'Balance', 'Estado']],
+            head: [['#', 'Fecha', 'Monto', 'Pagado', 'Balance', 'Estado']],
             body: installmentsData,
             startY: yPosition,
             styles: { fontSize: 8 },
@@ -424,15 +495,30 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
 
 
 
-      if (installments.length > 0) {
-        const installmentsData = installments.map(installment => ({
-          'Cuota': installment.installment_number,
-          'Vencimiento': formatDate(installment.due_date),
-          'Monto': installment.amount,
-          'Pagado': installment.paid_amount,
-          'Balance': installment.balance,
-          'Estado': installment.status
-        }));
+      // Fetch latest installments to ensure up-to-date Excel export
+      let latestInstallments: Installment[] = installments;
+      if (sale?.payment_type === 'installments' && typeof window !== 'undefined' && (window as any).electronAPI?.database?.installments && sale?.id) {
+        try {
+          latestInstallments = await (window as any).electronAPI.database.installments.getBySale(sale.id);
+        } catch (e) {
+          console.warn('No se pudieron obtener cuotas actualizadas para Excel, usando estado actual.', e);
+        }
+      }
+
+      if (latestInstallments.length > 0) {
+        const installmentsData = latestInstallments.map(installment => {
+          const displayDate = (installment.status === 'paid' && installment.paid_date)
+            ? installment.paid_date
+            : installment.due_date;
+          return ({
+            'Cuota': installment.installment_number,
+            'Fecha': formatDate(displayDate),
+            'Monto': installment.amount,
+            'Pagado': installment.paid_amount,
+            'Balance': installment.balance,
+            'Estado': installment.status
+          });
+        });
         const installmentsSheet = XLSX.utils.json_to_sheet(installmentsData);
         installmentsSheet['!cols'] = [
           { wch: 8 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }
@@ -475,7 +561,7 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden p-0 pt-4">
+      <DialogContent className="max-w-4xl overflow-hidden p-0 pt-4 sm:max-w-[98vw] lg:max-w-[75vw] xl:max-w-[70vw]">
         <DialogHeader className="px-6 pt-6 pb-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -862,6 +948,7 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
                               <TableHead className="text-right">Monto</TableHead>
                               <TableHead className="text-center">Estado</TableHead>
                               <TableHead>Fecha de Pago</TableHead>
+                              <TableHead className="text-right">Acciones</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -905,6 +992,45 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
                                       <span className="text-sm text-muted-foreground">-</span>
                                     )}
                                   </TableCell>
+                                  <TableCell className="text-right">
+                                    <Popover
+                                      open={detailPopoverId === (installment.id || 0)}
+                                      onOpenChange={(open) => {
+                                        if (open) {
+                                          openInstallmentDetails(installment);
+                                        } else {
+                                          setDetailPopoverId(null);
+                                        }
+                                      }}
+                                    >
+                                      <PopoverTrigger asChild>
+                                        <Button size="sm" variant="outline">Ver detalles</Button>
+                                      </PopoverTrigger>
+                                      <PopoverContent className="w-[260px] p-2" side="left" align="end">
+                                        <div className="space-y-2">
+                                          <div className="text-sm font-medium">Cuota #{detailInstallment?.installment_number}</div>
+                                          {detailTransactions.length === 0 ? (
+                                            <div className="text-xs text-muted-foreground">Sin transacciones</div>
+                                          ) : (
+                                            <div className="space-y-1">
+                                              {detailTransactions.map((t, i) => (
+                                                <div key={t.id || i} className="grid grid-cols-2 gap-1 text-xs">
+                                                  <div className="text-muted-foreground">Método</div>
+                                                  <div className="text-right">{getPaymentMethodLabel(t.payment_method)}</div>
+                                                  <div className="text-muted-foreground">Fecha</div>
+                                                  <div className="text-right">{formatDate(t.transaction_date)}</div>
+                                                  <div className="text-muted-foreground">Monto</div>
+                                                  <div className="text-right">{formatCurrency(t.amount)}</div>
+                                                  <div className="text-muted-foreground">Nota</div>
+                                                  <div className="text-right truncate" title={t.payment_reference || ''}>{t.payment_reference || '-'}</div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </PopoverContent>
+                                    </Popover>
+                                  </TableCell>
                                 </TableRow>
                               );
                             })}
@@ -923,6 +1049,42 @@ export function SaleDetailModal({ sale, open, onOpenChange, onEdit }: SaleDetail
             </Tabs>
           </div>
         </ScrollArea>
+        {detailOpen && detailInstallment && (
+          <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Detalle de pago</DialogTitle>
+                <DialogDescription>Cuota #{detailInstallment.installment_number}</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                {detailTransactions.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No hay transacciones registradas para esta cuota.</div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Método</TableHead>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead className="text-right">Monto</TableHead>
+                        <TableHead>Nota</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {detailTransactions.map((t, i) => (
+                        <TableRow key={t.id || i}>
+                          <TableCell>{t.payment_method}</TableCell>
+                          <TableCell>{formatDate(t.transaction_date)}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(t.amount)}</TableCell>
+                          <TableCell>{t.payment_reference || '-'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
       </DialogContent>
     </Dialog>
   );

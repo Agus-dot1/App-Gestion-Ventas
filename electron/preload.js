@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       create: (customer) => ipcRenderer.invoke('customers:create', customer),
       update: (id, customer) => ipcRenderer.invoke('customers:update', id, customer),
       delete: (id) => ipcRenderer.invoke('customers:delete', id),
+      archive: (id, anonymize = false) => ipcRenderer.invoke('customers:archive', id, anonymize),
+      unarchive: (id) => ipcRenderer.invoke('customers:unarchive', id),
       getCount: () => ipcRenderer.invoke('customers:getCount'),
       getRecent: (limit) => ipcRenderer.invoke('customers:getRecent', limit),
       getMonthlyComparison: () => ipcRenderer.invoke('customers:getMonthlyComparison'),
@@ -57,12 +59,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       getBySale: (saleId) => ipcRenderer.invoke('installments:getBySale', saleId),
       getOverdue: () => ipcRenderer.invoke('installments:getOverdue'),
       getUpcoming: (limit) => ipcRenderer.invoke('installments:getUpcoming', limit),
-      recordPayment: (installmentId, amount, paymentMethod, reference) => ipcRenderer.invoke('installments:recordPayment', installmentId, amount, paymentMethod, reference),
+      recordPayment: (installmentId, amount, paymentMethod, reference, paymentDate) => ipcRenderer.invoke('installments:recordPayment', installmentId, amount, paymentMethod, reference, paymentDate),
       applyLateFee: (installmentId, fee) => ipcRenderer.invoke('installments:applyLateFee', installmentId, fee),
       revertPayment: (installmentId, transactionId) => ipcRenderer.invoke('installments:revertPayment', installmentId, transactionId),
       create: (installment) => ipcRenderer.invoke('installments:create', installment),
       update: (id, data) => ipcRenderer.invoke('installments:update', id, data),
-      markAsPaid: (id) => ipcRenderer.invoke('installments:markAsPaid', id),
+      markAsPaid: (id, paymentDate) => ipcRenderer.invoke('installments:markAsPaid', id, paymentDate),
       delete: (id) => ipcRenderer.invoke('installments:delete', id),
       deleteAll: () => ipcRenderer.invoke('installments:deleteAll')
     },
@@ -131,11 +133,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.removeListener('notifications:event', handler);
       };
     },
+    onEventBatch: (callback) => {
+      const handler = (_event, payloads) => callback(payloads);
+      ipcRenderer.on('notifications:eventBatch', handler);
+      return () => {
+        ipcRenderer.removeListener('notifications:eventBatch', handler);
+      };
+    },
     emitTestEvent: (payload) => ipcRenderer.invoke('notifications:emitTestEvent', payload)
   },
 
 
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  showItemInFolder: (path) => ipcRenderer.invoke('show-item-in-folder', path),
+  getDownloadsPath: () => ipcRenderer.invoke('get-downloads-path'),
+  openPath: (path) => ipcRenderer.invoke('open-path', path),
   showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),
   showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options)
 });

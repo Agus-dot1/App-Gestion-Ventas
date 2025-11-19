@@ -49,5 +49,7 @@ export interface NotificationItem {
     productPrice?: number
     productCategory?: string
     currentStock?: number
+    downloadFilename?: string
+    downloadPath?: string
   }
 }

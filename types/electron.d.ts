@@ -13,6 +13,8 @@ export interface ElectronAPI {
       create: (customer: any) => InvokeResult<any>
       update: (id: number, customer: any) => InvokeResult<any>
       delete: (id: number) => InvokeResult<void>
+      archive: (id: number, anonymize?: boolean) => InvokeResult<boolean>
+      unarchive: (id: number) => InvokeResult<boolean>
       getCount: () => InvokeResult<number>
       getRecent: (limit: number) => InvokeResult<any[]>
       getMonthlyComparison: () => InvokeResult<any>
@@ -55,12 +57,12 @@ export interface ElectronAPI {
       getBySale: (saleId: number) => InvokeResult<any[]>
       getOverdue: () => InvokeResult<any[]>
       getUpcoming: (limit: number) => InvokeResult<any[]>
-      recordPayment: (installmentId: number, amount: number, paymentMethod: string, reference?: string) => InvokeResult<any>
+      recordPayment: (installmentId: number, amount: number, paymentMethod: string, reference?: string, paymentDate?: string) => InvokeResult<{ rescheduled?: { nextPendingId: number; newDueISO: string } }>
       applyLateFee: (installmentId: number, fee: number) => InvokeResult<void>
       revertPayment: (installmentId: number, transactionId: number) => InvokeResult<void>
       create: (installment: any) => InvokeResult<any>
       update: (id: number, installment: any) => InvokeResult<any>
-      markAsPaid: (id: number) => InvokeResult<void>
+      markAsPaid: (id: number, paymentDate?: string) => InvokeResult<{ rescheduled?: { nextPendingId: number; newDueISO: string } }>
       delete: (id: number) => InvokeResult<void>
       deleteAll: () => InvokeResult<void>
     }
@@ -101,11 +103,13 @@ export interface ElectronAPI {
     markUnread: (id: number) => InvokeResult<void>
     delete: (id: number) => InvokeResult<void>
     deleteByMessageToday: (message: string) => InvokeResult<void>
+    deleteByKeyToday?: (key: string) => InvokeResult<void>
     clearAll: () => InvokeResult<void>
     listArchived: (limit?: number) => InvokeResult<any[]>
     purgeArchived: () => InvokeResult<void>
     create: (message: string, type?: string) => InvokeResult<any>
     existsTodayWithMessage: (message: string) => InvokeResult<boolean>
+    existsTodayWithKey?: (key: string) => InvokeResult<boolean>
     onEvent: (callback: (payload: any) => void) => void
     emitTestEvent: (payload: any) => InvokeResult<void>
   }

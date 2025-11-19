@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -54,6 +54,8 @@ export function ProductsTable({
     setLocalProducts(products);
   }, [products]);
   const [internalSearchTerm, setInternalSearchTerm] = useState('');
+  const [inputValue, setInputValue] = useState(externalSearchTerm || '');
+  const debounceRef = useRef<number | null>(null);
   const [internalCurrentPage, setInternalCurrentPage] = useState(1);
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
@@ -87,11 +89,30 @@ export function ProductsTable({
     if (sortConfig.key !== key) return <ArrowUpDown className="ml-1 h-4 w-4" />;
     return sortConfig.direction === 'asc' ? <ArrowUp className="ml-1 h-4 w-4" /> : <ArrowDown className="ml-1 h-4 w-4" />;
   };
-
+  useEffect(() => {
+    if (serverSidePagination) {
+      setInputValue(externalSearchTerm || '');
+    }
+  }, [externalSearchTerm, serverSidePagination]);
 
 
   const searchTerm = serverSidePagination ? (externalSearchTerm || '') : internalSearchTerm;
-  const setSearchTerm = serverSidePagination ? (onSearchChange || (() => {})) : setInternalSearchTerm;
+
+  const handleSearchChange = (term: string) => {
+    if (serverSidePagination && onSearchChange) {
+      setInputValue(term);
+      if (debounceRef.current) {
+        window.clearTimeout(debounceRef.current);
+      }
+      debounceRef.current = window.setTimeout(() => {
+        onSearchChange(term);
+        onPageChange && onPageChange(1);
+      }, 300);
+    } else {
+      setInternalSearchTerm(term);
+      setInternalCurrentPage(1);
+    }
+  };
 
   const filteredProducts = serverSidePagination ? localProducts : localProducts.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -444,12 +465,9 @@ export function ProductsTable({
                     <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       placeholder="Buscar productos..."
-                      value={searchTerm}
-                      onChange={(e) => {
-                        setSearchTerm(e.target.value);
-                        if (!serverSidePagination) setInternalCurrentPage(1);
-                      }}
-                      className="pl-8 w-64 transition-all duration-200 focus:w-72"
+                      value={serverSidePagination ? inputValue : searchTerm}
+                      onChange={(e) => handleSearchChange(e.target.value)}
+                      className="pl-8 w-64"
                       disabled={isLoading}
                     />
                   </div>
@@ -458,7 +476,7 @@ export function ProductsTable({
                     onColumnVisibilityChange={setColumnVisibility}
                   />
                   {selectedProducts.size > 0 && (
-                  <div className="flex items-center gap-2 mr-4 animate-in fade-in">
+                  <div className="flex items-center gap-2 mr-4">
                     <Button
                       variant="outline"
                       size="sm"

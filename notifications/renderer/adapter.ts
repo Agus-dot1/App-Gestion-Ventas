@@ -29,20 +29,35 @@ let removeIpcListener: (() => void) | null = null
 function ensureIpcListener() {
   if (removeIpcListener) return
   const api = getApi()
-  if (!api || typeof api.onEvent !== 'function') return
-  removeIpcListener = api.onEvent((payload: NotificationEventPayload) => {
-    const item = normalizeEventToUi(payload)
-
-
-    for (const cb of Array.from(subscribers)) {
-      try {
-        cb(item)
-      } catch {
-
-
+  if (!api) return
+  const removers: Array<() => void> = []
+  if (typeof api.onEvent === 'function') {
+    const off = api.onEvent((payload: NotificationEventPayload) => {
+      const item = normalizeEventToUi(payload)
+      for (const cb of Array.from(subscribers)) {
+        try { cb(item) } catch {}
       }
+    })
+    removers.push(off)
+  }
+  if (typeof api.onEventBatch === 'function') {
+    const offBatch = api.onEventBatch((payloads: NotificationEventPayload[] | any) => {
+      const arr: NotificationEventPayload[] = Array.isArray(payloads) ? payloads : []
+      if (arr.length === 0) return
+      const items = arr.map(normalizeEventToUi)
+      for (const item of items) {
+        for (const cb of Array.from(subscribers)) {
+          try { cb(item) } catch {}
+        }
+      }
+    })
+    removers.push(offBatch)
+  }
+  if (removers.length > 0) {
+    removeIpcListener = () => {
+      for (const r of removers) { try { r() } catch {} }
     }
-  })
+  }
 }
 
 function subscribe(onEvent: (item: NotificationItem) => void): () => void {

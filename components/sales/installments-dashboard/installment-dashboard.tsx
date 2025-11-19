@@ -15,7 +15,7 @@ import {
   ChevronDown,
   ChevronRight,
   User,
-  Calendar,
+  Calendar as CalendarIcon,
   DollarSign,
   AlertTriangle,
   CheckCircle,
@@ -33,15 +33,21 @@ import {
   MoreHorizontal,
   Copy,
   Package,
-  MessageCircle
+  MessageCircle,
+  CalendarArrowDown,
+  LucideCalendar
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InstallmentForm } from '../installment-form';
+import { InstallmentPaymentDialog } from './installment-payment-dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import dynamic from 'next/dynamic';
+import { es } from 'date-fns/locale';
 
 import type { Customer, Sale, Installment } from '@/lib/database-operations';
 import { toast } from 'sonner';
+import { scheduleNextPendingMonthly, validateSequentialPayment } from '@/lib/installments-scheduler';
 
 interface CustomerWithInstallments extends Customer {
   sales: Sale[];
@@ -79,10 +85,19 @@ export const InstallmentDashboard = forwardRef<InstallmentDashboardRef, Installm
 const [periodFilter, setPeriodFilter] = useState<'all' | 'monthly' | 'weekly' | 'biweekly'>('all');
   const [selectedInstallment, setSelectedInstallment] = useState<Installment | null>(null);
   const [isInstallmentFormOpen, setIsInstallmentFormOpen] = useState(false);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentInstallment, setPaymentInstallment] = useState<Installment | null>(null);
   const [deleteCustomer, setDeleteCustomer] = useState<CustomerWithInstallments | null>(null);
   const [deleteSale, setDeleteSale] = useState<Sale | null>(null);
 
   const [isElectron] = useState(() => typeof window !== 'undefined' && !!window.electronAPI);
+  const [openDatePickerId, setOpenDatePickerId] = useState<number | null>(null);
+  const [openMarkPaidPickerId, setOpenMarkPaidPickerId] = useState<number | null>(null);
+  const [selectedPaymentDates, setSelectedPaymentDates] = useState<Map<number, string>>(new Map());
+
+  const Calendar = dynamic(() => import('@/components/ui/calendar').then(m => m.Calendar), {
+    ssr: false,
+  });
 
 
 
@@ -232,7 +247,20 @@ const [periodFilter, setPeriodFilter] = useState<'all' | 'monthly' | 'weekly' | 
 
   const handleMarkAsPaid = async (installment: Installment) => {
     try {
-      await window.electronAPI.database.installments.markAsPaid(installment.id!);
+      // Validación: pagar en orden (no permitir marcar cuotas futuras si hay anteriores pendientes)
+      const customerWithSale = customers.find(c => c.installments.some(i => i.id === installment.id));
+      const saleInstallments = customerWithSale
+        ? customerWithSale.installments.filter(i => i.sale_id === installment.sale_id)
+        : [];
+      const isSequential = validateSequentialPayment(saleInstallments, installment.installment_number || 0);
+      if (!isSequential) {
+        toast.warning('Tenés que pagar las cuotas en orden. Hay cuotas anteriores pendientes.');
+        return;
+      }
+
+      const selectedISO = selectedPaymentDates.get(installment.id!);
+      const isoLocal = selectedISO || toISODateLocal(new Date());
+      await window.electronAPI.database.installments.markAsPaid(installment.id!, isoLocal);
 
 
 
@@ -241,11 +269,29 @@ const [periodFilter, setPeriodFilter] = useState<'all' | 'monthly' | 'weekly' | 
           if (customer.installments.some(inst => inst.id === installment.id)) {
             const updatedInstallments = customer.installments.map(inst =>
               inst.id === installment.id
-                ? { ...inst, status: 'paid' as const, balance: 0, paid_amount: inst.amount }
+                ? { ...inst, status: 'paid' as const, balance: 0, paid_amount: inst.amount, paid_date: isoLocal }
                 : inst
             );
 
 
+
+            // Reprogramación: programar la próxima pendiente al mes siguiente del último pago
+            try {
+              const saleInsts = updatedInstallments.filter(i => i.sale_id === installment.sale_id);
+              const res = scheduleNextPendingMonthly(saleInsts);
+              if (res) {
+                // Persist first to avoid race conditions
+                window.electronAPI.database.installments.update(res.nextPendingId, { due_date: res.newDueISO });
+                for (let i = 0; i < updatedInstallments.length; i++) {
+                  if (updatedInstallments[i].id === res.nextPendingId) {
+                    updatedInstallments[i] = { ...updatedInstallments[i], due_date: res.newDueISO } as Installment;
+                    break;
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn('No se pudo reprogramar la próxima cuota pendiente:', e);
+            }
 
             const totalOwed = updatedInstallments
               .filter(inst => inst.status !== 'paid')
@@ -281,7 +327,6 @@ const [periodFilter, setPeriodFilter] = useState<'all' | 'monthly' | 'weekly' | 
 
   
 const buildWhatsAppMessageForCustomer = (c: CustomerWithInstallments): string => {
-  const DEFAULT_CVU = '747382997471';
   const normalize = (s: string) => String(s || '').trim();
   const next = [...(c.installments || [])]
     .filter(inst => inst.status !== 'paid')
@@ -307,8 +352,8 @@ const buildWhatsAppMessageForCustomer = (c: CustomerWithInstallments): string =>
     'Te escribo para informarte sobre tu cuota.',
     dueLine,
     'Detalle:',
-    `**Importe de la cuota: ${amountStr}**`,
-    `CVU para depósito: ${DEFAULT_CVU}`,
+    `*Importe de la cuota: ${amountStr}*`,
+    `CVU para depósito: `,  
     'Por favor, enviá el comprobante por este chat para acreditar el pago.',
     'Gracias.',
   ].filter(Boolean).join('\n');
@@ -319,7 +364,6 @@ const buildWhatsAppMessageForCustomer = (c: CustomerWithInstallments): string =>
 
 
 const buildWhatsAppMessageForContact = (c: CustomerWithInstallments): string => {
-  const DEFAULT_CVU = '747382997471';
   const normalize = (s: string) => String(s || '').trim();
   const next = [...(c.installments || [])]
     .filter(inst => inst.status !== 'paid')
@@ -345,8 +389,8 @@ const buildWhatsAppMessageForContact = (c: CustomerWithInstallments): string => 
     'Tiene una cuota pendiente.',
     dueLine,
     'Detalle:',
-    `**Importe de la cuota: ${amountStr}**`,
-    `CVU para depósito: ${DEFAULT_CVU}`,
+    `*Importe de la cuota: ${amountStr}*`,
+    `CVU para depósito: `,
     '¿Será que podés avisarle, por favor? Muchas gracias.',
   ].filter(Boolean).join('\n');
 
@@ -358,19 +402,26 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
   if (!digits) return;
   const body = useAlternate ? buildWhatsAppMessageForContact(customer) : buildWhatsAppMessageForCustomer(customer);
   const text = encodeURIComponent(body);
-  const url = `https://wa.me/+54${digits}?text=${text}`;
+  const nativeUrl = `whatsapp://send?phone=+54${digits}&text=${text}`;
+  const webUrl = `https://wa.me/+54${digits}?text=${text}`;
+  // Primero intentamos abrir la app nativa vía protocolo; si falla, hacemos fallback a la web
   try {
-    const ok = await (window as any)?.electronAPI?.openExternal?.(url);
-    if (ok === false) throw new Error('openExternal returned false');
+    const okNative = await (window as any)?.electronAPI?.openExternal?.(nativeUrl);
+    if (okNative === false) throw new Error('openExternal whatsapp:// returned false');
   } catch {
-    const a = document.createElement('a');
-    a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-}
+    try {
+      const okWeb = await (window as any)?.electronAPI?.openExternal?.(webUrl);
+      if (okWeb === false) throw new Error('openExternal wa.me returned false');
+    } catch {
+      const a = document.createElement('a');
+      a.href = webUrl;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+  }
 };
 
 
@@ -407,23 +458,21 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
           if (customer.installments.some(inst => inst.id === installment.id)) {
             const updatedInstallments = customer.installments.map(inst => {
               if (inst.id === installment.id) {
-
-
-                const newPaidAmount = inst.paid_amount - latestPayment.amount;
-                const newBalance = inst.amount - newPaidAmount;
-                let newStatus: 'pending' | 'paid' = 'pending';
-
-                if (newPaidAmount > 0 && newBalance > 0) {
-                  newStatus = 'pending';
-                } else if (newBalance <= 0) {
-                  newStatus = 'paid';
-                }
-
                 return {
                   ...inst,
-                  status: newStatus,
-                  balance: newBalance,
-                  paid_amount: newPaidAmount
+                  status: 'pending' as const,
+                  balance: inst.amount,
+                  paid_amount: 0,
+                  paid_date: undefined,
+                  due_date: inst.original_due_date || inst.due_date,
+                  notes: undefined
+                };
+              }
+              // Normaliza el resto de cuotas pendientes al mes original
+              if (inst.status !== 'paid') {
+                return {
+                  ...inst,
+                  due_date: inst.original_due_date || inst.due_date
                 };
               }
               return inst;
@@ -610,13 +659,15 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
 
 
   const getEffectivePaymentWindow = (c: CustomerWithInstallments): PaymentWindow | null => {
-    if (c.payment_window === '1 to 10' || c.payment_window === '20 to 30') {
+    if (c.payment_window === '1 to 10' || c.payment_window === '10 to 20' || c.payment_window === '20 to 30') {
       return c.payment_window;
     }
     if (c.installments && c.installments.length > 0) {
       const earliest = [...c.installments].sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
       const day = new Date(earliest.due_date).getDate();
-      return day <= 15 ? '1 to 10' : '20 to 30';
+      if (day <= 10) return '1 to 10';
+      if (day <= 20) return '10 to 20';
+      return '20 to 30';
     }
     return null;
   };
@@ -716,6 +767,7 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
   const getActiveWindowForDate = (date: Date): PaymentWindow | null => {
     const day = date.getDate();
     if (day >= 1 && day <= 10) return '1 to 10';
+    if (day > 10 && day <= 20) return '10 to 20';
     if (day > 20 && day <= 30) return '20 to 30';
     return null;
   };
@@ -747,6 +799,7 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
 
   const windowCounts = useMemo(() => ({
     '1 to 10': customers.filter(c => c.payment_window === '1 to 10').length,
+    '10 to 20': customers.filter(c => c.payment_window === '10 to 20').length,
     '20 to 30': customers.filter(c => c.payment_window === '20 to 30').length,
   }), [customers]);
 
@@ -758,11 +811,107 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('es-ES', {
+    const localDate = (() => {
+      const m = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(String(dateString));
+      if (m) {
+        const y = Number(m[1]);
+        const mo = Number(m[2]) - 1;
+        const d = Number(m[3]);
+        return new Date(y, mo, d);
+      }
+      return new Date(dateString);
+    })();
+    return localDate.toLocaleDateString('es-ES', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
     });
+  };
+
+  const toISODateLocal = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const parseLocalDate = (dateString?: string) => {
+    if (!dateString) return undefined as unknown as Date;
+    const m = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(String(dateString));
+    if (m) {
+      const y = Number(m[1]);
+      const mo = Number(m[2]) - 1;
+      const d = Number(m[3]);
+      return new Date(y, mo, d);
+    }
+    const dt = new Date(dateString);
+    return dt;
+  };
+
+  const setPaymentDateForInstallment = (instId: number, date?: Date) => {
+    setSelectedPaymentDates(prev => {
+      const next = new Map(prev);
+      if (date) next.set(instId, toISODateLocal(date)); else next.delete(instId);
+      return next;
+    });
+  };
+
+  const applyLocalInstallmentUpdate = (instId: number, updates: Partial<Installment>) => {
+    setCustomers(prev => prev.map(c => {
+      const hasInst = c.installments.some(i => i.id === instId);
+      if (!hasInst) return c;
+      const updatedInstallments = c.installments.map(i => i.id === instId ? { ...i, ...updates } as Installment : i);
+
+      const totalOwed = updatedInstallments
+        .filter(inst => inst.status !== 'paid')
+        .reduce((sum, inst) => sum + inst.balance, 0);
+
+      const overdueAmount = updatedInstallments
+        .filter(inst => inst.status === 'overdue' || (inst.status === 'pending' && new Date(inst.due_date) < new Date()))
+        .reduce((sum, inst) => sum + inst.balance, 0);
+
+      const nextPayment = updatedInstallments
+        .filter(inst => inst.status === 'pending')
+        .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
+
+      return {
+        ...c,
+        installments: updatedInstallments,
+        totalOwed,
+        overdueAmount,
+        nextPaymentDate: nextPayment?.due_date || null
+      };
+    }));
+  };
+
+  const openPaymentDialog = (inst: Installment) => {
+    setPaymentInstallment(inst);
+    setPaymentDialogOpen(true);
+  };
+
+  const handleSelectDate = async (inst: Installment, date?: Date) => {
+    try {
+      if (!date || isNaN(date.getTime())) {
+        toast.error('Fecha inválida. Por favor seleccioná una fecha válida.');
+        return;
+      }
+
+      // Persist only due_date via DB API (paid_date is not supported in update())
+      const payload = { due_date: toISODateLocal(date) } as Partial<Installment>;
+      await window.electronAPI.database.installments.update(inst.id!, payload);
+
+      // Optimistic local state update to avoid full dashboard reload
+      const localUpdates: Partial<Installment> = inst.status === 'paid'
+        ? { paid_date: date.toISOString() }
+        : { due_date: toISODateLocal(date) };
+      applyLocalInstallmentUpdate(inst.id!, localUpdates);
+
+      setOpenDatePickerId(null);
+      toast.success('Fecha actualizada correctamente');
+    } catch (e) {
+      console.error('Error al actualizar la fecha de la cuota', e);
+      toast.error('No se pudo actualizar la fecha. Inténtalo nuevamente.');
+    }
   };
 
 
@@ -880,8 +1029,8 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Gestión de Cuotas</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-3xl xl:text-4xl font-bold tracking-tight">Gestión de Cuotas</h1>
+          <p className="text-muted-foreground text-sm xl:text-base">
             Administra los planes de pago y cuotas de tus clientes
           </p>
         </div>
@@ -958,7 +1107,7 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Clientes y Cuotas</CardTitle>
+            <CardTitle className="text-sm xl:text-xl font-medium">Clientes y Cuotas</CardTitle>
             <div className="flex items-center gap-2">
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -966,7 +1115,7 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
                   placeholder="Buscar clientes..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8 w-64"
+                  className="pl-8 w-44 xl:w-64"
                 />
               </div>
               <Select value={statusFilter} onValueChange={(value: StatusFilter) => setStatusFilter(value)}>
@@ -998,6 +1147,7 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
                 <SelectContent>
                   <SelectItem value="all">Todas las ventanas</SelectItem>
                   <SelectItem value="1 to 10">Cobros del 1-10</SelectItem>
+                  <SelectItem value="10 to 20">Cobros del 10-20</SelectItem>
                   <SelectItem value="20 to 30">Cobros del 20-30</SelectItem>
                 </SelectContent>
               </Select>
@@ -1161,7 +1311,7 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
                           {customer.sales.map((sale) => {
                             const saleInstallments = customer.installments
                               .filter(inst => inst.sale_id === sale.id)
-                              .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+                              .sort((a, b) => (a.original_installment_number ?? a.installment_number) - (b.original_installment_number ?? b.installment_number));
 
                             return (
                               <Collapsible
@@ -1281,7 +1431,7 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
                                           <TableHeader>
                                             <TableRow>
                                               <TableHead>Cuota</TableHead>
-                                              <TableHead>Vencimiento</TableHead>
+                                              <TableHead>Fecha</TableHead>
                                               <TableHead>Periodo de pago</TableHead>
                                               <TableHead>Monto</TableHead>
                                               <TableHead>Pagado</TableHead>
@@ -1292,6 +1442,9 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
                                           </TableHeader>
                                           <TableBody>
                                             {saleInstallments.map((installment) => {
+                                              const displayDate = (installment.status === 'paid' && installment.paid_date)
+                                                ? installment.paid_date
+                                                : installment.due_date;
                                               const isOverdue = new Date(installment.due_date) < new Date() && installment.status !== 'paid';
                                               return (
                                                 <TableRow
@@ -1306,7 +1459,7 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
                                                     <div className="flex items-center gap-2">
                                                       #{installment.installment_number}
                                                       {installment.notes === 'Pago adelantado' && (
-                                                        <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-800">
+                                                        <Badge variant="outline" className="text-xs text-white">
                                                           Adelantado
                                                         </Badge>
                                                       )}
@@ -1317,7 +1470,11 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
                                                       "text-sm",
                                                       isOverdue && "text-red-600 font-medium"
                                                     )}>
-                                                      {formatDate(installment.due_date)}
+                                                      
+                                                      <div className="flex items-center gap-2">
+                                                        <LucideCalendar className="w-4 h-4" />
+                                                        <span className="truncate max-w-[160px]">{formatDate(displayDate)}</span>
+                                                      </div>
                                                       {(() => {
                                                         const due = new Date(installment.due_date);
                                                         const isSameMonth = clientDate && (due.getFullYear() === clientDate.getFullYear() && due.getMonth() === clientDate.getMonth());
@@ -1344,8 +1501,8 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
                                                       })()}
                                                     </div>
                                                   </TableCell>
-                                                  <TableCell>{formatCurrency(installment.amount)}</TableCell>
-                                                  <TableCell>{formatCurrency(installment.paid_amount)}</TableCell>
+                                                  <TableCell className="text-foreground font-medium">{formatCurrency(installment.amount)}</TableCell>
+                                                  <TableCell className="text-foreground/90">{formatCurrency(installment.paid_amount)}</TableCell>
                                                   <TableCell>
                                                     <span className={cn(
                                                       "font-medium",
@@ -1364,13 +1521,22 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
                                                           <Button
                                                             size="sm"
                                                             variant="outline"
+                                                            onClick={() => openPaymentDialog(installment)}
+                                                            className="h-7 px-2 text-xs"
+                                                          >
+                                                            <CheckCircle className="h-3 w-3 mr-1" />
+                                                            Registrar Pago
+                                                          </Button>
+                                                          <Button
+                                                            size="sm"
+                                                            variant="outline"
                                                             onClick={() => handleMarkAsPaid(installment)}
                                                             className="h-7 px-2 text-xs"
                                                           >
                                                             <CheckCircle className="h-3 w-3 mr-1" />
                                                             Marcar Pagada
                                                           </Button>
-
+                                                          
                                                         </>
                                                       ) : (
                                                         <>
@@ -1425,6 +1591,34 @@ const openWhatsApp = async (customer: CustomerWithInstallments, num: string, use
           setIsInstallmentFormOpen(false);
           setSelectedInstallment(null);
         }}
+      />
+
+      <InstallmentPaymentDialog
+        open={paymentDialogOpen}
+        installment={paymentInstallment}
+        onOpenChange={(o) => setPaymentDialogOpen(o)}
+        onSuccess={async (updated) => {
+          applyLocalInstallmentUpdate(updated.id!, {
+            paid_amount: updated.paid_amount,
+            balance: updated.balance,
+            status: updated.status,
+            paid_date: updated.paid_date,
+          });
+          try {
+            // Trigger rescheduling when an installment becomes fully paid via dialog
+            if (updated.status === 'paid') {
+              const saleInsts = await window.electronAPI.database.installments.getBySale(updated.sale_id as number);
+              const res = scheduleNextPendingMonthly(saleInsts);
+              if (res) {
+                await window.electronAPI.database.installments.update(res.nextPendingId, { due_date: res.newDueISO });
+                applyLocalInstallmentUpdate(res.nextPendingId, { due_date: res.newDueISO });
+              }
+            }
+          } catch (e) {
+            console.warn('No se pudo reprogramar la próxima cuota después del pago:', e);
+          }
+        }}
+        initialPaymentDate={paymentInstallment ? selectedPaymentDates.get(paymentInstallment.id!) : undefined}
       />
 
 

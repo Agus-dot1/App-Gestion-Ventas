@@ -283,7 +283,8 @@ export default function SalesPage() {
 
         const updateData = {
           customer_id: saleData.customer_id,
-          notes: saleData.notes
+          notes: saleData.notes,
+          date: saleData.date
         };
         await window.electronAPI.database.sales.update(editingSale.id, updateData);
         toast.success('Venta actualizada correctamente');
@@ -666,7 +667,7 @@ export default function SalesPage() {
           { product_id: products[0]?.id ?? null, quantity: 1, unit_price: unitPrice }
         ],
         payment_type: 'installments',
-        number_of_installments: 1,
+        number_of_installments: 6,
         notes: 'Venta de prueba con cuota pendiente en el mes actual'
       };
 
@@ -674,21 +675,25 @@ export default function SalesPage() {
 
       const installments = await window.electronAPI.database.installments.getBySale(saleId);
       if (installments && installments.length > 0) {
-        const inst = installments[0];
-
+        // Base: current month at customer's window anchor day
         const now = new Date();
-        const targetYear = now.getFullYear();
-        const targetMonth = now.getMonth();
-        const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
-
         const anchorDay = firstCustomer.payment_window === '1 to 10' ? 10
           : firstCustomer.payment_window === '20 to 30' ? 30
           : 30;
 
-        const day = Math.min(anchorDay, lastDay);
-        const dueDate = new Date(targetYear, targetMonth, day).toISOString().split('T')[0];
-
-        await window.electronAPI.database.installments.update(inst.id!, { due_date: dueDate, status: 'pending' });
+        // Reprogram all pending installments to current month + sequential months
+        const sorted = [...installments].sort((a, b) => (a.installment_number || 0) - (b.installment_number || 0));
+        for (let idx = 0; idx < sorted.length; idx++) {
+          const inst = sorted[idx];
+          if (inst.status === 'paid') continue;
+          const targetMonthIndex = now.getMonth() + idx; // idx=0 -> current month
+          const targetYear = now.getFullYear() + Math.floor(targetMonthIndex / 12);
+          const normalizedMonth = ((targetMonthIndex % 12) + 12) % 12;
+          const lastDay = new Date(targetYear, normalizedMonth + 1, 0).getDate();
+          const day = Math.min(anchorDay, lastDay);
+          const iso = new Date(targetYear, normalizedMonth, day).toISOString().split('T')[0];
+          await window.electronAPI.database.installments.update(inst.id!, { due_date: iso, status: 'pending' });
+        }
       }
 
       dataCache.invalidateCache('sales');
@@ -707,9 +712,18 @@ export default function SalesPage() {
 
 
 
+  const now = new Date();
+  const monthlyRevenue = sales.reduce((sum, sale) => {
+    const d = new Date((sale as any).date || (sale as any).created_at || '');
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+      ? sum + sale.total_amount
+      : sum;
+  }, 0);
+
   const stats = {
     totalSales: sales.length,
     totalRevenue: sales.reduce((sum, sale) => sum + sale.total_amount, 0),
+    monthlyRevenue,
     installmentSales: sales.filter(sale => sale.payment_type === 'installments').length,
     overdueSales: overdueSales,
     paidSales: sales.filter(sale => sale.payment_status === 'paid').length,
@@ -752,8 +766,8 @@ export default function SalesPage() {
             <div className="mb-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h1 className="text-3xl short:text-2xl font-bold tracking-tight">Ventas</h1>
-                  <p className="text-muted-foreground">
+                  <h1 className="text-3xl xl:text-4xl font-bold tracking-tight">Ventas</h1>
+                  <p className="text-muted-foreground text-sm xl:text-base">
                     Acá podes gestionar todas tus ventas, crear nuevas, editar o eliminar las existentes.
                   </p>
                 </div>
@@ -807,7 +821,7 @@ export default function SalesPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{stats.totalSales}</div>
+                  <div className="text-xl md:text-2xl font-bold">{stats.totalSales}</div>
                   <div className="flex items-center text-xs text-muted-foreground">
                     <TrendingUp className="h-3 w-3 mr-1 text-blue-500" />
                     Total de ventas registradas
@@ -818,17 +832,17 @@ export default function SalesPage() {
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-medium">Ganancias totales</CardTitle>
+                    <CardTitle className="text-sm font-medium">Ganancias del mes</CardTitle>
                     <DollarSign className="h-4 w-4 text-muted-foreground" />
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">
-                    ${stats.totalRevenue.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+                  <div className="text-xl md:text-2xl font-bold">
+                    ${stats.monthlyRevenue.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
                   </div>
                   <div className="flex items-center text-xs text-muted-foreground">
                     <DollarSign className="h-3 w-3 mr-1 text-green-500" />
-                    Ganancias totales de todas las ventas
+                    Ganancias del mes en ventas
                   </div>
                 </CardContent>
               </Card>
@@ -841,7 +855,7 @@ export default function SalesPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{stats.installmentSales}</div>
+                  <div className="text-xl md:text-2xl font-bold">{stats.installmentSales}</div>
                   <div className="flex items-center text-xs text-muted-foreground">
                     <Calendar className="h-3 w-3 mr-1 text-purple-500" />
                     Ventas con planes de cuotas activas
@@ -857,7 +871,7 @@ export default function SalesPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-red-600">{stats.overdueSales}</div>
+                  <div className="text-xl md:text-2xl font-bold text-red-600">{stats.overdueSales}</div>
                   <div className="flex items-center text-xs text-muted-foreground">
                     <AlertTriangle className="h-3 w-3 mr-1 text-red-500" />
                     Cuotas con pagos atrasados, revisar planes de cuotas

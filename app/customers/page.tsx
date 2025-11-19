@@ -10,6 +10,7 @@ import { CustomerProfile } from '@/components/customers/customer-profile';
 import { EnhancedCustomersTable } from '@/components/customers/customers-table';
 import { CustomersSkeleton } from '@/components/skeletons/customers-skeleton';
 import { Plus, Users, TrendingUp, Calendar, Database } from 'lucide-react';
+import { toast } from 'sonner';
 import type { Customer } from '@/lib/database-operations';
 import { useDataCache, usePrefetch } from '@/hooks/use-data-cache';
 import { SHOW_MOCK_BUTTONS } from '@/lib/feature-flags';
@@ -139,7 +140,11 @@ export default function CustomersPage() {
         pageSize,
         searchTerm
       );
-      
+
+      if (result.totalPages > 0 && currentPage > result.totalPages) {
+        setCurrentPage(result.totalPages);
+      }
+
       setCustomers(result.customers);
       setPaginationInfo({
         total: result.total,
@@ -298,9 +303,17 @@ export default function CustomersPage() {
 
   const handleDeleteCustomer = async (customerId: number) => {
     try {
-      await window.electronAPI.database.customers.delete(customerId);
-      setCustomers(prev => prev.filter(c => c.id !== customerId));
+      const sales = await window.electronAPI.database.sales.getByCustomer(customerId);
+      if (Array.isArray(sales) && sales.length > 0) {
+        await window.electronAPI.database.customers.archive(customerId, false);
+        toast.success('Cliente eliminado');
+      } else {
+        await window.electronAPI.database.customers.delete(customerId);
+        toast.success('Cliente eliminado');
+      }
       dataCache.invalidateCache('customers');
+      await loadCustomers(true);
+      await loadAllCustomerIds();
     } catch (error: any) {
       console.error('Error eliminando cliente:', error);
       alert(error.message || 'Error al eliminar cliente. Porfavor intente de nuevo.');
@@ -354,8 +367,8 @@ export default function CustomersPage() {
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight">Clientes</h1>
-              <p className="text-muted-foreground">
+              <h1 className="text-2xl xl:text-4xl font-bold tracking-tight">Clientes</h1>
+              <p className="text-muted-foreground text-sm xl:text-base">
                 Acá podés ver y gestionar todos tus clientes. Podés añadir nuevos, editar o eliminar los existentes.
               </p>
             </div>

@@ -10,6 +10,7 @@ export const IPC_NOTIFICATIONS = {
   existsTodayWithKey: 'notifications:existsTodayWithKey',
   emitTestEvent: 'notifications:emitTestEvent',
   event: 'notifications:event',
+  eventBatch: 'notifications:eventBatch',
 
 
   deleteByMessageToday: 'notifications:deleteByMessageToday',

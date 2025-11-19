@@ -31,7 +31,7 @@ export default function RootLayout({
           <NotificationsBell />
         </DataCacheProvider>
 
-        <SonnerToaster position="bottom-right" />
+        <SonnerToaster position="bottom-center" duration={1600} />
       </body>
     </html>
   );

@@ -65,12 +65,10 @@ export default function ProductsPage() {
   }, [isElectron, dataCache]);
 
   useEffect(() => {
-    if (isElectron && products.length > 0) {
-      setTimeout(() => {
-        loadProducts();
-      }, 0);
+    if (isElectron) {
+      loadProducts();
     }
-  }, [searchTerm, currentPage]);
+  }, [searchTerm, currentPage, isElectron]);
 
   const highlightedProduct = useMemo(() => {
     if (!highlightId) return null;
@@ -391,8 +389,8 @@ export default function ProductsPage() {
         <div className="mb-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight">Productos</h1>
-              <p className="text-muted-foreground">
+              <h1 className="text-2xl xl:text-4xl font-bold tracking-tight">Productos</h1>
+              <p className="text-muted-foreground text-sm xl:text-base">
                 Gestioná tu inventario de productos, añadir nuevos, editar o eliminar existentes.
               </p>
             </div>
@@ -423,7 +421,7 @@ export default function ProductsPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-xl md:text-2xl font-bold">
                 {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'ARS' }).format(totals.totalCost)}
               </div>
               <div className="flex items-center text-xs text-muted-foreground mt-1">
@@ -442,7 +440,7 @@ export default function ProductsPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-xl md:text-2xl font-bold">
                 {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'ARS' }).format(totals.totalGain)}
               </div>
               <div className="flex items-center text-xs text-muted-foreground mt-1">
@@ -461,7 +459,7 @@ export default function ProductsPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.active}</div>
+              <div className="text-xl md:text-2xl font-bold">{stats.active}</div>
               <div className="flex items-center text-xs text-muted-foreground mt-1">
                 Activos sobre un total de {stats.total}
               </div>
@@ -478,7 +476,7 @@ export default function ProductsPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-xl md:text-2xl font-bold">
                 {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'ARS' }).format(stats.averagePrice || 0)}
               </div>
               <div className="flex items-center text-xs text-muted-foreground mt-1">
@@ -492,9 +490,6 @@ export default function ProductsPage() {
 
         {/* Products Table */}
         {isElectron ? (
-          isLoading && products.length === 0 ? (
-            <ProductsSkeleton />
-          ) : (
           <div>
           <ProductsTable
             products={products}
@@ -504,14 +499,17 @@ export default function ProductsPage() {
             onBulkDelete={handleBulkDeleteProducts}
             onToggleStatus={handleToggleStatus}
             searchTerm={searchTerm}
-            onSearchChange={(value) => setSearchTerm(value)}
+            onSearchChange={(value) => {
+              setSearchTerm(value);
+              setCurrentPage(1);
+            }}
             currentPage={currentPage}
             onPageChange={(page) => setCurrentPage(page)}
             paginationInfo={paginationInfo}
             serverSidePagination={true}
+            isLoading={isLoading}
           />
           </div>
-          )
         ) : (
           <Card>
             <CardContent className="flex items-center justify-center py-12">

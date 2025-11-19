@@ -244,18 +244,25 @@ export function NotificationsBell() {
     }
     const body = buildWhatsAppMessage(m);
     const text = encodeURIComponent(body);
-    const url = `https://wa.me/+54${digits}?text=${text}`;
+    const nativeUrl = `whatsapp://send?phone=+54${digits}&text=${text}`;
+    const webUrl = `https://wa.me/+54${digits}?text=${text}`;
+    // Intentamos abrir la app nativa; si no está disponible, abrimos la versión web
     try {
-      const ok = await (window as any)?.electronAPI?.openExternal?.(url);
-      if (ok === false) throw new Error('openExternal returned false');
+      const okNative = await (window as any)?.electronAPI?.openExternal?.(nativeUrl);
+      if (okNative === false) throw new Error('openExternal whatsapp:// returned false');
     } catch {
-      const a = document.createElement('a');
-      a.href = url;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      try {
+        const okWeb = await (window as any)?.electronAPI?.openExternal?.(webUrl);
+        if (okWeb === false) throw new Error('openExternal wa.me returned false');
+      } catch {
+        const a = document.createElement('a');
+        a.href = webUrl;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
     }
   }, []);
 
@@ -354,6 +361,30 @@ export function NotificationsBell() {
 
 
 
+    if (m?.category === 'system') {
+      const onOpenDownloads = async () => {
+        try {
+          const downloads = await (window as any)?.electronAPI?.getDownloadsPath?.();
+          if (downloads) {
+            await (window as any)?.electronAPI?.openPath?.(downloads);
+          }
+        } catch {}
+      };
+      return (
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn("h-8 text-muted-foreground hover:bg-[#3C3C3C] transition-transform active:scale-95", isRead ? "text-muted-foreground font-medium hover:bg-transparent" : "font-semibold")}
+            onClick={(e) => { e.preventDefault(); onOpenDownloads(); }}
+            title={m?.actionLabel || 'Mostrar en carpeta'}
+          >
+            {m?.actionLabel || 'Mostrar en carpeta'}
+          </Button>
+          {baseActions}
+        </>
+      );
+    }
     return baseActions;
   };
 
@@ -402,12 +433,10 @@ export function NotificationsBell() {
       try {
         const unsub = subscribeNotifications(() => notifications, (next) => {
           if (typeof next === 'function') {
-            setNotifications(prev => filterSuppressed(next(prev)));
+            setNotifications(prev => next(prev));
           } else {
-            setNotifications(filterSuppressed(next));
+            setNotifications(next);
           }
-
-
           if (open) {
             setTimeout(scrollToBottom, 0);
           }
@@ -731,7 +760,14 @@ export function NotificationsBell() {
                           return `${label}: ${namesStr}${extras > 0 ? `... +${extras}` : ''}`;
                         })()
                       : m.category === 'system'
-                        ? `Sistema: ${m.systemStatus ?? 'realizado correctamente'}`
+                        ? (() => {
+                            const parts: string[] = [];
+                            if (m.systemStatus) parts.push(String(m.systemStatus));
+                            const filename = (m as any)?.downloadFilename || (String(n.message || '').match(/Descarga completada:\s([^—]+)/i)?.[1]?.trim() || '');
+                            if (filename) parts.push(`${filename}`);
+                            const line = parts.join(' • ');
+                            return `Sistema: ${line || n.message}`;
+                          })()
                         : m.category === 'stock'
                           ? (() => {
                               const parts = [];

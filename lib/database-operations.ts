@@ -116,6 +116,8 @@ export interface Customer {
   notes?: string;
   payment_window?: '1 to 10' | '10 to 20' | '20 to 30';
   contact_info?: string;
+  is_active?: boolean;
+  archived_at?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -158,7 +160,9 @@ export interface Installment {
   id?: number;
   sale_id: number;
   installment_number: number;
+  original_installment_number?: number;
   due_date: string;
+  original_due_date?: string;
   amount: number;
   paid_amount: number;
   balance: number;
@@ -232,6 +236,7 @@ export interface SaleFormData {
   payment_period?: '1 to 10' | '10 to 20' | '20 to 30';
   number_of_installments?: number;
   notes?: string;
+  date?: string; // ISO-8601 opcional desde el formulario
 }
 
 
@@ -259,13 +264,16 @@ export const customerOperations = {
     
     if (searchTerm.trim()) {
       whereClause = `WHERE 
+        is_active = 1 AND (
         dni LIKE ? OR
         name LIKE ? OR 
         email LIKE ? OR 
         phone LIKE ? OR
-        secondary_phone LIKE ?`;
+        secondary_phone LIKE ?)`;
       const searchPattern = `%${searchTerm.trim()}%`;
       params = [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern];
+    } else {
+      whereClause = `WHERE is_active = 1`;
     }
 
     const countStmt = db.prepare(`SELECT COUNT(*) as total FROM customers ${whereClause}`);
@@ -298,11 +306,12 @@ export const customerOperations = {
     const stmt = db.prepare(`
       SELECT * FROM customers 
       WHERE 
+        is_active = 1 AND (
         dni LIKE ? OR
         name LIKE ? OR 
         email LIKE ? OR 
         phone LIKE ? OR
-        secondary_phone LIKE ?
+        secondary_phone LIKE ?)
       ORDER BY 
         CASE 
           WHEN dni = ? THEN 1
@@ -346,8 +355,8 @@ export const customerOperations = {
   create: (customer: Omit<Customer, 'id' | 'created_at' | 'updated_at'>): number => {
     const db = getDatabase();
     const stmt = db.prepare(`
-      INSERT INTO customers (name, dni, email, phone, secondary_phone, address, notes, payment_window, contact_info) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO customers (name, dni, email, phone, secondary_phone, address, notes, payment_window, contact_info, is_active) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
     `);
     const result = stmt.run(
       customer.name,
@@ -404,6 +413,14 @@ export const customerOperations = {
       fields.push('contact_info = ?');
       values.push(customer.contact_info);
     }
+    if (customer.is_active !== undefined) {
+      fields.push('is_active = ?');
+      values.push(customer.is_active ? 1 : 0);
+    }
+    if (customer.archived_at !== undefined) {
+      fields.push('archived_at = ?');
+      values.push(customer.archived_at);
+    }
     
     if (fields.length === 0) return;
     
@@ -445,6 +462,31 @@ export const customerOperations = {
     const result = stmt.run(id);
     
     return { deletedSales };
+  },
+
+  archive: (id: number, anonymize: boolean = false): void => {
+    const db = getDatabase();
+    const stmt = db.prepare("UPDATE customers SET is_active = 0, archived_at = datetime('now'), updated_at = CURRENT_TIMESTAMP WHERE id = ?");
+    stmt.run(id);
+    if (anonymize) {
+      const anon = db.prepare(`UPDATE customers SET 
+        dni = NULL,
+        email = NULL,
+        phone = NULL,
+        secondary_phone = NULL,
+        address = NULL,
+        notes = NULL,
+        contact_info = NULL,
+        updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?`);
+      anon.run(id);
+    }
+  },
+
+  unarchive: (id: number): void => {
+    const db = getDatabase();
+    const stmt = db.prepare("UPDATE customers SET is_active = 1, archived_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?");
+    stmt.run(id);
   },
 
   getCount: (): number => {
@@ -1099,7 +1141,7 @@ export const saleOperations = {
       saleData.partner_id || null,
       saleNumber,
       referenceCode,
-      new Date().toISOString(),
+      (saleData.date && typeof saleData.date === 'string') ? saleData.date : new Date().toISOString(),
       null, // due_date
       subtotal,
       totalAmount,
@@ -1202,26 +1244,30 @@ export const saleOperations = {
 
       const installmentStmt = db.prepare(`
         INSERT INTO installments (
-          sale_id, installment_number, due_date, amount, paid_amount,
+          sale_id, installment_number, original_installment_number,
+          due_date, original_due_date,
+          amount, paid_amount,
           balance, status, days_overdue, late_fee, late_fee_applied
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      const nowDate = new Date();
+      // Align installment schedule with the sale's date rather than current date
+      const baseDate = new Date(saleData.date || new Date().toISOString());
       for (let i = 1; i <= saleData.number_of_installments; i++) {
-
-
-        const targetMonthIndex = nowDate.getMonth() + i;
-        const targetYear = nowDate.getFullYear() + Math.floor(targetMonthIndex / 12);
+        const targetMonthIndex = baseDate.getMonth() + i;
+        const targetYear = baseDate.getFullYear() + Math.floor(targetMonthIndex / 12);
         const normalizedMonth = ((targetMonthIndex % 12) + 12) % 12;
         const lastDayOfTargetMonth = new Date(targetYear, normalizedMonth + 1, 0).getDate();
         const day = Math.min(anchorDay, lastDayOfTargetMonth);
         const dueDate = new Date(targetYear, normalizedMonth, day);
 
+        const iso = dueDate.toISOString().split('T')[0];
         installmentStmt.run(
           saleId,
           i,
-          dueDate.toISOString().split('T')[0],
+          i,
+          iso,
+          iso,
           monthlyAmount,
           0,
           monthlyAmount,
@@ -1351,9 +1397,11 @@ export const saleOperations = {
       const monthlyAmount = installmentAmount || Math.round(totalAmount / numberOfInstallments);
       const installmentStmt = db.prepare(`
         INSERT INTO installments (
-          sale_id, installment_number, due_date, amount, paid_amount,
+          sale_id, installment_number, original_installment_number,
+          due_date, original_due_date,
+          amount, paid_amount,
           balance, status, days_overdue, late_fee, late_fee_applied
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
 
@@ -1371,10 +1419,13 @@ export const saleOperations = {
         const lastDayOfTargetMonth = new Date(targetYear, normalizedMonth + 1, 0).getDate();
         const day = Math.min(anchorDay, lastDayOfTargetMonth);
         const dueDate = new Date(targetYear, normalizedMonth, day);
+        const iso = dueDate.toISOString().split('T')[0];
         installmentStmt.run(
           saleId,
           i,
-          dueDate.toISOString().split('T')[0],
+          i,
+          iso,
+          iso,
           monthlyAmount,
           0,
           monthlyAmount,
@@ -1398,7 +1449,7 @@ export const saleOperations = {
 
     const updatableFields = [
       'customer_id', 'due_date', 'tax_amount', 'discount_amount',
-      'payment_status', 'status', 'notes', 'period_type', 'payment_period'
+      'payment_status', 'status', 'notes', 'period_type', 'payment_period', 'date'
     ];
     
     for (const field of updatableFields) {
@@ -1578,7 +1629,7 @@ export const saleItemOperations = {
 export const installmentOperations = {
   getBySale: (saleId: number): Installment[] => {
     const db = getDatabase();
-    const stmt = db.prepare('SELECT * FROM installments WHERE sale_id = ? ORDER BY installment_number');
+    const stmt = db.prepare('SELECT * FROM installments WHERE sale_id = ? ORDER BY COALESCE(original_installment_number, installment_number)');
     return stmt.all(saleId) as Installment[];
   },
 
@@ -1618,7 +1669,7 @@ export const installmentOperations = {
     return stmt.all(limit) as Array<Installment & { customer_name: string; sale_number: string; customer_id: number }>;
   },
 
-  recordPayment: (installmentId: number, amount: number, paymentMethod: string, reference?: string): void => {
+  recordPayment: (installmentId: number, amount: number, paymentMethod: string, reference?: string, paymentDate?: string): { rescheduled?: { nextPendingId: number; newDueISO: string } } | void => {
     const db = getDatabase();
     
 
@@ -1631,19 +1682,24 @@ export const installmentOperations = {
 
 
     const expectedAmount = installment.amount - installment.paid_amount;
-    if (amount !== expectedAmount) {
-      throw new Error(`Solo se permiten pagos completos. Monto esperado: ${expectedAmount}`);
+    if (amount <= 0) {
+      throw new Error(`El monto debe ser mayor a 0`);
     }
-    const newPaidAmount = installment.amount;
-    const newBalance = 0;
-    const newStatus: 'paid' = 'paid';
+    if (amount > expectedAmount) {
+      throw new Error(`El monto supera el saldo pendiente. Máximo: ${expectedAmount}`);
+    }
+    const newPaidAmount = installment.paid_amount + amount;
+    const newBalance = Math.max(0, installment.amount - newPaidAmount);
+    const newStatus: 'paid' | 'pending' = newBalance === 0 ? 'paid' : 'pending';
     
     const updateStmt = db.prepare(`
       UPDATE installments
       SET paid_amount = ?, balance = ?, status = ?, paid_date = ?
       WHERE id = ?
     `);
-    updateStmt.run(newPaidAmount, newBalance, newStatus, new Date().toISOString(), installmentId);
+    const paidISO = paymentDate || new Date().toISOString();
+    const nextPaidDate = newStatus === 'paid' ? paidISO : (installment.paid_date || null);
+    updateStmt.run(newPaidAmount, newBalance, newStatus, nextPaidDate, installmentId);
     
 
 
@@ -1656,12 +1712,50 @@ export const installmentOperations = {
     paymentStmt.run(
       installment.sale_id,
       installmentId,
-      expectedAmount,
+      amount,
       paymentMethod,
       reference || null,
-      new Date().toISOString(),
+      paidISO,
       'completed'
     );
+
+    try {
+      const paidAt = new Date(paidISO);
+      const dueAt = new Date(installment.due_date);
+      if (paidAt.getTime() < dueAt.getTime()) {
+        db.prepare('UPDATE installments SET notes = ? WHERE id = ?').run('Pago adelantado', installmentId);
+      }
+    } catch {}
+
+    let rescheduled: { nextPendingId: number; newDueISO: string } | undefined;
+    if (newStatus === 'paid') {
+      try {
+        const saleInsts = db.prepare('SELECT * FROM installments WHERE sale_id = ? ORDER BY COALESCE(original_installment_number, installment_number)').all(installment.sale_id) as Installment[];
+        const paidDates = saleInsts.filter(i => i.status === 'paid' && i.paid_date).map(i => new Date(String(i.paid_date))).filter(d => !isNaN(d.getTime()));
+        if (paidDates.length > 0) {
+          const lastPaid = new Date(Math.max(...paidDates.map(d => d.getTime())));
+          const nextPending = saleInsts.filter(i => i.status !== 'paid').sort((a, b) => (a.installment_number || 0) - (b.installment_number || 0))[0];
+          if (nextPending && nextPending.id) {
+            const originalDue = new Date(nextPending.due_date);
+            const anchorDay = isNaN(originalDue.getTime()) ? 15 : originalDue.getUTCDate();
+            const nextMonthIndexRaw = lastPaid.getUTCMonth() + 1;
+            const targetYear = lastPaid.getUTCFullYear() + (nextMonthIndexRaw >= 12 ? 1 : 0);
+            const targetMonth = nextMonthIndexRaw % 12;
+            const daysInNewMonth = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+            const day = Math.min(anchorDay, daysInNewMonth);
+            const y = targetYear;
+            const m = String(targetMonth + 1).padStart(2, '0');
+            const d = String(day).padStart(2, '0');
+            const isoDateOnly = `${y}-${m}-${d}`;
+            db.prepare('UPDATE installments SET due_date = ? WHERE id = ?').run(isoDateOnly, nextPending.id);
+            rescheduled = { nextPendingId: nextPending.id, newDueISO: isoDateOnly };
+          }
+        }
+      } catch {}
+    }
+    if (rescheduled) {
+      return { rescheduled };
+    }
   },
 
   applyLateFee: (installmentId: number, fee: number): void => {
@@ -1695,21 +1789,25 @@ export const installmentOperations = {
     
 
 
-    if (installment.paid_amount !== installment.amount || transaction.amount !== installment.amount) {
-      throw new Error('Solo se puede revertir pagos completos de la cuota');
+    // Permitir revertir pagos parciales: restar el monto de la transacción
+    if (transaction.installment_id !== installmentId) {
+      throw new Error('La transacción no pertenece a la cuota indicada');
     }
-    const newPaidAmount = 0;
-    const newBalance = installment.amount;
-    const newStatus: 'pending' = 'pending';
+    const newPaidAmount = Math.max(0, installment.paid_amount - transaction.amount);
+    const newBalance = Math.max(0, installment.amount - newPaidAmount);
+    const newStatus: 'pending' | 'paid' = newBalance === 0 ? 'paid' : 'pending';
     
 
 
     const updateStmt = db.prepare(`
       UPDATE installments
-      SET paid_amount = ?, balance = ?, status = ?
+      SET paid_amount = ?, balance = ?, status = ?, paid_date = ?,
+          notes = CASE WHEN ? = 'pending' THEN NULL ELSE notes END,
+          due_date = CASE WHEN ? = 'pending' THEN COALESCE(original_due_date, due_date) ELSE due_date END
       WHERE id = ?
     `);
-    updateStmt.run(newPaidAmount, newBalance, newStatus, installmentId);
+    const nextPaidDate = newStatus === 'paid' ? (installment.paid_date || null) : null;
+    updateStmt.run(newPaidAmount, newBalance, newStatus, nextPaidDate, newStatus, newStatus, installmentId);
     
 
 
@@ -1751,14 +1849,18 @@ export const installmentOperations = {
     const db = getDatabase();
     const stmt = db.prepare(`
       INSERT INTO installments (
-        sale_id, installment_number, due_date, amount, paid_amount,
+        sale_id, installment_number, original_installment_number,
+        due_date, original_due_date,
+        amount, paid_amount,
         balance, status, paid_date, days_overdue, late_fee, late_fee_applied, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const result = stmt.run(
       installment.sale_id,
       installment.installment_number,
+      (installment.original_installment_number ?? installment.installment_number),
       installment.due_date,
+      (installment.original_due_date ?? installment.due_date),
       installment.amount,
       installment.paid_amount,
       installment.balance,
@@ -1772,7 +1874,7 @@ export const installmentOperations = {
     return result.lastInsertRowid as number;
   },
 
-  markAsPaid: (id: number): void => {
+  markAsPaid: (id: number, paymentDate?: string): { rescheduled?: { nextPendingId: number; newDueISO: string } } | void => {
     const db = getDatabase();
     const installment = db.prepare('SELECT * FROM installments WHERE id = ?').get(id) as Installment;
     if (!installment) {
@@ -1790,7 +1892,8 @@ export const installmentOperations = {
       SET paid_amount = amount, balance = 0, status = 'paid', paid_date = ?
       WHERE id = ?
     `);
-    stmt.run(new Date().toISOString(), id);
+    const paidISO = paymentDate || new Date().toISOString();
+    stmt.run(paidISO, id);
     
 
 
@@ -1807,9 +1910,37 @@ export const installmentOperations = {
         remainingAmount,
         'cash',
         'Marcado como pagado',
-        new Date().toISOString(),
+        paidISO,
         'completed'
       );
+    }
+
+    let rescheduled: { nextPendingId: number; newDueISO: string } | undefined;
+    try {
+      const saleInsts = db.prepare('SELECT * FROM installments WHERE sale_id = ? ORDER BY COALESCE(original_installment_number, installment_number)').all(installment.sale_id) as Installment[];
+      const paidDates = saleInsts.filter(i => i.status === 'paid' && i.paid_date).map(i => new Date(String(i.paid_date))).filter(d => !isNaN(d.getTime()));
+      if (paidDates.length > 0) {
+        const lastPaid = new Date(Math.max(...paidDates.map(d => d.getTime())));
+        const nextPending = saleInsts.filter(i => i.status !== 'paid').sort((a, b) => (a.installment_number || 0) - (b.installment_number || 0))[0];
+        if (nextPending && nextPending.id) {
+          const originalDue = new Date(nextPending.due_date);
+          const anchorDay = isNaN(originalDue.getTime()) ? 15 : originalDue.getUTCDate();
+          const nextMonthIndexRaw = lastPaid.getUTCMonth() + 1;
+          const targetYear = lastPaid.getUTCFullYear() + (nextMonthIndexRaw >= 12 ? 1 : 0);
+          const targetMonth = nextMonthIndexRaw % 12;
+          const daysInNewMonth = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+          const day = Math.min(anchorDay, daysInNewMonth);
+          const y = targetYear;
+          const m = String(targetMonth + 1).padStart(2, '0');
+          const d = String(day).padStart(2, '0');
+          const isoDateOnly = `${y}-${m}-${d}`;
+          db.prepare('UPDATE installments SET due_date = ? WHERE id = ?').run(isoDateOnly, nextPending.id);
+          rescheduled = { nextPendingId: nextPending.id, newDueISO: isoDateOnly };
+        }
+      }
+    } catch {}
+    if (rescheduled) {
+      return { rescheduled };
     }
   },
 
@@ -1998,5 +2129,22 @@ export const notificationOperations = {
       .prepare("SELECT * FROM notifications WHERE message_key = ? ORDER BY datetime(created_at) DESC LIMIT 1")
       .get(key) as NotificationRecord | undefined;
     return row ?? null;
+  },
+
+  purgeArchivedOlderThan: (days: number = 90): void => {
+    const db = getDatabase();
+    const stmt = db.prepare("DELETE FROM notifications WHERE deleted_at IS NOT NULL AND date(deleted_at) < date('now', '-' || ? || ' days')");
+    stmt.run(days);
+  },
+
+  dedupeActiveByMessageKey: (): void => {
+    const db = getDatabase();
+    try {
+      db.exec(`UPDATE notifications
+        SET deleted_at = datetime('now')
+        WHERE deleted_at IS NULL AND message_key IS NOT NULL AND id NOT IN (
+          SELECT MAX(id) FROM notifications WHERE deleted_at IS NULL AND message_key IS NOT NULL GROUP BY message_key
+        )`);
+    } catch {}
   }
 };
